@@ -18,6 +18,8 @@ Consulte [`docs/FINAL-REPORT.md`](docs/FINAL-REPORT.md) para evidências e pend�
 
 Forneça o APK em `packages/neonews/neonews.apk` e execute os validadores:
 
+Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do repositório; a publicação o copia automaticamente para `packages/neonews/neonews.apk`, e o botão “Iniciar NeoNews” tenta instalá-lo antes de abrir a atividade.
+
 ```powershell
 .\scripts\validation\Test-WebViewProvider.ps1 -StartEmulator -StopEmulator
 .\scripts\validation\Test-TtsProvider.ps1 -StartEmulator -StopEmulator

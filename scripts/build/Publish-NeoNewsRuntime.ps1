@@ -38,4 +38,13 @@ foreach ($directory in $layoutDirectories) {
 Copy-Item -Path (Join-Path $repositoryRoot "config\runtime.json") -Destination (Join-Path $outputPath "config\runtime.json") -Force
 Copy-Item -Path (Join-Path $repositoryRoot "docs\*") -Destination (Join-Path $outputPath "docs") -Recurse -Force
 Copy-Item -Path (Join-Path $repositoryRoot "README.md") -Destination $outputPath -Force
+$apkCandidates = @(
+    (Join-Path $repositoryRoot "packages\neonews\neonews.apk"),
+    (Join-Path $repositoryRoot "app.apk")
+)
+$sourceApk = $apkCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($sourceApk) {
+    Copy-Item -LiteralPath $sourceApk -Destination (Join-Path $outputPath "packages\neonews\neonews.apk") -Force
+    Write-Host "APK NeoNews incluído em $outputPath\packages\neonews\neonews.apk"
+}
 Write-Host "NeoNewsRuntime publicado em $outputPath"

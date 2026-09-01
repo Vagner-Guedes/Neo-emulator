@@ -33,6 +33,8 @@ dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.cspr
 
 Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe`, `config/runtime.json`, `runtime/`, `packages/`, `logs/`, `reports/` e `docs/`; o PDB pode ser mantido para diagnóstico. O SDK Android não é embutido no executável: em produção, configure `android.tooling.sdkRoot` para um SDK distribuído junto ou permita o fallback para `ANDROID_SDK_ROOT`, `ANDROID_HOME` ou `%LOCALAPPDATA%\Android\Sdk`.
 
+Quando `app.apk` existir na raiz do repositório (ou `packages/neonews/neonews.apk` já existir), o script de publicação o inclui na distribuição. O comando `--start` também instala automaticamente esse APK autorizado quando o pacote ainda não estiver presente no Android.
+
 Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbSeconds`, `bootSeconds`, `neoNewsStartSeconds`, `installSeconds` e `emulatorStopSeconds`) e podem ser ajustados sem recompilar o launcher.
 
 Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.

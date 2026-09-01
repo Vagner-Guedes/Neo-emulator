@@ -45,9 +45,23 @@ public sealed class NeoNewsService
         var status = await GetStatusAsync(cancellationToken);
         if (!status.Installed)
         {
-            throw new RuntimeOperationException(
-                "NeoNews.apk não está instalado.",
-                $"Pacote esperado: {PackageName}. ABI declarada: {string.Join(", ", _context.Config.NeoNews.SupportedApkAbis)}.");
+            var apkPath = _context.ResolveApkPath();
+            if (!File.Exists(apkPath))
+            {
+                throw new RuntimeOperationException(
+                    "NeoNews.apk não está instalado.",
+                    $"Pacote esperado: {PackageName}. APK local não encontrado em: {apkPath}. ABI declarada: {string.Join(", ", _context.Config.NeoNews.SupportedApkAbis)}.");
+            }
+
+            progress?.Report(new RuntimeProgress("Instalando NeoNews", "APK local autorizado encontrado; instalando no Android...", 78));
+            await _adb.InstallApkAsync(apkPath, cancellationToken);
+            status = await GetStatusAsync(cancellationToken);
+            if (!status.Installed)
+            {
+                throw new RuntimeOperationException(
+                    "NeoNews.apk foi processado, mas o pacote não apareceu no Android.",
+                    $"Pacote esperado: {PackageName}. APK: {apkPath}");
+            }
         }
         progress?.Report(new RuntimeProgress("Abrindo NeoNews", $"{PackageName}/{ActivityName}", 82));
         await _adb.StartActivityAsync(PackageName, ActivityName, cancellationToken);
