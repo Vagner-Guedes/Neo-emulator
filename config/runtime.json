@@ -49,7 +49,10 @@
   "webView": {
     "provider": "com.google.android.webview",
     "homologatedVersion": "119.0.6045.193",
-    "status": "pending-validation"
+    "installedVersion": "55.0.2883.91",
+    "status": "version-mismatch",
+    "validated": false,
+    "report": "docs/WEBVIEW-ETAPA-4.md"
   },
   "tts": {
     "locale": "pt-BR",
