@@ -82,7 +82,7 @@
     "validated": false,
     "report": "docs/WEBVIEW-ETAPA-4.md"
   },
-  "tts": {
+    "tts": {
     "locale": "pt-BR",
     "engine": "RHVoice",
     "availableEngines": [
@@ -92,5 +92,12 @@
     "status": "missing-engine",
     "validated": false,
     "report": "docs/TTS-ETAPA-5.md"
+  },
+  "supervisor": {
+    "pollSeconds": 5,
+    "restartOnActivityLoss": true,
+    "logPath": "logs/supervisor.log",
+    "script": "scripts/runtime/Watch-NeoNews.ps1",
+    "status": "prepared"
   }
 }
