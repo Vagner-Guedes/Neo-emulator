@@ -128,5 +128,9 @@
     "script": "scripts/benchmark/Run-NeoNewsBenchmark.ps1",
     "defaultIterations": 3,
     "status": "base-runtime-only"
+  },
+  "quality": {
+    "script": "scripts/validation/Test-RuntimeRepository.ps1",
+    "status": "prepared"
   }
 }
