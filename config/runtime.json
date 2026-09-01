@@ -34,6 +34,20 @@
       "noBootAnimation": true,
       "snapshotPolicy": "quick-boot-with-cold-boot-fallback",
       "validationPort": 5556
+    },
+    "optimization": {
+      "screen": {
+        "width": 1920,
+        "height": 1080,
+        "density": 160
+      },
+      "ramMb": 2048,
+      "cpuCores": 4,
+      "dataPartitionSize": "8192M",
+      "gpuMode": "swiftshader_indirect",
+      "audioInput": true,
+      "audioOutput": true,
+      "profile": "signage-landscape"
     }
   },
   "neonews": {
