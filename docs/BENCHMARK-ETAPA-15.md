@@ -24,4 +24,3 @@ Neste ambiente, a medição é classificada como `base-runtime-only`: o pacote N
 ## Decisão da etapa
 
 **Etapa 15 concluída com benchmark reproduzível do runtime base.**
-
