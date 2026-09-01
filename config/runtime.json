@@ -105,5 +105,10 @@
     "logonDelaySeconds": 30,
     "script": "scripts/startup/Register-NeoNewsStartup.ps1",
     "status": "prepared"
+  },
+  "launcher": {
+    "project": "launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj",
+    "outputName": "NeoNews.Runtime.Launcher.exe",
+    "status": "prepared"
   }
 }
