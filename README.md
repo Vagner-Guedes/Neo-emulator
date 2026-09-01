@@ -29,4 +29,3 @@ O launcher WPF pode ser compilado com o SDK local .NET 8:
 ```powershell
 dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj --configuration Release
 ```
-

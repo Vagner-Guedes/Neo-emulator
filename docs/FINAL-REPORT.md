@@ -71,4 +71,3 @@ d5131db feat: adicionar bootstrap resiliente do runtime
 ## Conclusão
 
 O runtime está preparado para continuar a homologação assim que as dependências externas forem disponibilizadas. A infraestrutura não declara suporte funcional ao NeoNews enquanto a ABI, o WebView 119 e o RHVoice não forem comprovados no mesmo guest.
-
