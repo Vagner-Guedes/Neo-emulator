@@ -47,7 +47,8 @@
       "gpuMode": "swiftshader_indirect",
       "audioInput": true,
       "audioOutput": true,
-      "profile": "signage-landscape"
+      "profile": "signage-landscape",
+      "benchmarkScript": "scripts/benchmark/Measure-AndroidRuntime.ps1"
     }
   },
   "neonews": {
