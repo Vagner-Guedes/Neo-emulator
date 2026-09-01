@@ -48,8 +48,11 @@ $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (
 $appIgnored = $false
 Push-Location $RepositoryRoot
 try {
-    git check-ignore --quiet -- app.apk
-    $appIgnored = $LASTEXITCODE -eq 0
+    $ignoreResults = foreach ($candidate in @('app.apk', 'NeoNews.apk')) {
+        git check-ignore --quiet -- $candidate
+        $LASTEXITCODE -eq 0
+    }
+    $appIgnored = $ignoreResults -notcontains $false
 } finally {
     Pop-Location
 }

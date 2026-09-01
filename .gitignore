@@ -3,6 +3,8 @@
 /packages/neonews/*.apk
 /packages/webview/*.apk
 /packages/tts/*.apk
+/NeoNews.apk
+**/NeoNews.apk
 
 # Runtime e estado gerados localmente.
 /runtime/
@@ -10,6 +12,8 @@
 !/logs/.gitkeep
 /reports/*
 !/reports/.gitkeep
+*.tmp
+*.bak
 
 # Artefatos de build e arquivos locais do .NET/WPF.
 [Bb]in/

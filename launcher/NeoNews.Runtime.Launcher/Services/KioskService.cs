@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using NeoNews.Runtime.Launcher.Models;
 
@@ -25,6 +26,7 @@ public sealed class KioskService
     private IntPtr _originalStyle;
     private RECT _originalRect;
     private bool _windowCaptured;
+    private GuestState? _originalGuestState;
 
     public KioskService(RuntimeContext context, AdbService adb, EmulatorService emulator)
     {
@@ -38,6 +40,7 @@ public sealed class KioskService
     public async Task EnterAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
         var kiosk = _context.Config.Android.Kiosk;
+        if (_originalGuestState is null) _originalGuestState = await CaptureGuestStateAsync(cancellationToken);
         progress?.Report(new RuntimeProgress("Ativando kiosk", "Aplicando fullscreen no Android...", 88));
         await _adb.PutSettingAsync("global", "policy_control", kiosk.ImmersivePolicy, cancellationToken);
         await _adb.PutSettingAsync("system", "screen_off_timeout", kiosk.ScreenOffTimeoutMs.ToString(), cancellationToken);
@@ -54,12 +57,81 @@ public sealed class KioskService
 
     public async Task ExitAsync(CancellationToken cancellationToken)
     {
-        await _adb.DeleteSettingAsync("global", "policy_control", cancellationToken);
-        await _adb.ExecuteAsync(["shell", "wm", "size", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
-        await _adb.ExecuteAsync(["shell", "wm", "density", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+        var original = _originalGuestState;
+        if (original is null)
+        {
+            await _adb.DeleteSettingAsync("global", "policy_control", cancellationToken);
+            await ResetDisplayAsync(cancellationToken);
+        }
+        else
+        {
+            await RestoreSettingAsync("global", "policy_control", original.PolicyControl, cancellationToken);
+            await RestoreSettingAsync("system", "screen_off_timeout", original.ScreenOffTimeout, cancellationToken);
+            await RestoreSettingAsync("global", "stay_on_while_plugged_in", original.StayAwakePluggedIn, cancellationToken);
+            await RestoreSettingAsync("secure", "screensaver_enabled", original.ScreensaverEnabled, cancellationToken);
+            await RestoreSettingAsync("system", "accelerometer_rotation", original.AccelerometerRotation, cancellationToken);
+            await RestoreSettingAsync("system", "user_rotation", original.UserRotation, cancellationToken);
+            await RestoreDisplayAsync(original.DisplaySize, original.DisplayDensity, cancellationToken);
+        }
         RestoreEmulatorWindow();
         IsActive = false;
+        _originalGuestState = null;
     }
+
+    private async Task<GuestState> CaptureGuestStateAsync(CancellationToken cancellationToken)
+    {
+        var size = await _adb.GetDisplaySizeAsync(cancellationToken);
+        var density = await _adb.GetDisplayDensityAsync(cancellationToken);
+        return new GuestState(
+            await _adb.GetSettingAsync("global", "policy_control", cancellationToken),
+            await _adb.GetSettingAsync("system", "screen_off_timeout", cancellationToken),
+            await _adb.GetSettingAsync("global", "stay_on_while_plugged_in", cancellationToken),
+            await _adb.GetSettingAsync("secure", "screensaver_enabled", cancellationToken),
+            await _adb.GetSettingAsync("system", "accelerometer_rotation", cancellationToken),
+            await _adb.GetSettingAsync("system", "user_rotation", cancellationToken),
+            ExtractOverride(size, "Override size"),
+            ExtractOverride(density, "Override density"));
+    }
+
+    private async Task RestoreSettingAsync(string scope, string name, string value, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Equals("null", StringComparison.OrdinalIgnoreCase))
+            await _adb.DeleteSettingAsync(scope, name, cancellationToken);
+        else
+            await _adb.PutSettingAsync(scope, name, value, cancellationToken);
+    }
+
+    private async Task RestoreDisplayAsync(string? size, string? density, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(size))
+            await _adb.ExecuteAsync(["shell", "wm", "size", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+        else
+            await _adb.ExecuteAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(density))
+            await _adb.ExecuteAsync(["shell", "wm", "density", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+        else
+            await _adb.ExecuteAsync(["shell", "wm", "density", density], TimeSpan.FromSeconds(20), cancellationToken);
+    }
+
+    private Task ResetDisplayAsync(CancellationToken cancellationToken) =>
+        RestoreDisplayAsync(null, null, cancellationToken);
+
+    private static string? ExtractOverride(string text, string label)
+    {
+        var match = Regex.Match(text, $"(?m)^{Regex.Escape(label)}:\\s*(\\S+)");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    private sealed record GuestState(
+        string PolicyControl,
+        string ScreenOffTimeout,
+        string StayAwakePluggedIn,
+        string ScreensaverEnabled,
+        string AccelerometerRotation,
+        string UserRotation,
+        string? DisplaySize,
+        string? DisplayDensity);
 
     private void CaptureAndMaximizeEmulatorWindow()
     {

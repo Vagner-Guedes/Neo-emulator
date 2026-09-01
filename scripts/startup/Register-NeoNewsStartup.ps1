@@ -1,12 +1,13 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\runtime.json'),
+    [string]$ConfigPath,
     [string]$TaskName,
     [switch]$Apply,
     [switch]$Unregister
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
 
 if (-not (Test-Path -LiteralPath $ConfigPath)) {
     throw "Configuração não encontrada: $ConfigPath"

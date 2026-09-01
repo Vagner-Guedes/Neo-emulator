@@ -7,6 +7,7 @@ public sealed class RuntimeConfig
     public int SchemaVersion { get; set; } = 1;
     public ReleaseConfig Release { get; set; } = new();
     public RuntimeSettings Runtime { get; set; } = new();
+    public RuntimeTimeoutConfig Timeouts { get; set; } = new();
     public AndroidConfig Android { get; set; } = new();
     [JsonPropertyName("neonews")]
     public NeoNewsConfig NeoNews { get; set; } = new();
@@ -33,6 +34,15 @@ public sealed class RuntimeSettings
     public string Environment { get; set; } = "production";
     public string Timezone { get; set; } = "America/Bahia";
     public string Hotkey { get; set; } = "Ctrl+Alt+Shift+F12";
+}
+
+public sealed class RuntimeTimeoutConfig
+{
+    public int AdbSeconds { get; set; } = 30;
+    public int BootSeconds { get; set; } = 180;
+    public int NeoNewsStartSeconds { get; set; } = 120;
+    public int InstallSeconds { get; set; } = 600;
+    public int EmulatorStopSeconds { get; set; } = 20;
 }
 
 public sealed class AndroidConfig

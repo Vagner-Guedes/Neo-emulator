@@ -1,11 +1,12 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\runtime.json'),
+    [string]$ConfigPath,
     [string]$Serial = 'emulator-5556',
     [string]$ReportPath
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
 
 function Resolve-SdkRoot {
     if ($env:ANDROID_SDK_ROOT) { return $env:ANDROID_SDK_ROOT }

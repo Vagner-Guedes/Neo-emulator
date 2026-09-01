@@ -85,7 +85,7 @@ public sealed class EmulatorService : IAsyncDisposable
         {
             if (_process is not null)
             {
-                await _process.StopAsync(TimeSpan.FromSeconds(20), cancellationToken);
+                await _process.StopAsync(TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.EmulatorStopSeconds)), cancellationToken);
                 await _process.DisposeAsync();
                 _process = null;
                 return;

@@ -63,8 +63,28 @@ public partial class App : System.Windows.Application
         {
             if (_mainWindow is not null) _mainWindow.ShowError(new ErrorInfo("Não foi possível iniciar o runtime.", exception.ToString()));
             else new ErrorDialog("Não foi possível iniciar o runtime.", exception.ToString()).ShowDialog();
-            Shutdown();
+            RequestExit();
         }
+    }
+
+    public async void RequestExit()
+    {
+        if (_exiting) return;
+        _exiting = true;
+        _pipeCancellation?.Cancel();
+        _tray?.Dispose();
+        _mainWindow?.AllowClose();
+        try
+        {
+            if (_controller is not null) await _controller.DisposeAsync().ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            try { _controller?.Logs.Warning("launcher", $"Falha no encerramento: {exception.Message}"); } catch { }
+        }
+        _pipeCancellation?.Dispose();
+        _singleInstance?.Dispose();
+        Shutdown();
     }
 
     private async Task HandlePipeCommandAsync(string text)
@@ -115,14 +135,7 @@ public partial class App : System.Windows.Application
             _exiting = true;
             _pipeCancellation?.Cancel();
             _tray?.Dispose();
-            try
-            {
-                if (_controller is not null)
-                {
-                    Task.Run(() => _controller.DisposeAsync().AsTask()).GetAwaiter().GetResult();
-                }
-            }
-            catch { }
+            _mainWindow?.AllowClose();
             _pipeCancellation?.Dispose();
             _singleInstance?.Dispose();
         }

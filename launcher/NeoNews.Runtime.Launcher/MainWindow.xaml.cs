@@ -96,6 +96,7 @@ public partial class MainWindow : Window
         SuppressErrors = false;
         _controller.Logs.Info("launcher", $"Solicitação para exibir painel. Visível antes: {IsVisible}.");
         ShowInTaskbar = true;
+        Visibility = Visibility.Visible;
         if (!IsVisible)
         {
             Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
@@ -123,7 +124,12 @@ public partial class MainWindow : Window
     public void PrepareForBackground()
     {
         ShowInTaskbar = false;
-        Hide();
+        if (!IsLoaded)
+        {
+            Visibility = Visibility.Hidden;
+            Show();
+        }
+        else Hide();
     }
 
     public void AllowClose() => _allowClose = true;
@@ -146,8 +152,8 @@ public partial class MainWindow : Window
 
     private void RequestApplicationExit()
     {
-        AllowClose();
-        System.Windows.Application.Current.Shutdown();
+        if (System.Windows.Application.Current is App app) app.RequestExit();
+        else System.Windows.Application.Current.Shutdown();
     }
 
 }

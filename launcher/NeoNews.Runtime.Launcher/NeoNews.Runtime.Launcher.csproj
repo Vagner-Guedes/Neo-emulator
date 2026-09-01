@@ -22,6 +22,7 @@
     <ApplicationIcon>Assets\NeoNewsRuntime.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\NeoNewsRuntime.ico" />
     <Content Include="..\..\config\runtime.json" Link="config\runtime.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -6,6 +6,7 @@
         Height="820"
         MinWidth="1050"
         MinHeight="700"
+        Icon="/NeoNewsRuntime;component/Assets/NeoNewsRuntime.ico"
         WindowStartupLocation="CenterScreen"
         Background="#0B1017"
         Foreground="#E6EDF3"

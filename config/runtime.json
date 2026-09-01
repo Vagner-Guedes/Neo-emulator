@@ -10,6 +10,13 @@
     "timezone": "America/Bahia",
     "hotkey": "Ctrl+Alt+Shift+F12"
   },
+  "timeouts": {
+    "adbSeconds": 30,
+    "bootSeconds": 180,
+    "neoNewsStartSeconds": 120,
+    "installSeconds": 600,
+    "emulatorStopSeconds": 20
+  },
   "android": {
     "apiLevel": 25,
     "release": "7.1.1",

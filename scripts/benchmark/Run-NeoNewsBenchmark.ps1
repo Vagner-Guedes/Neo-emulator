@@ -1,14 +1,16 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\runtime.json'),
+    [string]$ConfigPath,
     [string]$AvdName,
     [int]$Port = 5556,
     [int]$Iterations = 3,
     [int]$BootTimeoutSeconds = 180,
-    [string]$ReportPath = (Join-Path $PSScriptRoot '..\..\reports\benchmark.json')
+    [string]$ReportPath
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
+if ([string]::IsNullOrWhiteSpace($ReportPath)) { $ReportPath = Join-Path $PSScriptRoot '..\..\reports\benchmark.json' }
 
 function Resolve-SdkRoot {
     if ($env:ANDROID_SDK_ROOT) { return $env:ANDROID_SDK_ROOT }

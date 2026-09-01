@@ -80,7 +80,9 @@ public sealed class RuntimeController : IAsyncDisposable
                 : "RHVoice ausente";
         }
 
-        var startupLabel = await _startup.IsRegisteredAsync(cancellationToken) ? "Ativo" : "Inativo";
+        var startupRegistered = await _startup.IsRegisteredAsync(cancellationToken);
+        var startupValid = startupRegistered && await _startup.ValidateAsync(Environment.ProcessPath ?? string.Empty, cancellationToken);
+        var startupLabel = startupValid ? "Ativo" : "Inativo";
         Snapshot = new RuntimeSnapshot(
             State,
             booted ? "Online" : emulatorRunning ? "Iniciando" : "Offline",
@@ -105,8 +107,9 @@ public sealed class RuntimeController : IAsyncDisposable
             await _emulator.StartAsync(progress, cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
             progress?.Report(new RuntimeProgress("Aguardando ADB", "Conectando ao Android...", 35));
-            await _adb.WaitForBootAsync(progress, TimeSpan.FromMinutes(3), cancellationToken);
+            await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
             _state.Set(RuntimeState.Running);
+            await _supervisor.StartAsync();
             await RefreshSnapshotAsync(cancellationToken);
             progress?.Report(new RuntimeProgress("Android online", "O guest está pronto.", 100));
         });
@@ -160,8 +163,9 @@ public sealed class RuntimeController : IAsyncDisposable
             await _supervisor.StopAsync();
             await _emulator.RestartAsync(progress, cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
-            await _adb.WaitForBootAsync(progress, TimeSpan.FromMinutes(3), cancellationToken);
+            await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
             _state.Set(RuntimeState.Running);
+            await _supervisor.StartAsync();
             await RefreshSnapshotAsync(cancellationToken);
         });
     }
@@ -228,7 +232,12 @@ public sealed class RuntimeController : IAsyncDisposable
         await WithOperationAsync(RuntimeState.Preparing, async () =>
         {
             var executable = Environment.ProcessPath ?? throw new RuntimeOperationException("Executável não identificado.", "Environment.ProcessPath retornou nulo.");
-            if (enabled) await _startup.RegisterAsync(executable, cancellationToken);
+            if (enabled)
+            {
+                await _startup.RegisterAsync(executable, cancellationToken);
+                if (!await _startup.ValidateAsync(executable, cancellationToken))
+                    throw new RuntimeOperationException("A tarefa de inicialização não foi validada.", $"A tarefa '{_context.Config.Startup.TaskName}' não aponta para '{executable} --autostart'.");
+            }
             else await _startup.UnregisterAsync(cancellationToken);
             _context.Config.Startup.StartWithWindows = enabled;
             await _context.SaveAsync(cancellationToken);
@@ -279,7 +288,8 @@ public sealed class RuntimeController : IAsyncDisposable
             await _emulator.StartAsync(progress, cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
         }
-        await _adb.WaitForBootAsync(progress, TimeSpan.FromMinutes(3), cancellationToken);
+        await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+        await _supervisor.StartAsync();
     }
 
     private async Task WithOperationAsync(RuntimeState state, Func<Task> operation)

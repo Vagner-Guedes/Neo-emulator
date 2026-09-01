@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\runtime.json'),
+    [string]$ConfigPath,
     [string]$Serial = 'emulator-5556',
     [int]$PollSeconds = 5,
     [int]$MaxIterations = 0,
@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
 
 function Resolve-SdkRoot {
     if ($env:ANDROID_SDK_ROOT) { return $env:ANDROID_SDK_ROOT }
@@ -20,8 +21,14 @@ function Resolve-SdkRoot {
 
 function Invoke-Adb {
     param([string]$AdbPath, [string[]]$Arguments)
-    $output = & $AdbPath -s $Serial @Arguments 2>&1
-    return (($output | Out-String).Trim())
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $AdbPath -s $Serial @Arguments 2>&1 | Out-String
+        return $output.Trim()
+    } finally {
+        $ErrorActionPreference = $previousErrorAction
+    }
 }
 
 function Get-NeoNewsState {

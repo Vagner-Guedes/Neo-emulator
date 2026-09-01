@@ -108,6 +108,60 @@ public sealed class ProcessRunnerService
         return new ManagedProcess(process, outputTask, errorTask);
     }
 
+    public async Task<ProcessResult> RunElevatedAsync(
+        string executable,
+        IEnumerable<string> arguments,
+        string workingDirectory,
+        string category,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        var started = Stopwatch.StartNew();
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = true,
+            Verb = "runas",
+            WindowStyle = ProcessWindowStyle.Hidden
+        };
+        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
+
+        using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
+        try
+        {
+            if (!process.Start()) throw new InvalidOperationException($"Não foi possível iniciar {executable} elevado.");
+        }
+        catch (Exception exception)
+        {
+            process.Dispose();
+            _logs.Error("process", $"Falha ao iniciar {executable} elevado", exception);
+            throw;
+        }
+
+        var waitTask = process.WaitForExitAsync(cancellationToken);
+        var timedOut = false;
+        try
+        {
+            if (await Task.WhenAny(waitTask, Task.Delay(timeout, cancellationToken)) != waitTask)
+            {
+                timedOut = true;
+                try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+            else await waitTask;
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            throw;
+        }
+
+        started.Stop();
+        _logs.Info(category, $"Processo elevado concluído: {executable} (exit code {process.ExitCode})");
+        return new ProcessResult(process.ExitCode, string.Empty, string.Empty, timedOut, started.Elapsed);
+    }
+
     private Process CreateProcess(string executable, IEnumerable<string> arguments, string workingDirectory)
     {
         var startInfo = new ProcessStartInfo

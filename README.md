@@ -30,7 +30,7 @@ O launcher WPF pode ser compilado com o SDK local .NET 8:
 dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj --configuration Release
 ```
 
-## Executável Windows
+## Executando o Runtime
 
 O runtime profissional é `NeoNewsRuntime.exe`, uma aplicação WPF `WinExe` autocontida para `win-x64`. A operação normal não abre PowerShell nem terminal: ADB, Emulator e `schtasks.exe` são executados diretamente, com saída capturada em `logs/`.
 

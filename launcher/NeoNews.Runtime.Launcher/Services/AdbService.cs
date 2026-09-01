@@ -22,7 +22,7 @@ public sealed class AdbService
     public Task<ProcessResult> ExecuteAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default, bool logOutput = true)
     {
         var fullArguments = new[] { "-s", Serial }.Concat(arguments);
-        return _runner.RunAsync(AdbPath, fullArguments, _context.RootDirectory, "adb", timeout ?? TimeSpan.FromSeconds(30), cancellationToken, logOutput);
+        return _runner.RunAsync(AdbPath, fullArguments, _context.RootDirectory, "adb", timeout ?? TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)), cancellationToken, logOutput);
     }
 
     public async Task<string> GetStateAsync(CancellationToken cancellationToken = default)
@@ -42,6 +42,9 @@ public sealed class AdbService
 
     public async Task<string> GetPropertyAsync(string property, CancellationToken cancellationToken = default) =>
         await ShellAsync(["getprop", property], TimeSpan.FromSeconds(10), cancellationToken);
+
+    public async Task<string> GetSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
+        await ShellAsync(["settings", "get", scope, name], TimeSpan.FromSeconds(15), cancellationToken);
 
     public async Task WaitForBootAsync(IProgress<RuntimeProgress>? progress, TimeSpan timeout, CancellationToken cancellationToken)
     {
@@ -116,7 +119,7 @@ public sealed class AdbService
 
     public async Task StartActivityAsync(string packageName, string activityName, CancellationToken cancellationToken = default)
     {
-        var result = await ExecuteAsync(["shell", "am", "start", "-W", "-n", $"{packageName}/{activityName}"], TimeSpan.FromMinutes(2), cancellationToken);
+        var result = await ExecuteAsync(["shell", "am", "start", "-W", "-n", $"{packageName}/{activityName}"], TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.NeoNewsStartSeconds)), cancellationToken);
         if (!result.Succeeded)
         {
             throw new RuntimeOperationException(
@@ -136,7 +139,7 @@ public sealed class AdbService
         }
 
         _logs.Info("launcher", $"Instalação autorizada do APK: {apkPath}");
-        var result = await ExecuteAsync(["install", "-r", apkPath], TimeSpan.FromMinutes(10), cancellationToken);
+        var result = await ExecuteAsync(["install", "-r", apkPath], TimeSpan.FromSeconds(Math.Max(30, _context.Config.Timeouts.InstallSeconds)), cancellationToken);
         if (!result.Succeeded)
         {
             throw new RuntimeOperationException(
@@ -156,6 +159,12 @@ public sealed class AdbService
         _ = await ExecuteAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken);
         _ = await ExecuteAsync(["shell", "wm", "density", density.ToString()], TimeSpan.FromSeconds(20), cancellationToken);
     }
+
+    public Task<string> GetDisplaySizeAsync(CancellationToken cancellationToken = default) =>
+        ShellAsync(["wm", "size"], TimeSpan.FromSeconds(20), cancellationToken);
+
+    public Task<string> GetDisplayDensityAsync(CancellationToken cancellationToken = default) =>
+        ShellAsync(["wm", "density"], TimeSpan.FromSeconds(20), cancellationToken);
 
     public async Task<string> GetWebViewDumpAsync(CancellationToken cancellationToken = default) =>
         await ShellAsync(["dumpsys", "webviewupdate"], TimeSpan.FromSeconds(20), cancellationToken);

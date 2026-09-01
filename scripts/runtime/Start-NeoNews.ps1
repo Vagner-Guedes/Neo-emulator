@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\runtime.json'),
+    [string]$ConfigPath,
     [string]$Serial,
     [string]$Activity,
     [switch]$StartEmulator,
@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
 
 function Resolve-SdkRoot {
     if ($env:ANDROID_SDK_ROOT) {
@@ -165,4 +166,3 @@ $json
 if ($StopEmulator -and $startedProcess) {
     & $adbPath -s $Serial emu kill 2>$null | Out-Null
 }
-
