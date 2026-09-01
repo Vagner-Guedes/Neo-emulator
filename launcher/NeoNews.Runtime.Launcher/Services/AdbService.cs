@@ -19,10 +19,10 @@ public sealed class AdbService
     public string Serial => $"emulator-{_context.Config.Android.Emulator.ValidationPort}";
     public string AdbPath => _context.ResolveAdbPath();
 
-    public Task<ProcessResult> ExecuteAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    public Task<ProcessResult> ExecuteAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default, bool logOutput = true)
     {
         var fullArguments = new[] { "-s", Serial }.Concat(arguments);
-        return _runner.RunAsync(AdbPath, fullArguments, _context.RootDirectory, "adb", timeout ?? TimeSpan.FromSeconds(30), cancellationToken);
+        return _runner.RunAsync(AdbPath, fullArguments, _context.RootDirectory, "adb", timeout ?? TimeSpan.FromSeconds(30), cancellationToken, logOutput);
     }
 
     public async Task<string> GetStateAsync(CancellationToken cancellationToken = default)
@@ -36,7 +36,7 @@ public sealed class AdbService
 
     public async Task<string> ShellAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
-        var result = await ExecuteAsync(new[] { "shell" }.Concat(arguments), timeout, cancellationToken);
+        var result = await ExecuteAsync(new[] { "shell" }.Concat(arguments), timeout, cancellationToken, logOutput: false);
         return result.StandardOutput.Trim();
     }
 

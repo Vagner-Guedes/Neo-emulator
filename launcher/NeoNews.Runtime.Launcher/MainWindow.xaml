@@ -119,7 +119,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                         <Border Grid.Row="0" Grid.Column="0" Background="#16222E" CornerRadius="8" Margin="0,0,10,10" Padding="13">
-                            <StackPanel><TextBlock Text="ANDROID" Style="{StaticResource Muted}" /><TextBlock Text="{Binding AndroidStatus}" FontSize="16" Margin="0,6,0,0" Foreground="#A5F3FC" /><TextBlock Text="ADB: {Binding AdbStatus}" Style="{StaticResource Muted}" Margin="0,8,0,0" /></StackPanel>
+                            <StackPanel><TextBlock Text="ANDROID" Style="{StaticResource Muted}" /><TextBlock Text="{Binding AndroidStatus}" FontSize="16" Margin="0,6,0,0" Foreground="#A5F3FC" /><StackPanel Orientation="Horizontal" Margin="0,8,0,0"><TextBlock Text="ADB: " Style="{StaticResource Muted}" /><TextBlock Text="{Binding AdbStatus}" Style="{StaticResource Muted}" /></StackPanel></StackPanel>
                         </Border>
                         <Border Grid.Row="0" Grid.Column="1" Background="#16222E" CornerRadius="8" Margin="0,0,10,10" Padding="13">
                             <StackPanel><TextBlock Text="NEONEWS" Style="{StaticResource Muted}" /><TextBlock Text="{Binding NeoNewsStatus}" FontSize="16" Margin="0,6,0,0" Foreground="#A5F3FC" /><TextBlock Text="Pacote configurado" Style="{StaticResource Muted}" Margin="0,8,0,0" /></StackPanel>

@@ -4,6 +4,7 @@ namespace NeoNews.Runtime.Launcher.Models;
 
 public sealed class RuntimeConfig
 {
+    public int SchemaVersion { get; set; } = 1;
     public ReleaseConfig Release { get; set; } = new();
     public RuntimeSettings Runtime { get; set; } = new();
     public AndroidConfig Android { get; set; } = new();
@@ -42,10 +43,23 @@ public sealed class AndroidConfig
     public string PreferredImage { get; set; } = string.Empty;
     public string PreferredAvd { get; set; } = "NeoNews_API25_x86";
     public List<string> FallbackAvds { get; set; } = [];
+    [JsonPropertyName("abiValidation")]
+    public AbiValidationConfig AbiValidation { get; set; } = new();
     public ToolingConfig Tooling { get; set; } = new();
     public EmulatorConfig Emulator { get; set; } = new();
     public OptimizationConfig Optimization { get; set; } = new();
     public KioskConfig Kiosk { get; set; } = new();
+}
+
+public sealed class AbiValidationConfig
+{
+    public string Status { get; set; } = string.Empty;
+    public List<string> ApkAbis { get; set; } = [];
+    public string X86InstallResult { get; set; } = string.Empty;
+    public string X86NativeBridge { get; set; } = string.Empty;
+    public string Arm32LegacyInstallResult { get; set; } = string.Empty;
+    public bool Validated { get; set; }
+    public string Report { get; set; } = string.Empty;
 }
 
 public sealed class ToolingConfig

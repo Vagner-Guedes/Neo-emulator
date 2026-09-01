@@ -19,7 +19,14 @@ public sealed class EmulatorService : IAsyncDisposable
         _adb = adb;
     }
 
-    public int? ProcessId => _process is { HasExited: false } process ? process.ProcessId : null;
+    public int? ProcessId
+    {
+        get
+        {
+            if (_process is { HasExited: false } process) return process.ProcessId;
+            return System.Diagnostics.Process.GetProcessesByName("emulator").FirstOrDefault()?.Id;
+        }
+    }
 
     public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
     {

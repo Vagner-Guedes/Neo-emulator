@@ -60,7 +60,8 @@ public sealed class ProcessRunnerService
         string workingDirectory,
         string category,
         TimeSpan timeout,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool logOutput = true)
     {
         var started = Stopwatch.StartNew();
         using var process = CreateProcess(executable, arguments, workingDirectory);
@@ -90,7 +91,7 @@ public sealed class ProcessRunnerService
         var standardOutput = await outputTask;
         var standardError = await errorTask;
         started.Stop();
-        LogOutput(category, standardOutput, standardError);
+        LogOutput(category, logOutput ? standardOutput : string.Empty, standardError);
         return new ProcessResult(process.ExitCode, standardOutput, standardError, timedOut, started.Elapsed);
     }
 

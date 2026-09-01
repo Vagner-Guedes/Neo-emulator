@@ -11,7 +11,7 @@ public sealed class DiagnosticsService
     private readonly AdbService _adb;
     private readonly EmulatorService _emulator;
     private readonly NeoNewsService _neoNews;
-    private readonly RuntimeSupervisorService _supervisor;
+    private readonly WatchdogService _supervisor;
     private readonly StartupService _startup;
     private readonly LogService _logs;
 
@@ -20,7 +20,7 @@ public sealed class DiagnosticsService
         AdbService adb,
         EmulatorService emulator,
         NeoNewsService neoNews,
-        RuntimeSupervisorService supervisor,
+        WatchdogService supervisor,
         StartupService startup,
         LogService logs)
     {

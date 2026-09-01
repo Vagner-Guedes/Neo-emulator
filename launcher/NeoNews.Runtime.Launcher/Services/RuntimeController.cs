@@ -13,7 +13,7 @@ public sealed class RuntimeController : IAsyncDisposable
     private readonly NeoNewsService _neoNews;
     private readonly KioskService _kiosk;
     private readonly StartupService _startup;
-    private readonly RuntimeSupervisorService _supervisor;
+    private readonly WatchdogService _supervisor;
     private readonly DiagnosticsService _diagnostics;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private readonly RuntimeStateService _state = new();
@@ -28,7 +28,7 @@ public sealed class RuntimeController : IAsyncDisposable
         _neoNews = new NeoNewsService(context, _adb);
         _kiosk = new KioskService(context, _adb, _emulator);
         _startup = new StartupService(context, _runner);
-        _supervisor = new RuntimeSupervisorService(context, _neoNews, _logs);
+        _supervisor = new WatchdogService(context, _neoNews, _logs);
         _diagnostics = new DiagnosticsService(context, _adb, _emulator, _neoNews, _supervisor, _startup, _logs);
         _state.Changed += (_, state) => StateChanged?.Invoke(this, state);
         Snapshot = new RuntimeSnapshot(RuntimeState.Stopped, "Offline", "Não verificado", "Pendente", "Não instalado", "Inativo", "Não verificado", "Offline", false, false, false);
