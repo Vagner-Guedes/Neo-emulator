@@ -96,6 +96,7 @@ f8b38bb feat: implementar painel profissional do runtime
 5370b2e feat: publicar runtime Windows self-contained
 7c0e89e fix: fortalecer status e watchdog do runtime
 34babd2 feat: finalizar controles do runtime e validação
+acb5cda fix: fortalecer ciclo de vida e startup do runtime
 ```
 
 ## Conclusão

@@ -148,6 +148,9 @@ public sealed class AdbService
         }
     }
 
+    public Task InstallAuthorizedApkAsync(string apkPath, CancellationToken cancellationToken = default) =>
+        InstallApkAsync(apkPath, cancellationToken);
+
     public async Task PutSettingAsync(string scope, string name, string value, CancellationToken cancellationToken = default) =>
         _ = await ExecuteAsync(["shell", "settings", "put", scope, name, value], TimeSpan.FromSeconds(20), cancellationToken);
 
