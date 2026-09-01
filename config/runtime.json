@@ -32,7 +32,8 @@
       "acceleration": "auto",
       "gpu": "auto",
       "noBootAnimation": true,
-      "snapshotPolicy": "quick-boot-with-cold-boot-fallback"
+      "snapshotPolicy": "quick-boot-with-cold-boot-fallback",
+      "validationPort": 5556
     }
   },
   "neonews": {
@@ -40,6 +41,9 @@
     "apkPath": "packages/neonews/neonews.apk",
     "versionName": "9.0.3",
     "versionCode": 522,
+    "launchActivity": "com.in9midia.neonews.player.TerminalActivity",
+    "integrationStatus": "blocked-abi",
+    "validationScript": "scripts/runtime/Start-NeoNews.ps1",
     "supportedApkAbis": [
       "arm64-v8a",
       "armeabi-v7a"
