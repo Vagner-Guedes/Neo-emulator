@@ -1,0 +1,29 @@
+# Entradas proprietárias fornecidas externamente; não distribuir no repositório.
+/app.apk
+/packages/neonews/*.apk
+/packages/webview/*.apk
+/packages/tts/*.apk
+
+# Runtime e estado gerados localmente.
+/runtime/
+/logs/*
+!/logs/.gitkeep
+/reports/*
+!/reports/.gitkeep
+
+# Artefatos de build e arquivos locais do .NET/WPF.
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+
+# Segredos e configurações específicas da máquina.
+.env
+.env.*
+!.env.example
+*.pfx
+*.snk
+
