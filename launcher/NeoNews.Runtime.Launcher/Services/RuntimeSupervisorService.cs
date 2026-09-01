@@ -4,15 +4,19 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
 {
     private readonly RuntimeContext _context;
     private readonly NeoNewsService _neoNews;
+    private readonly AdbService _adb;
+    private readonly EmulatorService _emulator;
     private readonly LogService _logs;
     private CancellationTokenSource? _shutdown;
     private Task? _loop;
     private int _started;
 
-    public RuntimeSupervisorService(RuntimeContext context, NeoNewsService neoNews, LogService logs)
+    public RuntimeSupervisorService(RuntimeContext context, NeoNewsService neoNews, AdbService adb, EmulatorService emulator, LogService logs)
     {
         _context = context;
         _neoNews = neoNews;
+        _adb = adb;
+        _emulator = emulator;
         _logs = logs;
     }
 
@@ -52,6 +56,21 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
             try
             {
                 if (!_context.Config.Supervisor.RestartOnActivityLoss) continue;
+                if (!await _emulator.IsRunningAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    _logs.Warning("watchdog", "Emulator não está em execução.");
+                    continue;
+                }
+                if (!await _adb.IsDeviceOnlineAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    _logs.Warning("watchdog", "ADB está offline.");
+                    continue;
+                }
+                if (await _adb.GetPropertyAsync("sys.boot_completed", cancellationToken).ConfigureAwait(false) != "1")
+                {
+                    _logs.Warning("watchdog", "Android ainda não confirmou boot completo.");
+                    continue;
+                }
                 var status = await _neoNews.GetStatusAsync(cancellationToken).ConfigureAwait(false);
                 if (status.Installed && !status.Running)
                 {

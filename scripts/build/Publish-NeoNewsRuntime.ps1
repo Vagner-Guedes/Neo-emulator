@@ -21,4 +21,21 @@ $outputPath = Join-Path $repositoryRoot $OutputDirectory
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:PublishTrimmed=false -p:PublishReadyToRun=false --output $outputPath
 if ($LASTEXITCODE -ne 0) { throw "A publicação falhou com código $LASTEXITCODE." }
+$layoutDirectories = @(
+    "config",
+    "runtime",
+    "packages",
+    "packages\neonews",
+    "packages\webview",
+    "packages\tts",
+    "logs",
+    "reports",
+    "docs"
+)
+foreach ($directory in $layoutDirectories) {
+    New-Item -ItemType Directory -Path (Join-Path $outputPath $directory) -Force | Out-Null
+}
+Copy-Item -Path (Join-Path $repositoryRoot "config\runtime.json") -Destination (Join-Path $outputPath "config\runtime.json") -Force
+Copy-Item -Path (Join-Path $repositoryRoot "docs\*") -Destination (Join-Path $outputPath "docs") -Recurse -Force
+Copy-Item -Path (Join-Path $repositoryRoot "README.md") -Destination $outputPath -Force
 Write-Host "NeoNewsRuntime publicado em $outputPath"

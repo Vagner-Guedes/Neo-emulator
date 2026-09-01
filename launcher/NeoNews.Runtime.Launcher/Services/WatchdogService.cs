@@ -4,9 +4,9 @@ public sealed class WatchdogService : IAsyncDisposable
 {
     private readonly RuntimeSupervisorService _supervisor;
 
-    public WatchdogService(RuntimeContext context, NeoNewsService neoNews, LogService logs)
+    public WatchdogService(RuntimeContext context, NeoNewsService neoNews, AdbService adb, EmulatorService emulator, LogService logs)
     {
-        _supervisor = new RuntimeSupervisorService(context, neoNews, logs);
+        _supervisor = new RuntimeSupervisorService(context, neoNews, adb, emulator, logs);
     }
 
     public bool IsActive => _supervisor.IsActive;

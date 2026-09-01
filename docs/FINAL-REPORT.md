@@ -10,22 +10,26 @@ O repositório foi inicializado, conectado a `origin/master` e evoluído com uma
 
 ## Evidências principais
 
-## Launcher Windows profissional
+## Windows Launcher
 
 O launcher foi evoluído para `NeoNewsRuntime.exe`, WPF/.NET 8 `WinExe`, publicação self-contained `win-x64` em arquivo único e versão `1.0.0`. A janela usa MVVM, dashboard escuro, progresso assíncrono, logs incrementais, tray, configuração, diálogos gráficos de erro, diagnóstico e hotkey global.
 
-O caminho normal não depende de scripts PowerShell: `ProcessRunnerService` inicia ADB, Emulator e `schtasks.exe` com `UseShellExecute=false`, `CreateNoWindow=true`, redirecionamento de stdout/stderr, timeout, cancelamento e encerramento de árvore de processo. O startup criado pelo painel executa somente `NeoNewsRuntime.exe --autostart`. Os scripts existentes permanecem como ferramentas de provisionamento, validação e compatibilidade.
+O caminho normal não depende de scripts PowerShell: `ProcessRunnerService` inicia ADB, Emulator e `schtasks.exe` com `UseShellExecute=false`, `CreateNoWindow=true`, redirecionamento de stdout/stderr, timeout, cancelamento e encerramento de árvore de processo. O `ScriptExecutionService` cobre os scripts legados quando necessários, com o mesmo tratamento invisível. O startup criado pelo painel executa somente `NeoNewsRuntime.exe --autostart`. Os scripts existentes permanecem como ferramentas de provisionamento, validação e compatibilidade.
 
 Validações do executável publicado:
 
 | Teste | Resultado |
 |---|---|
-| Publicação self-contained `win-x64` | `dist/NeoNewsRuntime/NeoNewsRuntime.exe` gerado, 161.832.473 bytes |
+| Publicação self-contained `win-x64` | `dist/NeoNewsRuntime/NeoNewsRuntime.exe` gerado, 161.852.953 bytes |
 | Abertura do painel | `MainWindowHandle` válido, título `NeoNews Runtime` |
 | Instância única | segunda chamada encerra e mantém um único processo |
 | `--exit` | instância e serviços liberados; nenhum processo NeoNewsRuntime restante |
-| Caminho com espaços | aprovado em `C:\NeoNews Runtime Test\NeoNewsRuntime\` |
-| Console/filhos | processo GUI sem console/filhos no teste publicado |
+| Caminhos externos | aprovado em `C:\NeoNews Runtime Test\NeoNewsRuntime\` e `C:\NeoNewsRuntime\`, com `config/runtime.json` e diagnóstico criados no destino |
+| `--start`/`--stop` | Emulator real iniciou, ADB confirmou boot, erro gráfico/logado do APK ausente e encerramento sem processos residuais |
+| `--restart`/`--autostart` | Emulator real reiniciou/iniciou, `Android pronto` foi registrado, e ambos encerraram sem processos residuais |
+| `--kiosk`/`--exit-kiosk` | `policy_control=immersive.full=*` durante kiosk e `null` após a saída |
+| Console/filhos | processo GUI sem console; Emulator encerrado pelo runtime após o teste |
+| Regressão final | 16 scripts PowerShell parseados, JSON válido, caminhos obrigatórios presentes e APK ignorado |
 
 A publicação do launcher foi aprovada, mas isso não altera o status de homologação do aplicativo: ABI ARM-only, WebView divergente e RHVoice ausente continuam bloqueadores externos.
 
@@ -41,7 +45,7 @@ A publicação do launcher foi aprovada, mas isso não altera o status de homolo
 | Kiosk | `immersive.full=*`, timeout máximo, display `1920×1080`/`160 dpi` | aplicado no guest |
 | Boot | cold boot medido em `12,61 s` no benchmark de uma iteração | base medida |
 | Launcher | WPF Release compilado com `0` erros e `0` avisos | validado |
-| Regressão | 14 scripts PowerShell parseados, JSON válido, APK ignorado | aprovado |
+| Startup Scheduler | ação preparada como `NeoNewsRuntime.exe --autostart`; criação real recusada neste host por `Acesso negado` sem elevação | validação de código/configuração |
 
 ## Artefatos entregues
 

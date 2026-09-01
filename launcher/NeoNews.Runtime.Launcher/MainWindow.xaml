@@ -145,11 +145,16 @@
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                 <Grid Grid.Row="0">
-                    <TextBlock Text="Atividade e logs" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" HorizontalAlignment="Right" />
+                    <TextBlock Text="Atividade e logs" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <TextBox Text="{Binding LogFilter, UpdateSourceTrigger=PropertyChanged}" Width="150" Height="27" Padding="6,4" Background="#0B1118" Foreground="#B9CBD8" BorderBrush="#2B3B4A" ToolTip="Filtrar logs" />
+                        <Button Content="Copiar" Command="{Binding CopyLogsCommand}" Padding="9,4" Margin="7,0,0,0" />
+                        <Button Content="Abrir pasta" Command="{Binding OpenLogsCommand}" Padding="9,4" Margin="7,0,0,0" />
+                    </StackPanel>
                 </Grid>
                 <ProgressBar Grid.Row="1" Height="6" Margin="0,11,0,10" Minimum="0" Maximum="100" Value="{Binding ProgressValue, Mode=OneWay}" IsIndeterminate="{Binding ProgressIndeterminate, Mode=OneWay}" Background="#1E2D3B" Foreground="#22D3EE" />
-                <TextBox Grid.Row="2" Text="{Binding Logs, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#0B1118" Foreground="#9FB3C4" BorderThickness="0" Padding="10" FontFamily="Cascadia Mono" FontSize="11" />
+                <TextBox Grid.Row="2" Text="{Binding FilteredLogs, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#0B1118" Foreground="#9FB3C4" BorderThickness="0" Padding="10" FontFamily="Cascadia Mono" FontSize="11" />
             </Grid>
         </Border>
 

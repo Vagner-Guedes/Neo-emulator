@@ -32,6 +32,7 @@ public sealed class RuntimeSettings
     public string Name { get; set; } = "NeoNews Digital Signage Runtime";
     public string Environment { get; set; } = "production";
     public string Timezone { get; set; } = "America/Bahia";
+    public string Hotkey { get; set; } = "Ctrl+Alt+Shift+F12";
 }
 
 public sealed class AndroidConfig

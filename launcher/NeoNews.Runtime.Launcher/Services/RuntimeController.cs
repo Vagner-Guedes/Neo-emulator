@@ -8,6 +8,7 @@ public sealed class RuntimeController : IAsyncDisposable
     private readonly RuntimeContext _context;
     private readonly LogService _logs;
     private readonly ProcessRunnerService _runner;
+    private readonly ScriptExecutionService _scripts;
     private readonly AdbService _adb;
     private readonly EmulatorService _emulator;
     private readonly NeoNewsService _neoNews;
@@ -23,12 +24,13 @@ public sealed class RuntimeController : IAsyncDisposable
         _context = context;
         _logs = new LogService(context);
         _runner = new ProcessRunnerService(_logs);
+        _scripts = new ScriptExecutionService(context, _runner);
         _adb = new AdbService(context, _runner, _logs);
         _emulator = new EmulatorService(context, _runner, _logs, _adb);
         _neoNews = new NeoNewsService(context, _adb);
         _kiosk = new KioskService(context, _adb, _emulator);
         _startup = new StartupService(context, _runner);
-        _supervisor = new WatchdogService(context, _neoNews, _logs);
+        _supervisor = new WatchdogService(context, _neoNews, _adb, _emulator, _logs);
         _diagnostics = new DiagnosticsService(context, _adb, _emulator, _neoNews, _supervisor, _startup, _logs);
         _state.Changed += (_, state) => StateChanged?.Invoke(this, state);
         Snapshot = new RuntimeSnapshot(RuntimeState.Stopped, "Offline", "Não verificado", "Pendente", "Não instalado", "Inativo", "Não verificado", "Offline", false, false, false);
@@ -36,6 +38,7 @@ public sealed class RuntimeController : IAsyncDisposable
 
     public RuntimeContext Context => _context;
     public LogService Logs => _logs;
+    public ScriptExecutionService Scripts => _scripts;
     public RuntimeState State => _state.Current;
     public bool IsKioskActive => _kiosk.IsActive;
     public bool IsSupervisorActive => _supervisor.IsActive;
@@ -257,7 +260,15 @@ public sealed class RuntimeController : IAsyncDisposable
     public async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
         try { await _supervisor.StopAsync().ConfigureAwait(false); } catch { }
-        try { if (_kiosk.IsActive && await _adb.IsDeviceOnlineAsync(cancellationToken).ConfigureAwait(false)) await _kiosk.ExitAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        try
+        {
+            if (_emulator.ProcessId is not null && await _adb.IsDeviceOnlineAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (await _neoNews.IsInstalledAsync(cancellationToken).ConfigureAwait(false)) await _neoNews.StopAsync(cancellationToken).ConfigureAwait(false);
+                if (_kiosk.IsActive) await _kiosk.ExitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch { }
         try { await _emulator.StopAsync(cancellationToken).ConfigureAwait(false); } catch { }
     }
 

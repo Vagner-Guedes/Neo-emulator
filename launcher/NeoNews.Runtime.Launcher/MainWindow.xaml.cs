@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -14,6 +13,7 @@ public partial class MainWindow : Window
     private readonly RuntimeViewModel _viewModel;
     private readonly RuntimeController _controller;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly HotkeyService _hotkeyService = new(HotKeyId);
     private HwndSource? _source;
     private bool _allowClose;
 
@@ -38,7 +38,10 @@ public partial class MainWindow : Window
         _controller.Logs.Info("launcher", "Janela principal carregada.");
         _source = (HwndSource)PresentationSource.FromVisual(this)!;
         _source.AddHook(WindowHook);
-        RegisterHotKey(_source.Handle, HotKeyId, ModifierControl | ModifierAlt | ModifierShift, KeyF12);
+        if (!_hotkeyService.Register(_source.Handle, _controller.Context.Config.Runtime.Hotkey))
+        {
+            _controller.Logs.Warning("launcher", $"Hotkey inválida ou indisponível: {_controller.Context.Config.Runtime.Hotkey}");
+        }
         _refreshTimer.Start();
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => await _viewModel.RefreshAsync()));
     }
@@ -47,7 +50,14 @@ public partial class MainWindow : Window
     {
         var window = new SettingsWindow(_viewModel) { Owner = this };
         window.ShowDialog();
+        RefreshHotkey();
         await _viewModel.RefreshAsync();
+    }
+
+    public void RefreshHotkey()
+    {
+        if (_source is not null && !_hotkeyService.Register(_source.Handle, _controller.Context.Config.Runtime.Hotkey))
+            _controller.Logs.Warning("launcher", $"Hotkey inválida ou indisponível: {_controller.Context.Config.Runtime.Hotkey}");
     }
 
     private void ViewModel_ErrorRequested(object? sender, ErrorInfo error)
@@ -72,7 +82,7 @@ public partial class MainWindow : Window
 
     private IntPtr WindowHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == WmHotKey && wParam.ToInt32() == HotKeyId)
+        if (_hotkeyService.IsHotKeyMessage(message, wParam))
         {
             handled = true;
             _ = _viewModel.ExecuteCommandAsync(RuntimeCommand.ExitKiosk);
@@ -130,7 +140,7 @@ public partial class MainWindow : Window
         {
             _controller.Logs.Info("launcher", "Janela autorizada a fechar.");
             _refreshTimer.Stop();
-            if (_source is not null) UnregisterHotKey(_source.Handle, HotKeyId);
+            _hotkeyService.Dispose();
         }
     }
 
@@ -140,15 +150,4 @@ public partial class MainWindow : Window
         System.Windows.Application.Current.Shutdown();
     }
 
-    private const uint ModifierControl = 0x0002;
-    private const uint ModifierAlt = 0x0001;
-    private const uint ModifierShift = 0x0004;
-    private const uint KeyF12 = 0x7B;
-    private const int WmHotKey = 0x0312;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint key);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }

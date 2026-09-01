@@ -27,7 +27,7 @@ public sealed class AdbService
 
     public async Task<string> GetStateAsync(CancellationToken cancellationToken = default)
     {
-        var result = await ExecuteAsync(["get-state"], TimeSpan.FromSeconds(8), cancellationToken);
+        var result = await ExecuteAsync(["get-state"], TimeSpan.FromSeconds(8), cancellationToken, logOutput: false);
         return result.Succeeded ? result.StandardOutput.Trim() : string.Empty;
     }
 
@@ -76,6 +76,23 @@ public sealed class AdbService
     {
         var path = await ShellAsync(["pm", "path", packageName], TimeSpan.FromSeconds(15), cancellationToken);
         return path.StartsWith("package:", StringComparison.Ordinal);
+    }
+
+    public Task<bool> WaitForDeviceAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        WaitForStateAsync("device", timeout, cancellationToken);
+
+    public Task ForceStopAsync(string packageName, CancellationToken cancellationToken = default) =>
+        StopPackageAsync(packageName, cancellationToken);
+
+    private async Task<bool> WaitForStateAsync(string expectedState, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (string.Equals(await GetStateAsync(cancellationToken), expectedState, StringComparison.OrdinalIgnoreCase)) return true;
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+        return false;
     }
 
     public async Task<string> GetPackageDumpAsync(string packageName, CancellationToken cancellationToken = default) =>

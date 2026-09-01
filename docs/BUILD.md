@@ -31,7 +31,9 @@ dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.cspr
   --output .\dist\NeoNewsRuntime
 ```
 
-Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe` e `config/runtime.json`; o PDB pode ser mantido para diagnóstico. O SDK Android não é embutido no executável: em produção, configure `android.tooling.sdkRoot` para um SDK distribuído junto ou permita o fallback para `ANDROID_SDK_ROOT`, `ANDROID_HOME` ou `%LOCALAPPDATA%\Android\Sdk`.
+Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe`, `config/runtime.json`, `runtime/`, `packages/`, `logs/`, `reports/` e `docs/`; o PDB pode ser mantido para diagnóstico. O SDK Android não é embutido no executável: em produção, configure `android.tooling.sdkRoot` para um SDK distribuído junto ou permita o fallback para `ANDROID_SDK_ROOT`, `ANDROID_HOME` ou `%LOCALAPPDATA%\Android\Sdk`.
+
+Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.
 
 O ícone `launcher/NeoNews.Runtime.Launcher/Assets/NeoNewsRuntime.ico` é embutido no `.exe`. Para recriá-lo após uma alteração visual, execute `scripts/build/New-NeoNewsRuntimeIcon.ps1` antes da publicação.
 
@@ -56,5 +58,7 @@ O menu do tray oferece abrir painel, iniciar/parar/reiniciar Android, kiosk, dia
 5. Execute `NeoNewsRuntime.exe --exit`; confirme que o processo encerrou.
 6. Copie a pasta para `C:\NeoNews Runtime Test\NeoNewsRuntime\` e repita os passos 2–5. Caminhos com espaços devem funcionar.
 7. Se o APK estiver disponível, use `--start`, `--install`, `--kiosk` e `--stop`; sem APK, o painel deve mostrar um erro gráfico explicando a dependência ausente.
+
+O registro da tarefa do Agendador depende da permissão do Windows. Em uma sessão sem elevação, a validação pode retornar `Acesso negado`; nesse caso, repita a ativação pelo painel em uma conta autorizada e confirme que a ação contém somente `NeoNewsRuntime.exe --autostart`.
 
 Os logs são gravados ao lado da distribuição em `logs/`; diagnósticos ficam em `reports/`. Não versionar APK, SDK Android, `bin/`, `obj/`, `dist/`, logs ou relatórios gerados.

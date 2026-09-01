@@ -28,6 +28,9 @@ public sealed class EmulatorService : IAsyncDisposable
         }
     }
 
+    public Task<bool> WaitForAdbAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        _adb.WaitForDeviceAsync(timeout, cancellationToken);
+
     public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
     {
         if (_process is { HasExited: false }) return true;
@@ -40,6 +43,11 @@ public sealed class EmulatorService : IAsyncDisposable
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (_process is { HasExited: true } staleProcess)
+            {
+                await staleProcess.DisposeAsync();
+                _process = null;
+            }
             if (await IsRunningAsync(cancellationToken))
             {
                 progress?.Report(new RuntimeProgress("Android já iniciado", "Emulator detectado; reutilizando processo.", 25));

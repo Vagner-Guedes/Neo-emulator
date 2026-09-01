@@ -18,9 +18,22 @@ public sealed class NeoNewsService
     public string PackageName => _context.Config.NeoNews.PackageName;
     public string ActivityName => NormalizeActivity(_context.Config.NeoNews.LaunchActivity);
 
+    public Task<bool> IsInstalledAsync(CancellationToken cancellationToken = default) =>
+        _adb.IsPackageInstalledAsync(PackageName, cancellationToken);
+
+    public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default) =>
+        (await GetStatusAsync(cancellationToken)).Running;
+
+    public Task<string?> GetVersionAsync(CancellationToken cancellationToken = default) =>
+        _adb.GetPackageVersionAsync(PackageName, cancellationToken);
+
+    public Task ForceStopAsync(CancellationToken cancellationToken = default) => StopAsync(cancellationToken);
+
+    public Task InstallAuthorizedApkAsync(CancellationToken cancellationToken = default) => InstallAsync(cancellationToken);
+
     public async Task<NeoNewsStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        var installed = await _adb.IsPackageInstalledAsync(PackageName, cancellationToken);
+        var installed = await IsInstalledAsync(cancellationToken);
         if (!installed) return new NeoNewsStatus(false, false, null, "APK não instalado");
         var version = await _adb.GetPackageVersionAsync(PackageName, cancellationToken);
         var running = await _adb.IsActivityRunningAsync(PackageName, ActivityName, cancellationToken);

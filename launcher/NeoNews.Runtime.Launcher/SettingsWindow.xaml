@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Configuração do runtime"
         Width="560"
-        Height="560"
+        Height="700"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         Background="#101923"
@@ -23,6 +23,7 @@
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <CheckBox x:Name="StartWithWindows" Content="Iniciar com o Windows" FontSize="14" Margin="0,0,0,13" />
+                <CheckBox x:Name="StartNeoNews" Content="Iniciar o NeoNews automaticamente" FontSize="14" Margin="0,0,0,13" />
                 <CheckBox x:Name="AutoKiosk" Content="Ativar kiosk ao abrir o NeoNews" FontSize="14" Margin="0,0,0,13" />
                 <CheckBox x:Name="Watchdog" Content="Ativar watchdog e relançar activity perdida" FontSize="14" Margin="0,0,0,20" />
                 <TextBlock Text="Tela do emulador" Foreground="#8193A4" FontSize="12" Margin="0,0,0,8" />
@@ -38,6 +39,14 @@
                     <ComboBoxItem Content="host" />
                     <ComboBoxItem Content="auto" />
                 </ComboBox>
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0"><TextBlock Text="Monitor kiosk" FontSize="12" /><TextBox x:Name="MonitorInput" Margin="0,5,0,0" /></StackPanel>
+                    <StackPanel Grid.Column="1"><TextBlock Text="Perfil de desempenho" FontSize="12" /><ComboBox x:Name="Profile" Margin="0,5,0,0"><ComboBoxItem Content="signage-landscape" /><ComboBoxItem Content="balanced" /><ComboBoxItem Content="performance" /></ComboBox></StackPanel>
+                </Grid>
+                <TextBlock Text="Hotkey global" FontSize="12" />
+                <TextBox x:Name="HotkeyInput" Margin="0,5,0,17" />
+                <TextBlock Text="NeoNews Runtime 1.0.0 · WPF/.NET 8 · win-x64" Foreground="#67E8F9" FontSize="12" Margin="0,0,0,12" />
                 <Border Background="#16222E" BorderBrush="#263746" BorderThickness="1" Padding="12" CornerRadius="7">
                     <TextBlock Text="As alterações de tela são aplicadas no próximo boot do Android. O startup do Windows usa somente NeoNewsRuntime.exe --autostart." TextWrapping="Wrap" Foreground="#9FB3C4" FontSize="12" />
                 </Border>

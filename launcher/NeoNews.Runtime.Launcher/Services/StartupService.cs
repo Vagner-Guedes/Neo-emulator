@@ -24,7 +24,8 @@ public sealed class StartupService
             _context.RootDirectory,
             "startup",
             TimeSpan.FromSeconds(15),
-            cancellationToken);
+            cancellationToken,
+            logOutput: false);
         return result.Succeeded;
     }
 
@@ -60,7 +61,7 @@ public sealed class StartupService
             "startup",
             TimeSpan.FromSeconds(30),
             cancellationToken);
-        if (!result.Succeeded && !result.StandardError.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+        if (!result.Succeeded && !IsMissingTask(result))
         {
             throw CreateError("Não foi possível remover o início com o Windows.", result);
         }
@@ -68,4 +69,10 @@ public sealed class StartupService
 
     private static RuntimeOperationException CreateError(string message, ProcessResult result) =>
         new(message, $"Exit code: {result.ExitCode}{Environment.NewLine}{result.StandardError}{Environment.NewLine}{result.StandardOutput}");
+
+    private static bool IsMissingTask(ProcessResult result) =>
+        result.StandardError.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+        result.StandardError.Contains("cannot find", StringComparison.OrdinalIgnoreCase) ||
+        result.StandardOutput.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+        result.StandardOutput.Contains("cannot find", StringComparison.OrdinalIgnoreCase);
 }
