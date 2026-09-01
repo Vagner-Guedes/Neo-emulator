@@ -19,6 +19,7 @@
     <InformationalVersion>1.0.0</InformationalVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\NeoNewsRuntime.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="..\..\config\runtime.json" Link="config\runtime.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -33,6 +33,8 @@ dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.cspr
 
 Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe` e `config/runtime.json`; o PDB pode ser mantido para diagnóstico. O SDK Android não é embutido no executável: em produção, configure `android.tooling.sdkRoot` para um SDK distribuído junto ou permita o fallback para `ANDROID_SDK_ROOT`, `ANDROID_HOME` ou `%LOCALAPPDATA%\Android\Sdk`.
 
+O ícone `launcher/NeoNews.Runtime.Launcher/Assets/NeoNewsRuntime.ico` é embutido no `.exe`. Para recriá-lo após uma alteração visual, execute `scripts/build/New-NeoNewsRuntimeIcon.ps1` antes da publicação.
+
 ## Execução
 
 ```powershell
