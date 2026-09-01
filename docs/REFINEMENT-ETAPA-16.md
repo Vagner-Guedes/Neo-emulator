@@ -18,4 +18,3 @@ O projeto WPF também foi compilado em Release durante a Etapa 12, sem erros ou 
 ## Decisão da etapa
 
 **Etapa 16 concluída com regressão estática preparada.** A validação funcional do componente proprietário continua bloqueada pela ABI e pelas dependências externas registradas nos relatórios anteriores.
-
