@@ -110,5 +110,10 @@
     "project": "launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj",
     "outputName": "NeoNews.Runtime.Launcher.exe",
     "status": "prepared"
+  },
+  "diagnostics": {
+    "script": "scripts/diagnostics/Collect-Diagnostics.ps1",
+    "defaultReport": "reports/diagnostics.json",
+    "status": "prepared"
   }
 }
