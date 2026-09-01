@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "name": "NeoNews Digital Signage Runtime",
+    "environment": "development",
+    "timezone": "America/Bahia"
+  },
+  "android": {
+    "apiLevel": 25,
+    "release": "7.1.1",
+    "imageVariant": "google_apis",
+    "preferredAbi": "x86",
+    "preferredImage": "system-images;android-25;google_apis;x86",
+    "preferredAvd": "NeoNews_API25_x86",
+    "fallbackAvds": [
+      "NeoNews_API25_arm32",
+      "NeoNews_API25_arm64"
+    ],
+    "emulator": {
+      "acceleration": "auto",
+      "gpu": "auto",
+      "noBootAnimation": true,
+      "snapshotPolicy": "quick-boot-with-cold-boot-fallback"
+    }
+  },
+  "neonews": {
+    "packageName": "com.in9midia.neonews.player",
+    "apkPath": "packages/neonews/neonews.apk",
+    "versionName": "9.0.3",
+    "versionCode": 522,
+    "supportedApkAbis": [
+      "arm64-v8a",
+      "armeabi-v7a"
+    ],
+    "signingCertificateSha256": "220848a28b1de2254c1ac5d3366a64a2f909c265e05dc3495f4b04fcf9cdf91a"
+  },
+  "webView": {
+    "provider": "com.google.android.webview",
+    "homologatedVersion": "119.0.6045.193",
+    "status": "pending-validation"
+  },
+  "tts": {
+    "locale": "pt-BR",
+    "engine": "RHVoice",
+    "status": "pending-validation"
+  }
+}
