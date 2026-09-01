@@ -38,6 +38,7 @@ $requiredPaths = @(
     'docs/WEBVIEW-ETAPA-4.md',
     'docs/TTS-ETAPA-5.md',
     'docs/NEONEWS-ETAPA-6.md',
+    'docs/FINAL-REPORT.md',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })

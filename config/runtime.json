@@ -1,5 +1,9 @@
 {
   "schemaVersion": 1,
+  "release": {
+    "status": "blocked-external-dependencies",
+    "finalReport": "docs/FINAL-REPORT.md"
+  },
   "runtime": {
     "name": "NeoNews Digital Signage Runtime",
     "environment": "development",
