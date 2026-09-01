@@ -88,6 +88,8 @@ d5131db feat: adicionar bootstrap resiliente do runtime
 17d0904 chore: limpar formatacao do benchmark
 1769ac chore: limpar documentacao de regressao
 f8b38bb feat: implementar painel profissional do runtime
+5370b2e feat: publicar runtime Windows self-contained
+7c0e89e fix: fortalecer status e watchdog do runtime
 ```
 
 ## Conclusão
