@@ -1,0 +1,104 @@
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [string]$ConfigPath = (Join-Path $PSScriptRoot '..\..\config\runtime.json'),
+    [string]$Serial = 'emulator-5556',
+    [string]$ReportPath
+)
+
+$ErrorActionPreference = 'Stop'
+
+function Resolve-SdkRoot {
+    if ($env:ANDROID_SDK_ROOT) { return $env:ANDROID_SDK_ROOT }
+    if ($env:ANDROID_HOME) { return $env:ANDROID_HOME }
+    return (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
+}
+
+function Invoke-Adb {
+    param([string]$AdbPath, [string[]]$Arguments)
+    $output = & $AdbPath -s $Serial @Arguments 2>&1
+    return (($output | Out-String).Trim())
+}
+
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+    throw "Configuração não encontrada: $ConfigPath"
+}
+
+$config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$sdkRoot = Resolve-SdkRoot
+$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
+if (-not (Test-Path -LiteralPath $adbPath)) {
+    throw "ADB não encontrado: $adbPath"
+}
+
+$state = Invoke-Adb -AdbPath $adbPath -Arguments @('get-state')
+if ($state -ne 'device') {
+    throw "Dispositivo não está disponível no serial $Serial. Estado: $state"
+}
+
+$kiosk = $config.android.kiosk
+if (-not $kiosk) {
+    throw 'A seção android.kiosk não está definida na configuração.'
+}
+
+$commands = @(
+    ,@('shell', 'settings', 'put', 'global', 'stay_on_while_plugged_in', [string]$kiosk.stayAwakePluggedIn)
+    ,@('shell', 'settings', 'put', 'system', 'screen_off_timeout', [string]$kiosk.screenOffTimeoutMs)
+    ,@('shell', 'settings', 'put', 'secure', 'screensaver_enabled', '0')
+    ,@('shell', 'settings', 'put', 'global', 'policy_control', [string]$kiosk.immersivePolicy)
+    ,@('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
+    ,@('shell', 'settings', 'put', 'system', 'user_rotation', '1')
+    ,@('shell', 'wm', 'size', [string]$kiosk.displaySize)
+    ,@('shell', 'wm', 'density', [string]$kiosk.displayDensity)
+)
+
+$commandResults = @()
+foreach ($command in $commands) {
+    $description = $command -join ' '
+    $result = if ($PSCmdlet.ShouldProcess($Serial, "executar adb $description")) {
+        Invoke-Adb -AdbPath $adbPath -Arguments $command
+    } else {
+        'WHATIF'
+    }
+    $commandResults += [pscustomobject]@{ command = $description; result = $result }
+}
+
+$packageName = [string]$config.neonews.packageName
+$packageInstalled = $false
+if (-not $WhatIfPreference) {
+    $packageInstalled = (Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'pm', 'path', $packageName)) -match '^package:'
+}
+
+$displaySize = $null
+$displayDensity = $null
+$immersivePolicy = $null
+$screenOffTimeoutMs = $null
+if (-not $WhatIfPreference) {
+    $displaySize = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'wm', 'size')
+    $displayDensity = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'wm', 'density')
+    $immersivePolicy = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'settings', 'get', 'global', 'policy_control')
+    $screenOffTimeoutMs = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'settings', 'get', 'system', 'screen_off_timeout')
+}
+
+$result = [ordered]@{
+    timestamp = (Get-Date).ToUniversalTime().ToString('o')
+    serial = $Serial
+    packageName = $packageName
+    packageInstalled = $packageInstalled
+    displaySize = $displaySize
+    displayDensity = $displayDensity
+    immersivePolicy = $immersivePolicy
+    screenOffTimeoutMs = $screenOffTimeoutMs
+    commandResults = @($commandResults)
+    status = if ($WhatIfPreference) { 'whatif' } elseif ($packageInstalled) { 'kiosk-applied-package-present' } else { 'kiosk-applied-package-absent' }
+}
+
+$json = $result | ConvertTo-Json -Depth 8
+if ($ReportPath) {
+    $reportDirectory = Split-Path -Parent $ReportPath
+    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) {
+        New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
+    }
+    Set-Content -LiteralPath $ReportPath -Value $json -Encoding utf8
+}
+
+$json

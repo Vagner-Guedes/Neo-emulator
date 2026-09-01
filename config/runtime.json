@@ -49,6 +49,15 @@
       "audioOutput": true,
       "profile": "signage-landscape",
       "benchmarkScript": "scripts/benchmark/Measure-AndroidRuntime.ps1"
+    },
+    "kiosk": {
+      "displaySize": "1920x1080",
+      "displayDensity": 160,
+      "immersivePolicy": "immersive.full=*",
+      "screenOffTimeoutMs": 2147483647,
+      "stayAwakePluggedIn": 3,
+      "orientation": "landscape",
+      "status": "prepared"
     }
   },
   "neonews": {
