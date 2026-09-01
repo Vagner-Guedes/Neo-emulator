@@ -1,0 +1,48 @@
+# TTS offline — Etapa 5
+
+Data da validação: **2026-09-01**  
+AVD: `NeoNews_API25_x86`  
+Script: [`scripts/validation/Test-TtsProvider.ps1`](../scripts/validation/Test-TtsProvider.ps1)
+
+## Resultado
+
+O AVD API 25 contém uma engine Google TTS, mas não contém o RHVoice requerido pelo runtime:
+
+| Campo | Resultado |
+|---|---|
+| Engine requerida | `RHVoice` |
+| Locale requerido | `pt-BR` |
+| Pacote de engine detectado | `com.google.android.tts` |
+| RHVoice presente | `false` |
+| Engine padrão | `null` |
+| Status | `missing-engine` |
+
+Comando executado:
+
+```powershell
+.\scripts\validation\Test-TtsProvider.ps1 `
+  -StartEmulator `
+  -ReportPath .\reports\tts-etapa-5.json `
+  -StopEmulator
+```
+
+Saída resumida:
+
+```json
+{
+  "requested": { "engine": "RHVoice", "locale": "pt-BR" },
+  "detected": {
+    "rhvoicePresent": false,
+    "enginePackages": ["com.google.android.tts"],
+    "defaultEngine": "null"
+  },
+  "status": "missing-engine"
+}
+```
+
+## Decisão da etapa
+
+**Etapa 5 concluída como diagnóstico, com TTS offline bloqueado.** A homologação exige um pacote RHVoice compatível com API 25, sua instalação no guest, seleção como engine padrão e teste real de síntese em `pt-BR`.
+
+O pacote não foi baixado de fonte não verificada e nenhuma engine proprietária foi incluída no repositório.
+

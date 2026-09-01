@@ -57,6 +57,12 @@
   "tts": {
     "locale": "pt-BR",
     "engine": "RHVoice",
-    "status": "pending-validation"
+    "availableEngines": [
+      "com.google.android.tts"
+    ],
+    "rhvoicePresent": false,
+    "status": "missing-engine",
+    "validated": false,
+    "report": "docs/TTS-ETAPA-5.md"
   }
 }
