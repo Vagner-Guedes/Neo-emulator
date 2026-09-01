@@ -1,6 +1,6 @@
 # Supervisor e watchdog — Etapa 10
 
-Data: **2026-09-01**  
+Data: **2026-09-01**
 Script: [`scripts/runtime/Watch-NeoNews.ps1`](../scripts/runtime/Watch-NeoNews.ps1)
 
 ## Comportamento
@@ -31,4 +31,3 @@ No AVD API 25 x86, sem o APK instalado, o primeiro ciclo retornou:
 ## Decisão da etapa
 
 **Etapa 10 concluída como supervisor preparado e testado no estado ausente.** O watchdog não tenta reiniciar um pacote que não existe, evitando falsos positivos e loops de ADB. A recuperação funcional depende da resolução da ABI do APK.
-
