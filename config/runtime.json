@@ -115,5 +115,13 @@
     "script": "scripts/diagnostics/Collect-Diagnostics.ps1",
     "defaultReport": "reports/diagnostics.json",
     "status": "prepared"
+  },
+  "resilience": {
+    "maxAttempts": 3,
+    "retryDelaySeconds": 5,
+    "lockPath": "runtime/neonews-runtime.lock",
+    "logPath": "logs/resilience.log",
+    "script": "scripts/runtime/Ensure-NeoNewsRuntime.ps1",
+    "status": "prepared"
   }
 }
