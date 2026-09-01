@@ -1,6 +1,6 @@
 # Inicialização do Windows — Etapa 11
 
-Data: **2026-09-01**  
+Data: **2026-09-01**
 Script: [`scripts/startup/Register-NeoNewsStartup.ps1`](../scripts/startup/Register-NeoNewsStartup.ps1)
 
 ## Comportamento
@@ -26,4 +26,3 @@ status=preview
 ## Decisão da etapa
 
 **Etapa 11 concluída como provisionamento reproduzível.** A tarefa não foi registrada automaticamente nesta máquina durante a validação; a execução real continua condicionada a um dispositivo ADB e ao APK NeoNews instalável.
-
