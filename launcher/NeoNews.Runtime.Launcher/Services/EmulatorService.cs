@@ -1,0 +1,102 @@
+using NeoNews.Runtime.Launcher.Models;
+
+namespace NeoNews.Runtime.Launcher.Services;
+
+public sealed class EmulatorService : IAsyncDisposable
+{
+    private readonly RuntimeContext _context;
+    private readonly ProcessRunnerService _runner;
+    private readonly LogService _logs;
+    private readonly AdbService _adb;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private ManagedProcess? _process;
+
+    public EmulatorService(RuntimeContext context, ProcessRunnerService runner, LogService logs, AdbService adb)
+    {
+        _context = context;
+        _runner = runner;
+        _logs = logs;
+        _adb = adb;
+    }
+
+    public int? ProcessId => _process is { HasExited: false } process ? process.ProcessId : null;
+
+    public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
+    {
+        if (_process is { HasExited: false }) return true;
+        if (await _adb.IsDeviceOnlineAsync(cancellationToken)) return true;
+        return System.Diagnostics.Process.GetProcessesByName("emulator").Length > 0;
+    }
+
+    public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (await IsRunningAsync(cancellationToken))
+            {
+                progress?.Report(new RuntimeProgress("Android já iniciado", "Emulator detectado; reutilizando processo.", 25));
+                return;
+            }
+
+            var emulatorPath = _context.ResolveEmulatorPath();
+            var emulator = _context.Config.Android.Emulator;
+            var arguments = new List<string>
+            {
+                "-avd", _context.Config.Android.PreferredAvd,
+                "-gpu", string.IsNullOrWhiteSpace(emulator.Gpu) ? "auto" : emulator.Gpu,
+                "-accel", string.IsNullOrWhiteSpace(emulator.Acceleration) ? "auto" : emulator.Acceleration,
+                "-timezone", _context.Config.Runtime.Timezone,
+                "-port", _adb.Serial.Replace("emulator-", string.Empty, StringComparison.Ordinal)
+            };
+            if (emulator.NoBootAnimation) arguments.Add("-no-boot-anim");
+            if (emulator.SnapshotPolicy.Contains("cold", StringComparison.OrdinalIgnoreCase)) arguments.Add("-no-snapshot");
+            if (!emulator.ShowWindow) arguments.Add("-no-window");
+
+            progress?.Report(new RuntimeProgress("Iniciando Android", $"AVD {_context.Config.Android.PreferredAvd}", 20));
+            _process = _runner.StartLongRunning(emulatorPath, arguments, _context.RootDirectory, "emulator");
+            await Task.Delay(500, cancellationToken);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_process is not null)
+            {
+                await _process.StopAsync(TimeSpan.FromSeconds(20), cancellationToken);
+                await _process.DisposeAsync();
+                _process = null;
+                return;
+            }
+
+            if (await _adb.IsDeviceOnlineAsync(cancellationToken))
+            {
+                await _adb.SendEmulatorCommandAsync("kill", cancellationToken);
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task RestartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        progress?.Report(new RuntimeProgress("Reiniciando Android", "Encerrando o Emulator atual...", 15));
+        await StopAsync(cancellationToken);
+        await StartAsync(progress, cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await StopAsync(CancellationToken.None); } catch (Exception exception) { _logs.Warning("launcher", $"Falha ao encerrar Emulator: {exception.Message}"); }
+        _gate.Dispose();
+    }
+}

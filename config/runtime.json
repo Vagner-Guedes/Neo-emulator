@@ -32,12 +32,19 @@
       "validated": false,
       "report": "docs/ABI-ETAPA-3.md"
     },
+    "tooling": {
+      "sdkRoot": "runtime/android-sdk",
+      "adbRelativePath": "platform-tools/adb.exe",
+      "emulatorRelativePath": "emulator/emulator.exe",
+      "allowEnvironmentFallback": true
+    },
     "emulator": {
       "acceleration": "auto",
       "gpu": "auto",
       "noBootAnimation": true,
       "snapshotPolicy": "quick-boot-with-cold-boot-fallback",
-      "validationPort": 5556
+      "validationPort": 5556,
+      "showWindow": true
     },
     "optimization": {
       "screen": {
@@ -61,7 +68,8 @@
       "screenOffTimeoutMs": 2147483647,
       "stayAwakePluggedIn": 3,
       "orientation": "landscape",
-      "status": "prepared"
+      "status": "prepared",
+      "monitorIndex": 0
     }
   },
   "neonews": {
@@ -102,7 +110,10 @@
     "restartOnActivityLoss": true,
     "logPath": "logs/supervisor.log",
     "script": "scripts/runtime/Watch-NeoNews.ps1",
-    "status": "prepared"
+    "status": "prepared",
+    "startWithWindows": false,
+    "startNeoNews": true,
+    "autoKiosk": true
   },
   "startup": {
     "taskName": "NeoNews Runtime Supervisor",
@@ -112,7 +123,8 @@
   },
   "launcher": {
     "project": "launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj",
-    "outputName": "NeoNews.Runtime.Launcher.exe",
+    "outputName": "NeoNewsRuntime.exe",
+    "version": "1.0.0",
     "status": "prepared"
   },
   "diagnostics": {

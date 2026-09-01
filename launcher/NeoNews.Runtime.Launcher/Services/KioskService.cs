@@ -1,0 +1,123 @@
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using NeoNews.Runtime.Launcher.Models;
+
+namespace NeoNews.Runtime.Launcher.Services;
+
+public sealed class KioskService
+{
+    private const int GwlStyle = -16;
+    private const long WsCaption = 0x00C00000L;
+    private const long WsThickFrame = 0x00040000L;
+    private const long WsMinimizeBox = 0x00020000L;
+    private const long WsMaximizeBox = 0x00010000L;
+    private const uint SwShow = 5;
+    private const uint SwRestore = 9;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpShowWindow = 0x0040;
+    private static readonly IntPtr HwndTopmost = new(-1);
+    private static readonly IntPtr HwndNoTopmost = new(-2);
+
+    private readonly RuntimeContext _context;
+    private readonly AdbService _adb;
+    private readonly EmulatorService _emulator;
+    private IntPtr _windowHandle;
+    private IntPtr _originalStyle;
+    private RECT _originalRect;
+    private bool _windowCaptured;
+
+    public KioskService(RuntimeContext context, AdbService adb, EmulatorService emulator)
+    {
+        _context = context;
+        _adb = adb;
+        _emulator = emulator;
+    }
+
+    public bool IsActive { get; private set; }
+
+    public async Task EnterAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        var kiosk = _context.Config.Android.Kiosk;
+        progress?.Report(new RuntimeProgress("Ativando kiosk", "Aplicando fullscreen no Android...", 88));
+        await _adb.PutSettingAsync("global", "policy_control", kiosk.ImmersivePolicy, cancellationToken);
+        await _adb.PutSettingAsync("system", "screen_off_timeout", kiosk.ScreenOffTimeoutMs.ToString(), cancellationToken);
+        await _adb.PutSettingAsync("global", "stay_on_while_plugged_in", kiosk.StayAwakePluggedIn.ToString(), cancellationToken);
+        await _adb.PutSettingAsync("secure", "screensaver_enabled", "0", cancellationToken);
+        await _adb.PutSettingAsync("system", "accelerometer_rotation", "0", cancellationToken);
+        await _adb.PutSettingAsync("system", "user_rotation", "1", cancellationToken);
+        await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
+
+        CaptureAndMaximizeEmulatorWindow();
+        IsActive = true;
+        progress?.Report(new RuntimeProgress("Kiosk ativo", "Android em modo imersivo.", 100));
+    }
+
+    public async Task ExitAsync(CancellationToken cancellationToken)
+    {
+        await _adb.DeleteSettingAsync("global", "policy_control", cancellationToken);
+        await _adb.ExecuteAsync(["shell", "wm", "size", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+        await _adb.ExecuteAsync(["shell", "wm", "density", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+        RestoreEmulatorWindow();
+        IsActive = false;
+    }
+
+    private void CaptureAndMaximizeEmulatorWindow()
+    {
+        var processId = _emulator.ProcessId;
+        if (processId is null) return;
+        var process = System.Diagnostics.Process.GetProcessById(processId.Value);
+        var handle = process.MainWindowHandle;
+        if (handle == IntPtr.Zero) return;
+
+        _windowHandle = handle;
+        _originalStyle = GetWindowLongPtr(handle, GwlStyle);
+        GetWindowRect(handle, out _originalRect);
+        _windowCaptured = true;
+
+        var screens = Screen.AllScreens;
+        var index = Math.Clamp(_context.Config.Android.Kiosk.MonitorIndex, 0, Math.Max(0, screens.Length - 1));
+        var bounds = screens[index].Bounds;
+        var style = _originalStyle.ToInt64() & ~(WsCaption | WsThickFrame | WsMinimizeBox | WsMaximizeBox);
+        SetWindowLongPtr(handle, GwlStyle, new IntPtr(style));
+        SetWindowPos(handle, HwndTopmost, bounds.Left, bounds.Top, bounds.Width, bounds.Height, SwpShowWindow);
+        ShowWindow(handle, SwShow);
+        SetForegroundWindow(handle);
+    }
+
+    private void RestoreEmulatorWindow()
+    {
+        if (!_windowCaptured || _windowHandle == IntPtr.Zero) return;
+        SetWindowLongPtr(_windowHandle, GwlStyle, _originalStyle);
+        SetWindowPos(_windowHandle, HwndNoTopmost, _originalRect.Left, _originalRect.Top, _originalRect.Right - _originalRect.Left, _originalRect.Bottom - _originalRect.Top, SwpNoActivate | SwpShowWindow);
+        ShowWindow(_windowHandle, SwRestore);
+        _windowCaptured = false;
+        _windowHandle = IntPtr.Zero;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int index, IntPtr value);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, uint command);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+}

@@ -1,140 +1,118 @@
-using System.Diagnostics;
-using System.IO;
-using System.Text;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Threading;
+using NeoNews.Runtime.Launcher.Models;
+using NeoNews.Runtime.Launcher.Services;
+using NeoNews.Runtime.Launcher.ViewModels;
 
 namespace NeoNews.Runtime.Launcher;
 
 public partial class MainWindow : Window
 {
-    private readonly string _repositoryRoot;
-    private bool _busy;
+    private const int HotKeyId = 0x4E52;
+    private readonly RuntimeViewModel _viewModel;
+    private readonly RuntimeController _controller;
+    private readonly DispatcherTimer _refreshTimer;
+    private HwndSource? _source;
+    private bool _allowClose;
 
-    public MainWindow()
+    public MainWindow(RuntimeController controller)
     {
         InitializeComponent();
-        _repositoryRoot = FindRepositoryRoot();
-        StatusText.Text = $"Pronto • {_repositoryRoot}";
+        _controller = controller;
+        _viewModel = new RuntimeViewModel(controller);
+        DataContext = _viewModel;
+        _viewModel.ErrorRequested += ViewModel_ErrorRequested;
+        _viewModel.ExitRequested += (_, _) => RequestApplicationExit();
+        _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _refreshTimer.Tick += async (_, _) => await _viewModel.RefreshAsync();
     }
 
-    private async void StartNeoNews_Click(object sender, RoutedEventArgs e)
+    public RuntimeViewModel ViewModel => _viewModel;
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        await RunActionAsync(
-            "Iniciando NeoNews...",
-            "scripts/runtime/Start-NeoNews.ps1",
-            "-StartEmulator", "-Launch", "-ReportPath", Path.Combine("reports", "launcher-neonews.json"));
+        _source = (HwndSource)PresentationSource.FromVisual(this)!;
+        _source.AddHook(WindowHook);
+        RegisterHotKey(_source.Handle, HotKeyId, ModifierControl | ModifierAlt | ModifierShift, KeyF12);
+        _refreshTimer.Start();
+        await _viewModel.RefreshAsync();
     }
 
-    private async void ApplyKiosk_Click(object sender, RoutedEventArgs e)
+    private async void Settings_Click(object sender, RoutedEventArgs e)
     {
-        await RunActionAsync(
-            "Aplicando configuração kiosk...",
-            "scripts/runtime/Apply-KioskSettings.ps1",
-            "-ReportPath", Path.Combine("reports", "launcher-kiosk.json"));
+        var window = new SettingsWindow(_viewModel) { Owner = this };
+        window.ShowDialog();
+        await _viewModel.RefreshAsync();
     }
 
-    private async void Diagnostics_Click(object sender, RoutedEventArgs e)
+    private async void ViewModel_ErrorRequested(object? sender, ErrorInfo error)
     {
-        await RunActionAsync(
-            "Coletando baseline do runtime...",
-            "scripts/benchmark/Measure-AndroidRuntime.ps1",
-            "-StartEmulator", "-StopEmulator", "-ReportPath", Path.Combine("reports", "launcher-diagnostics.json"));
+        ShowError(error);
+        await Task.CompletedTask;
     }
 
-    private void Exit_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
+    public void ShowError(ErrorInfo error) => Dispatcher.Invoke(() => new ErrorDialog(error.Message, error.Details) { Owner = this }.ShowDialog());
 
-    private async Task RunActionAsync(string status, string relativeScript, params string[] arguments)
+    private IntPtr WindowHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (_busy)
+        if (message == WmHotKey && wParam.ToInt32() == HotKeyId)
         {
-            return;
+            handled = true;
+            _ = _viewModel.ExecuteCommandAsync(RuntimeCommand.ExitKiosk);
+            ShowPanel();
         }
-
-        _busy = true;
-        StatusText.Text = status;
-        try
-        {
-            var scriptPath = Path.Combine(_repositoryRoot, relativeScript.Replace('/', Path.DirectorySeparatorChar));
-            if (!File.Exists(scriptPath))
-            {
-                throw new FileNotFoundException("Script do runtime não encontrado.", scriptPath);
-            }
-
-            var result = await RunPowerShellAsync(scriptPath, arguments);
-            OutputText.Text = result.Output;
-            StatusText.Text = result.ExitCode == 0
-                ? "Concluído"
-                : $"Falha • código {result.ExitCode}";
-        }
-        catch (Exception exception)
-        {
-            OutputText.Text = exception.ToString();
-            StatusText.Text = "Falha ao executar ação";
-        }
-        finally
-        {
-            _busy = false;
-        }
+        return IntPtr.Zero;
     }
 
-    private static async Task<(int ExitCode, string Output)> RunPowerShellAsync(string scriptPath, IEnumerable<string> arguments)
+    public void ShowPanel()
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = FindPowerShell(),
-            WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? AppContext.BaseDirectory,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-NoLogo");
-        startInfo.ArgumentList.Add("-NonInteractive");
-        startInfo.ArgumentList.Add("-ExecutionPolicy");
-        startInfo.ArgumentList.Add("Bypass");
-        startInfo.ArgumentList.Add("-File");
-        startInfo.ArgumentList.Add(scriptPath);
-        foreach (var argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Não foi possível iniciar o PowerShell.");
-        var standardOutput = process.StandardOutput.ReadToEndAsync();
-        var standardError = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        var output = new StringBuilder()
-            .AppendLine(await standardOutput)
-            .AppendLine(await standardError)
-            .ToString()
-            .Trim();
-        return (process.ExitCode, output);
+        ShowInTaskbar = true;
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        Topmost = true;
+        Topmost = false;
     }
 
-    private static string FindPowerShell()
+    public void PrepareForBackground()
     {
-        var pwsh = Environment.GetEnvironmentVariable("PATH")?
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(path => Path.Combine(path, "pwsh.exe"))
-            .FirstOrDefault(File.Exists);
-        return pwsh ?? "powershell.exe";
+        ShowInTaskbar = false;
+        Hide();
     }
 
-    private static string FindRepositoryRoot()
+    public void AllowClose() => _allowClose = true;
+
+    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null)
+        if (!_allowClose)
         {
-            if (File.Exists(Path.Combine(directory.FullName, "config", "runtime.json")))
-            {
-                return directory.FullName;
-            }
-            directory = directory.Parent;
+            e.Cancel = true;
+            PrepareForBackground();
         }
-
-        return Directory.GetCurrentDirectory();
+        else
+        {
+            _refreshTimer.Stop();
+            if (_source is not null) UnregisterHotKey(_source.Handle, HotKeyId);
+        }
     }
+
+    private void RequestApplicationExit()
+    {
+        AllowClose();
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    private const uint ModifierControl = 0x0002;
+    private const uint ModifierAlt = 0x0001;
+    private const uint ModifierShift = 0x0004;
+    private const uint KeyF12 = 0x7B;
+    private const int WmHotKey = 0x0312;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint key);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }
