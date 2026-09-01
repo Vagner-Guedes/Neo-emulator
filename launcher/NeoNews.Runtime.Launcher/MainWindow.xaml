@@ -148,8 +148,8 @@
                     <TextBlock Text="Atividade e logs" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" HorizontalAlignment="Right" />
                 </Grid>
-                <ProgressBar Grid.Row="1" Height="6" Margin="0,11,0,10" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsIndeterminate="{Binding ProgressIndeterminate}" Background="#1E2D3B" Foreground="#22D3EE" />
-                <TextBox Grid.Row="2" Text="{Binding Logs, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#0B1118" Foreground="#9FB3C4" BorderThickness="0" Padding="10" FontFamily="Cascadia Mono" FontSize="11" />
+                <ProgressBar Grid.Row="1" Height="6" Margin="0,11,0,10" Minimum="0" Maximum="100" Value="{Binding ProgressValue, Mode=OneWay}" IsIndeterminate="{Binding ProgressIndeterminate, Mode=OneWay}" Background="#1E2D3B" Foreground="#22D3EE" />
+                <TextBox Grid.Row="2" Text="{Binding Logs, Mode=OneWay, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#0B1118" Foreground="#9FB3C4" BorderThickness="0" Padding="10" FontFamily="Cascadia Mono" FontSize="11" />
             </Grid>
         </Border>
 

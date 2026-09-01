@@ -110,22 +110,22 @@
     "restartOnActivityLoss": true,
     "logPath": "logs/supervisor.log",
     "script": "scripts/runtime/Watch-NeoNews.ps1",
-    "status": "prepared",
-    "startWithWindows": false,
-    "startNeoNews": true,
-    "autoKiosk": true
+    "status": "prepared"
   },
   "startup": {
     "taskName": "NeoNews Runtime Supervisor",
     "logonDelaySeconds": 30,
-    "script": "scripts/startup/Register-NeoNewsStartup.ps1",
-    "status": "prepared"
+    "script": "NeoNewsRuntime.exe --autostart",
+    "status": "exe-autostart-ready",
+    "startWithWindows": false,
+    "startNeoNews": true,
+    "autoKiosk": true
   },
   "launcher": {
     "project": "launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj",
     "outputName": "NeoNewsRuntime.exe",
     "version": "1.0.0",
-    "status": "prepared"
+    "status": "published-self-contained-win-x64"
   },
   "diagnostics": {
     "script": "scripts/diagnostics/Collect-Diagnostics.ps1",

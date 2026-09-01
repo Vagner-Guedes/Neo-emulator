@@ -256,9 +256,9 @@ public sealed class RuntimeController : IAsyncDisposable
 
     public async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
-        try { await _supervisor.StopAsync(); } catch { }
-        try { if (_kiosk.IsActive && await _adb.IsDeviceOnlineAsync(cancellationToken)) await _kiosk.ExitAsync(cancellationToken); } catch { }
-        try { await _emulator.StopAsync(cancellationToken); } catch { }
+        try { await _supervisor.StopAsync().ConfigureAwait(false); } catch { }
+        try { if (_kiosk.IsActive && await _adb.IsDeviceOnlineAsync(cancellationToken).ConfigureAwait(false)) await _kiosk.ExitAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        try { await _emulator.StopAsync(cancellationToken).ConfigureAwait(false); } catch { }
     }
 
     private async Task EnsureAndroidAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
@@ -300,9 +300,9 @@ public sealed class RuntimeController : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await ShutdownAsync();
-        await _supervisor.DisposeAsync();
-        await _emulator.DisposeAsync();
+        await ShutdownAsync().ConfigureAwait(false);
+        await _supervisor.DisposeAsync().ConfigureAwait(false);
+        await _emulator.DisposeAsync().ConfigureAwait(false);
         _operationGate.Dispose();
     }
 }

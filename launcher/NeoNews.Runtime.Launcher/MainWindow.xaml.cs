@@ -27,17 +27,20 @@ public partial class MainWindow : Window
         _viewModel.ExitRequested += (_, _) => RequestApplicationExit();
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _refreshTimer.Tick += async (_, _) => await _viewModel.RefreshAsync();
+        _controller.Logs.Info("launcher", "Janela principal construída.");
     }
 
     public RuntimeViewModel ViewModel => _viewModel;
+    public bool SuppressErrors { get; set; }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        _controller.Logs.Info("launcher", "Janela principal carregada.");
         _source = (HwndSource)PresentationSource.FromVisual(this)!;
         _source.AddHook(WindowHook);
         RegisterHotKey(_source.Handle, HotKeyId, ModifierControl | ModifierAlt | ModifierShift, KeyF12);
         _refreshTimer.Start();
-        await _viewModel.RefreshAsync();
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => await _viewModel.RefreshAsync()));
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
@@ -47,13 +50,25 @@ public partial class MainWindow : Window
         await _viewModel.RefreshAsync();
     }
 
-    private async void ViewModel_ErrorRequested(object? sender, ErrorInfo error)
+    private void ViewModel_ErrorRequested(object? sender, ErrorInfo error)
     {
         ShowError(error);
-        await Task.CompletedTask;
     }
 
-    public void ShowError(ErrorInfo error) => Dispatcher.Invoke(() => new ErrorDialog(error.Message, error.Details) { Owner = this }.ShowDialog());
+    public void ShowError(ErrorInfo error)
+    {
+        if (SuppressErrors)
+        {
+            _controller.Logs.Warning("launcher", $"Erro em modo background: {error.Message}");
+            return;
+        }
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        {
+            if (!IsVisible) Show();
+            var dialog = new ErrorDialog(error.Message, error.Details) { Owner = this };
+            dialog.ShowDialog();
+        }));
+    }
 
     private IntPtr WindowHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -68,12 +83,31 @@ public partial class MainWindow : Window
 
     public void ShowPanel()
     {
+        SuppressErrors = false;
+        _controller.Logs.Info("launcher", $"Solicitação para exibir painel. Visível antes: {IsVisible}.");
         ShowInTaskbar = true;
-        if (!IsVisible) Show();
-        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-        Activate();
-        Topmost = true;
-        Topmost = false;
+        if (!IsVisible)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                if (!IsVisible) Show();
+                FocusPanel();
+            }));
+            return;
+        }
+        FocusPanel();
+    }
+
+    private void FocusPanel()
+    {
+        _controller.Logs.Info("launcher", $"Painel exibido. Visível depois: {IsVisible}, handle: {(new WindowInteropHelper(this)).Handle}.");
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+            Topmost = true;
+            Topmost = false;
+        }));
     }
 
     public void PrepareForBackground()
@@ -88,11 +122,13 @@ public partial class MainWindow : Window
     {
         if (!_allowClose)
         {
+            _controller.Logs.Info("launcher", "Fechamento convertido para modo tray.");
             e.Cancel = true;
             PrepareForBackground();
         }
         else
         {
+            _controller.Logs.Info("launcher", "Janela autorizada a fechar.");
             _refreshTimer.Stop();
             if (_source is not null) UnregisterHotKey(_source.Handle, HotKeyId);
         }

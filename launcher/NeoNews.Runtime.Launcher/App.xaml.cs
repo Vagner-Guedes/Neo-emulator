@@ -45,18 +45,18 @@ public partial class App : System.Windows.Application
             MainWindow = _mainWindow;
             _tray = new TrayService(
                 _mainWindow.ShowPanel,
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.Start),
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.Stop),
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.Restart),
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.Kiosk),
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.ExitKiosk),
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.Diagnostics),
-                () => _mainWindow.ViewModel.ExecuteCommandAsync(RuntimeCommand.Exit));
+                () => RunTrayCommandAsync(RuntimeCommand.Start),
+                () => RunTrayCommandAsync(RuntimeCommand.Stop),
+                () => RunTrayCommandAsync(RuntimeCommand.Restart),
+                () => RunTrayCommandAsync(RuntimeCommand.Kiosk),
+                () => RunTrayCommandAsync(RuntimeCommand.ExitKiosk),
+                () => RunTrayCommandAsync(RuntimeCommand.Diagnostics),
+                () => RunTrayCommandAsync(RuntimeCommand.Exit));
             _pipeCancellation = new CancellationTokenSource();
             _pipeServer = _singleInstance.RunServerAsync(HandlePipeCommandAsync, _pipeCancellation.Token);
 
             if (command == RuntimeCommand.Show) _mainWindow.ShowPanel();
-            else _mainWindow.PrepareForBackground();
+            else { _mainWindow.SuppressErrors = true; _mainWindow.PrepareForBackground(); }
             await _mainWindow.ViewModel.ExecuteCommandAsync(command);
         }
         catch (Exception exception)
@@ -71,7 +71,14 @@ public partial class App : System.Windows.Application
     {
         var command = RuntimeCommandParser.Parse([text]);
         if (_mainWindow is null) return;
-        await Dispatcher.InvokeAsync(async () => await _mainWindow.ViewModel.ExecuteCommandAsync(command));
+        var operation = await Dispatcher.InvokeAsync(() => _mainWindow.ViewModel.ExecuteCommandAsync(command));
+        await operation.ConfigureAwait(false);
+    }
+
+    private Task RunTrayCommandAsync(RuntimeCommand command)
+    {
+        _mainWindow?.ShowPanel();
+        return _mainWindow?.ViewModel.ExecuteCommandAsync(command) ?? Task.CompletedTask;
     }
 
     private void RegisterGlobalExceptionHandlers()
@@ -108,7 +115,14 @@ public partial class App : System.Windows.Application
             _exiting = true;
             _pipeCancellation?.Cancel();
             _tray?.Dispose();
-            try { _controller?.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { }
+            try
+            {
+                if (_controller is not null)
+                {
+                    Task.Run(() => _controller.DisposeAsync().AsTask()).GetAwaiter().GetResult();
+                }
+            }
+            catch { }
             _pipeCancellation?.Dispose();
             _singleInstance?.Dispose();
         }

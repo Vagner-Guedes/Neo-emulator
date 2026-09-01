@@ -10,6 +10,25 @@ O repositório foi inicializado, conectado a `origin/master` e evoluído com uma
 
 ## Evidências principais
 
+## Launcher Windows profissional
+
+O launcher foi evoluído para `NeoNewsRuntime.exe`, WPF/.NET 8 `WinExe`, publicação self-contained `win-x64` em arquivo único e versão `1.0.0`. A janela usa MVVM, dashboard escuro, progresso assíncrono, logs incrementais, tray, configuração, diálogos gráficos de erro, diagnóstico e hotkey global.
+
+O caminho normal não depende de scripts PowerShell: `ProcessRunnerService` inicia ADB, Emulator e `schtasks.exe` com `UseShellExecute=false`, `CreateNoWindow=true`, redirecionamento de stdout/stderr, timeout, cancelamento e encerramento de árvore de processo. O startup criado pelo painel executa somente `NeoNewsRuntime.exe --autostart`. Os scripts existentes permanecem como ferramentas de provisionamento, validação e compatibilidade.
+
+Validações do executável publicado:
+
+| Teste | Resultado |
+|---|---|
+| Publicação self-contained `win-x64` | `dist/NeoNewsRuntime/NeoNewsRuntime.exe` gerado, 161.832.473 bytes |
+| Abertura do painel | `MainWindowHandle` válido, título `NeoNews Runtime` |
+| Instância única | segunda chamada encerra e mantém um único processo |
+| `--exit` | instância e serviços liberados; nenhum processo NeoNewsRuntime restante |
+| Caminho com espaços | aprovado em `C:\NeoNews Runtime Test\NeoNewsRuntime\` |
+| Console/filhos | processo GUI sem console/filhos no teste publicado |
+
+A publicação do launcher foi aprovada, mas isso não altera o status de homologação do aplicativo: ABI ARM-only, WebView divergente e RHVoice ausente continuam bloqueadores externos.
+
 | Área | Evidência | Estado |
 |---|---|---|
 | APK | pacote `com.in9midia.neonews.player`, versão `9.0.3`, ABIs `arm64-v8a`/`armeabi-v7a` | auditado |
@@ -33,6 +52,8 @@ O repositório foi inicializado, conectado a `origin/master` e evoluído com uma
 - `scripts/diagnostics`: coleta host/guest, ADB, pacote, WebView, TTS, memória, gráficos e logcat.
 - `scripts/benchmark`: baseline e benchmark repetível do guest.
 - `launcher/NeoNews.Runtime.Launcher`: launcher WPF local.
+- `dist/NeoNewsRuntime`: distribuição publicada self-contained (gerada localmente; ver `docs/BUILD.md`).
+- `docs/BUILD.md`: build, publicação, argumentos, layout e checklist de teste do executável.
 - `docs`: evidências por etapa e decisões de homologação.
 
 ## Pendências que impedem a homologação
@@ -66,6 +87,7 @@ a89dc3d chore: limpar formatacao do supervisor
 d5131db feat: adicionar bootstrap resiliente do runtime
 17d0904 chore: limpar formatacao do benchmark
 1769ac chore: limpar documentacao de regressao
+f8b38bb feat: implementar painel profissional do runtime
 ```
 
 ## Conclusão

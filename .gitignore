@@ -14,6 +14,7 @@
 # Artefatos de build e arquivos locais do .NET/WPF.
 [Bb]in/
 [Oo]bj/
+/dist/
 *.user
 *.suo
 *.userosscache
@@ -26,4 +27,3 @@
 !.env.example
 *.pfx
 *.snk
-

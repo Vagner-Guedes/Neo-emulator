@@ -209,7 +209,7 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task ExitAsync()
     {
-        if (IsBusy) return;
+        _operationCancellation?.Cancel();
         ExitRequested?.Invoke(this, EventArgs.Empty);
         await Task.CompletedTask;
     }
