@@ -123,5 +123,10 @@
     "logPath": "logs/resilience.log",
     "script": "scripts/runtime/Ensure-NeoNewsRuntime.ps1",
     "status": "prepared"
+  },
+  "benchmark": {
+    "script": "scripts/benchmark/Run-NeoNewsBenchmark.ps1",
+    "defaultIterations": 3,
+    "status": "base-runtime-only"
   }
 }
