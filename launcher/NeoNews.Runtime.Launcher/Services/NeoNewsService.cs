@@ -107,7 +107,7 @@ public sealed class NeoNewsService
         var versionCode = await _adb.GetPackageVersionCodeAsync(PackageName, cancellationToken);
         if (!string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) && !string.Equals(version, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase))
             throw new RuntimeOperationException("A versão do NeoNews não corresponde à versão esperada.", $"Pacote={PackageName}; versão encontrada={version}; esperada={_context.Config.NeoNews.VersionName}; versionCode={versionCode}; esperado={_context.Config.NeoNews.VersionCode}.");
-        if (_context.Config.NeoNews.VersionCode > 0 && versionCode is not null && versionCode != _context.Config.NeoNews.VersionCode)
+        if (_context.Config.NeoNews.VersionCode > 0 && versionCode != _context.Config.NeoNews.VersionCode)
             throw new RuntimeOperationException("O versionCode do NeoNews não corresponde ao esperado.", $"Pacote={PackageName}; versionCode encontrado={versionCode}; esperado={_context.Config.NeoNews.VersionCode}.");
     }
 

@@ -19,7 +19,7 @@ O projeto agora possui o caminho de runtime preparado para a homologação funci
 | Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi` e relatório de compatibilidade | implementado; não homologado |
 | NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
 | Persistência | qcow2 externo e estado em `runtime/state/provisioning.json` | implementado; não executado |
-| WebView/TTS | provider ativo, versão esperada e engine padrão são pré-condições do fluxo completo | implementado; não homologado |
+| WebView/TTS | provider ativo, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e engine padrão são pré-condições do fluxo completo | implementado; não homologado |
 | Kiosk | serviço existente usa o contrato do backend e localiza a janela por PID/título | compilado |
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown e limite de tentativas | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |

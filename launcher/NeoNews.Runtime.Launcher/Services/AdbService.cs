@@ -103,7 +103,10 @@ public sealed class AdbService
     public async Task<string> GetStateAsync(CancellationToken cancellationToken = default)
     {
         var result = await ExecuteAsync(["get-state"], TimeSpan.FromSeconds(8), cancellationToken, logOutput: false);
-        var state = result.Succeeded ? result.StandardOutput.Trim() : string.Empty;
+        var combined = $"{result.StandardOutput}\n{result.StandardError}".Trim();
+        var state = combined.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? string.Empty;
+        if (combined.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)) state = "unauthorized";
+        else if (combined.Contains("offline", StringComparison.OrdinalIgnoreCase)) state = "offline";
         SetState(state.ToLowerInvariant() switch
         {
             "device" => AdbRuntimeState.Device,
