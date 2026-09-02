@@ -161,7 +161,14 @@ public sealed class DiagnosticsService
             android = new
             {
                 state = guest.BootCompleted == "1" ? "Online" : backendRunning ? "Booting" : "Offline",
-                adb = new { online = adbOnline, state = _adb.State.ToString(), serial = _adb.Serial },
+                adb = new
+                {
+                    online = adbOnline,
+                    state = _adb.State.ToString(),
+                    serial = _adb.Serial,
+                    lastExitCode = _adb.LastTransportExitCode,
+                    lastTransportDetail = _adb.LastTransportDetail
+                },
                 release = guest.Release,
                 apiLevel = guest.ApiLevel,
                 expectedRelease = _context.Config.Android.Release,

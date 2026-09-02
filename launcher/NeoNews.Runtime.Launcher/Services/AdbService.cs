@@ -11,6 +11,8 @@ public sealed class AdbService
     private readonly LogService _logs;
     private AdbRuntimeState _state = AdbRuntimeState.Disconnected;
     private AdbRuntimeState _lastLoggedState = AdbRuntimeState.Disconnected;
+    private string _lastTransportDetail = "ADB ainda não foi executado.";
+    private int? _lastTransportExitCode;
 
     public AdbService(RuntimeContext context, ProcessRunnerService runner, LogService logs)
     {
@@ -37,6 +39,8 @@ public sealed class AdbService
 
     public string AdbPath => _context.ResolveAdbPath();
     public AdbRuntimeState State => _state;
+    public string LastTransportDetail => _lastTransportDetail;
+    public int? LastTransportExitCode => _lastTransportExitCode;
 
     public Task<ProcessResult> ExecuteAsync(
         IEnumerable<string> arguments,
@@ -72,6 +76,7 @@ public sealed class AdbService
     public async Task StartServerAsync(CancellationToken cancellationToken = default)
     {
         var result = await ExecuteHostAsync(["start-server"], TimeSpan.FromSeconds(20), cancellationToken);
+        RecordTransportResult("start-server", result);
         if (!result.Succeeded)
         {
             SetState(AdbRuntimeState.Disconnected);
@@ -85,6 +90,7 @@ public sealed class AdbService
 
         SetState(AdbRuntimeState.Connecting);
         var result = await ExecuteHostAsync(["connect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+        RecordTransportResult($"connect {Serial}", result);
         var connected = result.Succeeded &&
                        !result.StandardOutput.Contains("unable", StringComparison.OrdinalIgnoreCase) &&
                        !result.StandardOutput.Contains("failed", StringComparison.OrdinalIgnoreCase) &&
@@ -96,13 +102,17 @@ public sealed class AdbService
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
         if (Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase))
-            _ = await ExecuteHostAsync(["disconnect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+        {
+            var result = await ExecuteHostAsync(["disconnect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+            RecordTransportResult($"disconnect {Serial}", result);
+        }
         SetState(AdbRuntimeState.Disconnected);
     }
 
     public async Task<string> GetStateAsync(CancellationToken cancellationToken = default)
     {
         var result = await ExecuteAsync(["get-state"], TimeSpan.FromSeconds(8), cancellationToken, logOutput: false);
+        RecordTransportResult($"get-state {Serial}", result);
         var combined = $"{result.StandardOutput}\n{result.StandardError}".Trim();
         var state = combined.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? string.Empty;
         if (combined.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)) state = "unauthorized";
@@ -486,6 +496,17 @@ public sealed class AdbService
         if (state == _lastLoggedState) return;
         _lastLoggedState = state;
         _logs.Info("adb", $"Estado ADB: {DescribeState(state)} ({Serial}).");
+    }
+
+    private void RecordTransportResult(string operation, ProcessResult result)
+    {
+        _lastTransportExitCode = result.ExitCode;
+        var output = string.Join(" | ", new[] { result.StandardOutput.Trim(), result.StandardError.Trim() }
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+        if (output.Length > 1200) output = output[..1200];
+        _lastTransportDetail = string.IsNullOrWhiteSpace(output)
+            ? $"{operation}: exit={result.ExitCode}; timeout={result.TimedOut}."
+            : $"{operation}: exit={result.ExitCode}; timeout={result.TimedOut}; {output}";
     }
 
     private static string DescribeState(AdbRuntimeState state) => state switch

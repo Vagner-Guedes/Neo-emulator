@@ -59,6 +59,8 @@ O benchmark reproduzível de 2026-09-02 (`reports/qemu-benchmark-probe.json`) pe
 
 Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo. O smoke do launcher também grava, por padrão, ao lado do executável que foi testado; o checklist compara esse diretório com o diagnóstico e com a estabilidade integrada quando ambos existem, evitando misturar publicações diferentes.
 
+O diagnóstico do launcher também conserva o exit code e a saída resumida do último `adb start-server`, `connect`, `disconnect` ou `get-state`. Isso torna observável a diferença entre conexão recusada, autorização pendente e transporte `offline`, sem transformar estado de falha em sucesso.
+
 O launcher lê o AndroidManifest AXML e as ABIs do APK antes do `adb install -r`;
 rejeita package, versionName, versionCode, ausência de `armeabi-v7a` e qualquer
 ABI x86/x86_64. O probe de Native Bridge também valida o certificado X.509 v1
