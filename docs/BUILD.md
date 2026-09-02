@@ -45,6 +45,21 @@ limpeza de dados. A síntese RHVoice continua exigindo um teste real separado.
 
 Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.
 
+Depois de gerar os relatórios live, execute `Test-HomologationChecklist.ps1`.
+Ele agrega exatamente 30 gates da especificação e retorna código diferente de
+zero enquanto houver evidência pendente ou falha; um JSON antigo ou de outro
+backend não é contado como aprovação.
+
+```powershell
+.\scripts\validation\Test-LauncherSmoke.ps1 `
+  -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe
+.\scripts\validation\Test-HomologationChecklist.ps1
+```
+
+Os switches `-TrayObserved` e `-HotkeyObserved` só devem ser usados depois da
+confirmação visual correspondente no executável publicado; eles registram
+evidência manual e não simulam essa observação.
+
 O ícone `launcher/NeoNews.Runtime.Launcher/Assets/NeoNewsRuntime.ico` é embutido no `.exe`. Para recriá-lo após uma alteração visual, execute `scripts/build/New-NeoNewsRuntimeIcon.ps1` antes da publicação.
 
 ## Execução

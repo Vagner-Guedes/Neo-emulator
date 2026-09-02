@@ -64,6 +64,8 @@ $requiredPaths = @(
     'tools/webview-probe/MainActivity.java',
     'scripts/validation/Test-GuestNetworkMedia.ps1',
     'scripts/validation/Test-QemuPersistence.ps1',
+    'scripts/validation/Test-LauncherSmoke.ps1',
+    'scripts/validation/Test-HomologationChecklist.ps1',
     'tools/media-probe/AndroidManifest.xml',
     'tools/media-probe/MainActivity.java',
     'launcher/NeoNews.Runtime.Launcher/Services/AndroidRuntimeParsing.cs',
