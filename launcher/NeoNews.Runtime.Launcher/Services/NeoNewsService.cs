@@ -42,20 +42,20 @@ public sealed class NeoNewsService
 
     public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
+        var apkPath = _context.ResolveApkPath();
+        if (!File.Exists(apkPath))
+        {
+            throw new RuntimeOperationException(
+                "NeoNews.apk oficial não foi encontrado.",
+                $"Pacote esperado: {PackageName}. APK local necessário para provar a assinatura em: {apkPath}.");
+        }
+        ValidateAuthorizedApk(apkPath);
         var status = await GetStatusAsync(cancellationToken);
         var versionMismatch = status.Installed &&
                               !string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) &&
                               !string.Equals(status.Version, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase);
         if (!status.Installed || versionMismatch)
         {
-            var apkPath = _context.ResolveApkPath();
-            if (!File.Exists(apkPath))
-            {
-                throw new RuntimeOperationException(
-                    "NeoNews.apk não está instalado.",
-                    $"Pacote esperado: {PackageName}. APK local não encontrado em: {apkPath}. ABI declarada: {string.Join(", ", _context.Config.NeoNews.SupportedApkAbis)}.");
-            }
-
             progress?.Report(new RuntimeProgress("Instalando NeoNews", "APK local autorizado encontrado; instalando no Android...", 78));
             await _adb.InstallApkAsync(apkPath, cancellationToken);
             status = await GetStatusAsync(cancellationToken);
@@ -81,8 +81,24 @@ public sealed class NeoNewsService
 
     public async Task InstallAsync(CancellationToken cancellationToken = default)
     {
-        await _adb.InstallApkAsync(_context.ResolveApkPath(), cancellationToken);
+        var apkPath = _context.ResolveApkPath();
+        if (!File.Exists(apkPath)) throw new RuntimeOperationException("NeoNews.apk oficial não foi encontrado.", $"Caminho esperado: {apkPath}");
+        ValidateAuthorizedApk(apkPath);
+        await _adb.InstallApkAsync(apkPath, cancellationToken);
         await ValidateInstalledVersionAsync(cancellationToken);
+    }
+
+    private void ValidateAuthorizedApk(string apkPath)
+    {
+        var expected = _context.Config.NeoNews.SigningCertificateSha256;
+        if (string.IsNullOrWhiteSpace(expected)) return;
+        var result = ApkSignatureService.Validate(apkPath, expected);
+        if (!result.Valid)
+        {
+            throw new RuntimeOperationException(
+                "A assinatura do APK NeoNews não corresponde à autorizada.",
+                $"APK={apkPath}; {result.Detail}");
+        }
     }
 
     private async Task ValidateInstalledVersionAsync(CancellationToken cancellationToken)

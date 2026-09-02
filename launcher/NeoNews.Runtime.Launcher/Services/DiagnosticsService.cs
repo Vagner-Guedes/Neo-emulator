@@ -55,6 +55,7 @@ public sealed class DiagnosticsService
         var packages = adbOnline ? await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken) : string.Empty;
         var nativeBridge = adbOnline ? await SafeNativeBridgeAsync(cancellationToken) : null;
         var apkAbis = ReadApkAbis();
+        var apkSignature = ReadApkSignature();
         var primaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_neoNews.PackageName, cancellationToken), cancellationToken) ?? string.Empty : string.Empty;
         var validatedAbi = _getAbiCompatibility?.Invoke();
         var selectedApkAbi = validatedAbi?.SelectedApkAbi ?? (!string.IsNullOrWhiteSpace(primaryCpuAbi) && apkAbis.Contains(primaryCpuAbi, StringComparer.OrdinalIgnoreCase)
@@ -130,6 +131,7 @@ public sealed class DiagnosticsService
                 nativeBridgeProperty = validatedAbi?.NativeBridgeProperty ?? nativeBridge?.Property,
                 nativeBridgeReady = validatedAbi?.NativeBridgeReady ?? nativeBridge?.Ready ?? false,
                 apkAbis,
+                signature = apkSignature,
                 selectedApkAbi,
                 installSucceeded = validatedAbi?.InstallSucceeded ?? (neoNews?.Installed ?? false),
                 primaryCpuAbi = validatedAbi?.PrimaryCpuAbi ?? primaryCpuAbi,
@@ -256,6 +258,14 @@ public sealed class DiagnosticsService
         if (!File.Exists(path)) return _context.Config.NeoNews.SupportedApkAbis;
         try { return NativeBridgeValidationService.ReadApkAbis(path); }
         catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial de ABIs do APK: {exception.Message}"); return _context.Config.NeoNews.SupportedApkAbis; }
+    }
+
+    private ApkSignatureValidationResult? ReadApkSignature()
+    {
+        var path = _context.ResolveApkPath();
+        if (!File.Exists(path) || string.IsNullOrWhiteSpace(_context.Config.NeoNews.SigningCertificateSha256)) return null;
+        try { return ApkSignatureService.Validate(path, _context.Config.NeoNews.SigningCertificateSha256); }
+        catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial da assinatura do APK: {exception.Message}"); return null; }
     }
 
     private static string[] FilterRelevantLogcat(string text) => text
