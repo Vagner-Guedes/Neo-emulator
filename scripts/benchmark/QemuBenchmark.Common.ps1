@@ -15,10 +15,67 @@ function Resolve-QemuBenchmarkPaths {
     $adb = & $resolve (Join-Path $Config.android.tooling.sdkRoot $Config.android.tooling.adbRelativePath)
     $qemu = & $resolve $Config.android.qemu.executable
     $disk = & $resolve $Config.android.qemu.disk
+    $androidImage = & $resolve $Config.android.qemu.androidImage
+    $provisioningState = & $resolve $Config.android.provisioning.statePath
     [pscustomobject]@{
         Adb = $adb
         Qemu = $qemu
         Disk = $disk
+        AndroidImage = $androidImage
+        ProvisioningState = $provisioningState
+    }
+}
+
+function Test-QemuBenchmarkNonEmptyFile {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try { return (Get-Item -LiteralPath $Path).Length -gt 0 } catch { return $false }
+}
+
+function Assert-QemuBenchmarkProvisionedRuntime {
+    param(
+        [object]$Config,
+        [object]$Paths
+    )
+
+    foreach ($entry in @(
+        [pscustomobject]@{ Name = 'qemu'; Path = $Paths.Qemu },
+        [pscustomobject]@{ Name = 'adb'; Path = $Paths.Adb },
+        [pscustomobject]@{ Name = 'disk'; Path = $Paths.Disk },
+        [pscustomobject]@{ Name = 'installerImage'; Path = $Paths.AndroidImage }
+    )) {
+        if (-not (Test-QemuBenchmarkNonEmptyFile $entry.Path)) {
+            throw "Componente-base '$($entry.Name)' ausente ou vazio: $($entry.Path). Execute o provisionamento aprovado antes do benchmark."
+        }
+    }
+
+    if (-not (Test-Path -LiteralPath $Paths.ProvisioningState -PathType Leaf)) {
+        throw "Estado de provisionamento não encontrado: $($Paths.ProvisioningState)."
+    }
+    try { $state = Get-Content -LiteralPath $Paths.ProvisioningState -Raw -Encoding utf8 | ConvertFrom-Json }
+    catch { throw "O estado de provisionamento não pôde ser lido: $($Paths.ProvisioningState). $($_.Exception.Message)" }
+    if ([string]$state.androidImageVersion -and [string]$state.androidImageVersion -ne [string]$Config.android.release) {
+        throw "A release do estado de provisionamento diverge da configuração: registrada=$($state.androidImageVersion); esperada=$($Config.android.release)."
+    }
+    if ([string]$state.imageHash -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "O estado de provisionamento não possui SHA-256 forte do disco persistente."
+    }
+    foreach ($name in @('qemu', 'adb', 'disk', 'installerImage')) {
+        $record = $state.provenance.$name
+        if ($null -eq $record -or [string]$record.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or [string]::IsNullOrWhiteSpace([string]$record.origin)) {
+            throw "A provenance do componente-base '$name' é ausente, fraca ou sem origem."
+        }
+    }
+    foreach ($entry in @(
+        [pscustomobject]@{ Name = 'qemu'; Path = $Paths.Qemu },
+        [pscustomobject]@{ Name = 'adb'; Path = $Paths.Adb },
+        [pscustomobject]@{ Name = 'installerImage'; Path = $Paths.AndroidImage }
+    )) {
+        $currentHash = (Get-FileHash -LiteralPath $entry.Path -Algorithm SHA256).Hash
+        $registeredHash = [string]$state.provenance.($entry.Name).sha256
+        if (-not $currentHash.Equals($registeredHash, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "O hash do componente-base '$($entry.Name)' diverge do provisionamento: registrado=$registeredHash; atual=$currentHash."
+        }
     }
 }
 

@@ -16,13 +16,8 @@ $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetPar
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 . (Join-Path $PSScriptRoot 'QemuBenchmark.Common.ps1')
 $paths = Resolve-QemuBenchmarkPaths -RepositoryRoot $repositoryRoot -Config $config
-if (-not (Test-Path -LiteralPath $paths.Qemu)) { throw "QEMU not found: $($paths.Qemu)" }
-if (-not (Test-Path -LiteralPath $paths.Disk)) { throw "Persistent qcow2 not found: $($paths.Disk)" }
-if (-not (Test-Path -LiteralPath $paths.Adb)) {
-    if ($config.android.tooling.allowEnvironmentFallback) { $paths.Adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe' }
-    else { throw "Configured ADB not found: $($paths.Adb)" }
-}
-if (-not (Test-Path -LiteralPath $paths.Adb)) { throw "ADB not found: $($paths.Adb)" }
+if (-not (Test-QemuBenchmarkNonEmptyFile $paths.Adb) -and $config.android.tooling.allowEnvironmentFallback) { $paths.Adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe' }
+Assert-QemuBenchmarkProvisionedRuntime -Config $config -Paths $paths
 if (-not (Test-Path -LiteralPath (Join-Path $env:WINDIR 'System32\WinHvPlatform.dll'))) { throw 'WHPX library not found.' }
 
 $serial = "$($config.android.adb.host):$($config.android.adb.hostPort)"

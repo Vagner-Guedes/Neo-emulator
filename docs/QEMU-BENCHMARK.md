@@ -27,9 +27,11 @@ disk; the official APK and guest components must already be provisioned.
   -ReportPath .\reports\qemu-benchmark.json
 ```
 
-Both scripts fail when QEMU, the configured ADB, the persistent disk, or WHPX
-is missing, or when the configured Android release/API or NeoNews activity is
-not stable. Use `-StabilitySeconds` to set the evidence window explicitly.
+Both scripts fail when QEMU, the configured ADB, the approved Android image,
+the persistent disk, the provisioning state, or WHPX is missing, or when the
+configured Android release/API or NeoNews activity is not stable. They also
+recheck the registered hashes of QEMU, ADB and the image before recording
+evidence. Use `-StabilitySeconds` to set the evidence window explicitly.
 The final homologation checklist requires a Native Bridge evidence report with
 at least 600 seconds of observed stability; a short smoke or baseline window
 does not approve the release.
