@@ -53,6 +53,8 @@ Em uma sessão live `-snapshot` separada, o forwarding foi declarado explicitame
 
 Também foi testado, em sessão independente, o destino `127.0.0.1:5555` no guest. O `adb connect 127.0.0.1:5559` falhou sem estabelecer transporte, enquanto o destino `10.0.2.15` recebeu o `CNXN`; a configuração loopback foi descartada e não substituiu o forwarding atual.
 
+Como controle adicional, o `kernel` e o `initrd` oficiais foram iniciados diretamente com o parâmetro `qemu=1`. O guest confirmou `ro.kernel.qemu=1`, mas, após configurar a NIC, reiniciar o `adbd` e reconectar por `127.0.0.1:5561`, o estado permaneceu `offline`. Portanto, esse modo de boot também não constitui correção funcional e não foi incorporado ao backend padrão.
+
 O benchmark reproduzível de 2026-09-02 (`reports/qemu-benchmark-probe.json`) percorreu o launcher real e terminou como `boot-timeout`, sem declarar aprovação: `adb.ready=false` e `adb.booted=false`. Ainda assim, a sessão QEMU terminou com `qmpCapabilitiesSucceeded=true`, `qmpQuitSent=true`, `qmpQuitResponseSucceeded=true`, `qmpShutdownSucceeded=true` e `forcedKill=false`. O ajuste do benchmark também passou a resolver o QEMU relativo ao repositório e a capturar stderr nativo do ADB sem interromper a coleta no Windows PowerShell 5.1.
 
 Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo. O smoke do launcher também grava, por padrão, ao lado do executável que foi testado; o checklist compara esse diretório com o diagnóstico e com a estabilidade integrada quando ambos existem, evitando misturar publicações diferentes.
