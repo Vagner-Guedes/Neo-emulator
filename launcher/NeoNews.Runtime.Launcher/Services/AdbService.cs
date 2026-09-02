@@ -248,8 +248,21 @@ public sealed class AdbService
     public async Task<bool> IsActivityRunningAsync(string packageName, string activityName, CancellationToken cancellationToken = default)
     {
         var dump = await GetActivityDumpAsync(cancellationToken);
-        return dump.Contains($"{packageName}/{activityName}", StringComparison.Ordinal) ||
-               dump.Contains($"{packageName}/.{activityName}", StringComparison.Ordinal);
+        var normalizedActivity = activityName.Trim();
+        if (normalizedActivity.StartsWith(packageName + ".", StringComparison.Ordinal))
+            normalizedActivity = normalizedActivity[(packageName.Length + 1)..];
+        if (normalizedActivity.StartsWith(".", StringComparison.Ordinal)) normalizedActivity = normalizedActivity[1..];
+
+        var candidates = new[]
+        {
+            $"{packageName}/{normalizedActivity}",
+            $"{packageName}/.{normalizedActivity}",
+            $"{packageName}/{packageName}.{normalizedActivity}"
+        };
+        var foregroundMarkers = new[] { "mResumedActivity", "topResumedActivity", "ResumedActivity", "mFocusedActivity", "mCurrentFocus" };
+        return dump.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .Any(line => foregroundMarkers.Any(marker => line.Contains(marker, StringComparison.OrdinalIgnoreCase)) &&
+                         candidates.Any(candidate => line.Contains(candidate, StringComparison.OrdinalIgnoreCase)));
     }
 
     public async Task StartActivityAsync(string packageName, string activityName, CancellationToken cancellationToken = default)

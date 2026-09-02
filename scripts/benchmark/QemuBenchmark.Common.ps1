@@ -265,7 +265,7 @@ function Start-QemuBenchmarkNeoNews {
     $activityRunning = $false
     while ($launchSucceeded -and (Get-Date) -lt $deadline) {
         $dump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities')
-        $activityRunning = $dump.Text.Contains($component, [System.StringComparison]::Ordinal)
+        $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $dump.Text -Component $component
         if ($activityRunning) { break }
         Start-Sleep -Seconds 1
     }
@@ -277,6 +277,29 @@ function Start-QemuBenchmarkNeoNews {
         launchSeconds = if ($activityRunning) { [math]::Round(((Get-Date) - $startedAt).TotalSeconds, 2) } else { $null }
         startOutput = $start.Text
     }
+}
+
+function Test-QemuBenchmarkActivityRunning {
+    param(
+        [string]$Dump,
+        [string]$Component
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Dump) -or [string]::IsNullOrWhiteSpace($Component)) { return $false }
+    $parts = $Component -split '/', 2
+    if ($parts.Count -ne 2) { return $false }
+    $packageName = $parts[0]
+    $activityName = $parts[1] -replace '^\.', ''
+    $candidates = @(
+        "$packageName/.$activityName",
+        "$packageName/$activityName",
+        "$packageName/$packageName.$activityName"
+    )
+    $foregroundMarkers = 'mResumedActivity|topResumedActivity|ResumedActivity|mFocusedActivity|mCurrentFocus'
+    foreach ($line in ($Dump -split "`r?`n")) {
+        if ($line -match "(?i)$foregroundMarkers" -and @($candidates | Where-Object { $line.IndexOf([string]$_, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }).Count -gt 0) { return $true }
+    }
+    return $false
 }
 
 function Get-QemuHostMetrics {
@@ -331,8 +354,10 @@ function Test-QemuBenchmarkStability {
                 $parts = $ActivityComponent -split '/', 2
                 "$($parts[0])/.$(($parts[1] -replace '^\.', ''))"
             } else { $ActivityComponent }
-            $activityRunning = $activityDump.Text.Contains($ActivityComponent, [System.StringComparison]::Ordinal) -or
-                               $activityDump.Text.Contains($shortComponent, [System.StringComparison]::Ordinal)
+            $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
+            if (-not $activityRunning -and $shortComponent -ne $ActivityComponent) {
+                $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $shortComponent
+            }
         }
         $samples.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); processAlive = $processAlive; adbState = $adbState.Text; activityRunning = $activityRunning })
         if ((Get-Date) -lt $deadline) { Start-Sleep -Seconds ([math]::Max(1, $PollSeconds)) }

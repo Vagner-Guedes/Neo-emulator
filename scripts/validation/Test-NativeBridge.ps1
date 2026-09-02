@@ -32,7 +32,16 @@ function Invoke-Adb([string[]]$Arguments) {
 }
 
 function Test-ActivityRunning([string]$Dump) {
-    return $Dump.Contains($activity) -or $Dump.Contains("$packageName/.$activityName")
+    $candidates = @(
+        $activity,
+        "$packageName/.$activityName",
+        "$packageName/$packageName.$activityName"
+    )
+    $foregroundMarkers = 'mResumedActivity|topResumedActivity|ResumedActivity|mFocusedActivity|mCurrentFocus'
+    return @($Dump -split "`r?`n" | Where-Object {
+        $line = $_
+        ($line -match "(?i)$foregroundMarkers") -and @($candidates | Where-Object { $_ -and $line.IndexOf([string]$_, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }).Count -gt 0
+    }).Count -gt 0
 }
 
 $null = Invoke-Adb @('start-server')
