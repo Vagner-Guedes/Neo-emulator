@@ -39,7 +39,10 @@ $paths = [ordered]@{
 }
 
 $required = @('qemu', 'adb', 'disk')
-if ($RequireInstallerImage) { $required += 'installerImage' }
+# The configured Android-x86 image is part of the approved base runtime. Keep
+# -RequireInstallerImage for callers that already pass it, but do not allow a
+# provisioning state that omits the image while runtime.json references one.
+if ($RequireInstallerImage -or -not [string]::IsNullOrWhiteSpace([string]$android.qemu.androidImage)) { $required += 'installerImage' }
 if ($RequireNativeBridge) { $required += 'nativeBridge' }
 if ($RequireWebView) { $required += 'webView' }
 if ($RequireTts) { $required += 'tts' }
@@ -74,7 +77,7 @@ $origins = [ordered]@{
     tts = $TtsOrigin
 }
 $requiredOriginNames = @('qemu', 'adb', 'disk')
-if ($RequireInstallerImage) { $requiredOriginNames += 'installerImage' }
+if ($RequireInstallerImage -or -not [string]::IsNullOrWhiteSpace([string]$android.qemu.androidImage)) { $requiredOriginNames += 'installerImage' }
 if ($RequireNativeBridge) { $requiredOriginNames += 'nativeBridge' }
 if ($RequireWebView) { $requiredOriginNames += 'webView' }
 if ($RequireTts) { $requiredOriginNames += 'tts' }

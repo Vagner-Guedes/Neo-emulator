@@ -111,6 +111,7 @@ $contractChecks = [ordered]@{
     whpxRequired = $qemuSource -match 'CheckWhpx' -and $qemuSource -match '"-accel"'
     qmpShutdown = $qemuSource -match 'RequestQmpShutdownAsync' -and $qemuSource -match 'qmp_capabilities' -and $qemuSource -match '"quit"'
     persistentQcow2 = [string]$configObject.android.qemu.disk -match '(?i)\.qcow2$' -and $qemuSource -match 'format=qcow2'
+    qemuRequiresProvisionedAndroidImage = $qemuSource -match 'ResolveAndroidImagePath' -and $qemuSource -match 'androidImage' -and $qemuSource -match 'Imagem Android-x86'
     noSilentTcg = -not [bool]$configObject.android.qemu.allowTcgForDiagnostics -and $qemuSource -match 'AllowTcgForDiagnostics'
     noQemuEmuKill = $launcherSourceText -notmatch '(?i)adb\s+emu\s+kill'
     noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)' -and $webViewContentSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $ttsSynthesisSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $networkMediaSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall'
@@ -131,7 +132,7 @@ $contractChecks = [ordered]@{
     diagnosticsSupportsExplicitExecutable = $diagnosticsScriptSource -match '\[string\]\$ExecutablePath' -and $diagnosticsScriptSource -match 'GetFullPath\(\$ExecutablePath\)'
     prolongedStabilityEvidence = $nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
     integratedStabilityEvidence = $integratedStabilitySource -match 'DurationSeconds = 600' -and $integratedStabilitySource -match 'watchdog\.active' -and $integratedStabilitySource -match 'Test-KioskState' -and $integratedStabilitySource -match 'webView\.status' -and $integratedStabilitySource -match 'voice\.localeReady' -and $checklistSource -match 'runtime-stability.json'
-    integratedStabilityRequiresNeoNewsContent = $integratedStabilitySource -match 'LauncherSmokeEvidencePath' -and $integratedStabilitySource -match 'neoNewsContentObserved' -and $integratedStabilitySource -match 'Test-NeoNewsContentEvidence'
+    integratedStabilityRequiresNeoNewsContent = $integratedStabilitySource -match 'LauncherSmokeEvidencePath' -and $integratedStabilitySource -match 'neoNewsContentObserved' -and $integratedStabilitySource -match 'neoNewsPlaybackObserved' -and $integratedStabilitySource -match 'Test-NeoNewsContentEvidence'
     checklistRequiresApkManifestIdentity = $checklistSource -match "apk\.packageName" -and $checklistSource -match "apk\.versionName" -and $checklistSource -match "apk\.versionCode"
     configurableAdbPorts = $checklistSource -match 'hostPort\s*-gt 0' -and $checklistSource -match 'guestPort\s*-gt 0' -and $checklistSource -match 'adbRequirement'
     nativeBridgeCommandsRequireExitCode = $nativeBridgeValidationSource -match 'Invoke-AdbResult' -and $nativeBridgeValidationSource -match 'propertyExitCodes' -and $nativeBridgeValidationSource -match 'packageDumpExitCode' -and $nativeBridgeValidationSource -match 'activityDumpExitCode' -and $nativeBridgeValidationSource -match 'logcatExitCode' -and $nativeBridgeValidationSource -match 'installExitCode -eq 0' -and $nativeBridgeValidationSource -match 'launchExitCode -eq 0'
@@ -154,9 +155,10 @@ $contractChecks = [ordered]@{
     mutableQcow2FingerprintDoesNotBlockBoot = $launcherSourceText -match 'valid guest write into a' -and $launcherSourceText -match 'state\.DiskFingerprint = fingerprint'
     provisioningRejectsWeakOrMissingHash = $launcherSourceText -match 'IsSha256' -and $launcherSourceText -match 'SHA-256 forte'
     provisioningRevalidatesBaseBinaryHashes = $launcherSourceText -match 'foreach \(var componentName' -and $launcherSourceText -match 'ComputeSha256Async\(qemu' -and $launcherSourceText -match 'ComputeSha256Async\(adb'
+    provisioningRevalidatesAndroidImageHash = $launcherSourceText -match 'ComputeSha256Async\(image' -and $launcherSourceText -match 'Provenance\["installerImage"\]' -and $launcherSourceText -match 'registeredImageHash'
     componentProvisioningMergesState = $componentProvisioningSource -match 'existingState\.provenance' -and $componentProvisioningSource -match 'existingState\.imageHash'
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
-    componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"
+    componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'installerImage' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"
     componentProvisioningRequiresOrigin = $componentProvisioningSource -match 'requestedOrigins' -and $componentProvisioningSource -match 'requestedComponent.*Origin' -and $componentProvisioningSource -match 'InstallNativeBridge'
     baseProvisioningRequiresOrigin = $baseProvisioningSource -match 'requiredOriginNames' -and $baseProvisioningSource -match 'origins\[\$requiredOriginName\]' -and $launcherSourceText -match 'string\.IsNullOrWhiteSpace\(component\.Origin\)'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
@@ -166,6 +168,13 @@ $contractChecks = [ordered]@{
     reportIdentityGate = $checklistSource -match 'function Test-ReportTransport' -and $checklistSource -match 'function Test-DiagnosticsIdentity' -and $checklistSource -match 'Test-QemuReportIdentity'
     persistenceReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
     benchmarkReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
+    baseProvisioningRequiresConfiguredImage = $baseProvisioningSource -match '\$android\.qemu\.androidImage' -and $baseProvisioningSource -match "\$required \+= 'installerImage'"
+    watchdogKeepsBackendRecoveryWhenActivityRestartDisabled = $launcherSourceText -match 'RestartOnActivityLoss && status\.Installed && !status\.Running'
+    watchdogTogglePersistsConfiguration = $runtimeControllerSource -match 'Config\.Supervisor\.RestartOnActivityLoss = enabled'
+    runtimeOnlyStartsWatchdogWhenEnabled = $runtimeControllerSource -match 'StartSupervisorIfEnabledAsync' -and $runtimeControllerSource -match 'RestartOnActivityLoss \? _supervisor\.StartAsync'
+    uiUsesGuestNetworkState = $launcherSourceText -match 'InternetRuntimeState\.Online' -and $launcherSourceText -notmatch 'NetworkInterface\.GetIsNetworkAvailable'
+    uiDoesNotShowUnverifiedWebViewVersion = $launcherSourceText -match 'WebViewRuntimeState\.Ready' -and $launcherSourceText -notmatch 'Config\.WebView\.InstalledVersion'
+    uiRefreshesPersistedRuntimeToggles = $launcherSourceText -match 'nameof\(StartWithWindows\)' -and $launcherSourceText -match 'nameof\(WatchdogEnabled\)'
 }
 $contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'ShouldLog\(ref _lastAdbOfflineLog\)' -and $launcherSourceText -match 'cooldownSeconds = Math\.Max\(15'
 $contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'

@@ -46,10 +46,12 @@ public sealed class AndroidProvisioningService
 
         var qemu = _context.ResolveQemuPath();
         var disk = _context.ResolveAndroidDiskPath();
+        var image = _context.ResolveAndroidImagePath();
         var adb = _context.ResolveAdbPath();
         var missing = new List<string>();
         if (!File.Exists(qemu)) missing.Add($"QEMU: {qemu}");
         if (!File.Exists(disk)) missing.Add($"disco Android persistente: {disk}");
+        if (!File.Exists(image)) missing.Add($"imagem Android-x86: {image}");
         if (!File.Exists(adb)) missing.Add($"ADB: {adb}");
         if (missing.Count > 0)
         {
@@ -86,7 +88,7 @@ public sealed class AndroidProvisioningService
                 $"Estado sem entradas de provenance: {_context.ResolveProvisioningStatePath()}.");
         }
 
-        foreach (var componentName in new[] { "qemu", "adb", "disk" })
+        foreach (var componentName in new[] { "qemu", "adb", "disk", "installerImage" })
         {
             if (!state.Provenance.TryGetValue(componentName, out var component) ||
                 !IsSha256(component.Sha256) ||
@@ -100,14 +102,17 @@ public sealed class AndroidProvisioningService
 
         var qemuHash = await ComputeSha256Async(qemu, cancellationToken);
         var adbHash = await ComputeSha256Async(adb, cancellationToken);
+        var imageHash = await ComputeSha256Async(image, cancellationToken);
         var registeredQemuHash = state.Provenance["qemu"].Sha256;
         var registeredAdbHash = state.Provenance["adb"].Sha256;
+        var registeredImageHash = state.Provenance["installerImage"].Sha256;
         if (!registeredQemuHash.Equals(qemuHash, StringComparison.OrdinalIgnoreCase) ||
-            !registeredAdbHash.Equals(adbHash, StringComparison.OrdinalIgnoreCase))
+            !registeredAdbHash.Equals(adbHash, StringComparison.OrdinalIgnoreCase) ||
+            !registeredImageHash.Equals(imageHash, StringComparison.OrdinalIgnoreCase))
         {
             throw new RuntimeOperationException(
                 "Os binários locais não correspondem ao provisionamento registrado.",
-                $"QEMU registrado={registeredQemuHash}; atual={qemuHash}; ADB registrado={registeredAdbHash}; atual={adbHash}. Reexecute o provisionamento após uma troca aprovada.");
+                $"QEMU registrado={registeredQemuHash}; atual={qemuHash}; ADB registrado={registeredAdbHash}; atual={adbHash}; imagem registrada={registeredImageHash}; atual={imageHash}. Reexecute o provisionamento após uma troca aprovada.");
         }
 
         state.Schema = 1;

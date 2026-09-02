@@ -74,7 +74,6 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
         {
             try
             {
-                if (!_context.Config.Supervisor.RestartOnActivityLoss) continue;
                 if (!await _backend.IsRunningAsync(cancellationToken).ConfigureAwait(false))
                 {
                     await RecoverBackendAsync(cancellationToken).ConfigureAwait(false);
@@ -108,7 +107,7 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
                 }
 
                 var status = await _neoNews.GetStatusAsync(cancellationToken).ConfigureAwait(false);
-                if (status.Installed && !status.Running)
+                if (_context.Config.Supervisor.RestartOnActivityLoss && status.Installed && !status.Running)
                 {
                     var recentLogcat = await _adb.GetLogcatAsync(160, cancellationToken).ConfigureAwait(false);
                     if (ContainsStructuralRuntimeFailure(recentLogcat))

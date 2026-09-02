@@ -196,7 +196,7 @@ public sealed class RuntimeController : IAsyncDisposable
             await EnsureAndroidAsync(progress, cancellationToken);
             await _neoNews.StartAsync(progress, cancellationToken);
             if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
-            await _supervisor.StartAsync();
+            await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
         });
@@ -207,7 +207,7 @@ public sealed class RuntimeController : IAsyncDisposable
             await EnsureAndroidAsync(progress, cancellationToken);
             await _neoNews.RestartAsync(progress, cancellationToken);
             if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
-            await _supervisor.StartAsync();
+            await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
         });
@@ -255,6 +255,8 @@ public sealed class RuntimeController : IAsyncDisposable
         WithOperationAsync(RuntimeState.Preparing, async () =>
         {
             if (enabled) await _supervisor.StartAsync(); else await _supervisor.StopAsync();
+            _context.Config.Supervisor.RestartOnActivityLoss = enabled;
+            await _context.SaveAsync(cancellationToken);
             await RefreshSnapshotAsync(cancellationToken);
         });
 
@@ -320,7 +322,7 @@ public sealed class RuntimeController : IAsyncDisposable
             if (_context.Config.Android.NativeBridge.Required && !_lastAbiCompatibility.RuntimeStable) throw new RuntimeOperationException("O NeoNews não permaneceu estável com a ABI ARM.", $"primaryCpuAbi={_lastAbiCompatibility.PrimaryCpuAbi}; selectedApkAbi={_lastAbiCompatibility.SelectedApkAbi}; runtimeStable=false");
             await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
             if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _kiosk.EnterAsync(progress, cancellationToken); }
-            await _supervisor.StartAsync();
+            await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
             progress?.Report(new RuntimeProgress("Sistema pronto", "QEMU, Android, NeoNews, kiosk e watchdog ativos.", 100));
@@ -375,8 +377,11 @@ public sealed class RuntimeController : IAsyncDisposable
         }
         await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
         await EnsureGuestIdentityAsync(cancellationToken);
-        await _supervisor.StartAsync();
+        await StartSupervisorIfEnabledAsync();
     }
+
+    private Task StartSupervisorIfEnabledAsync() =>
+        _context.Config.Supervisor.RestartOnActivityLoss ? _supervisor.StartAsync() : Task.CompletedTask;
 
     private IReadOnlyList<string> ResolveApkAbis()
     {

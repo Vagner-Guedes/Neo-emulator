@@ -45,8 +45,9 @@ Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbS
 
 O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes e origens em `runtime/state/provisioning.json` e não baixa componentes. Informe `-QemuOrigin`, `-AdbOrigin` e, quando aplicável, `-AndroidImageOrigin`; Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis. O boot normal não instala APKs desconhecidos.
 
-O boot normal exige que esse `provisioning.json` já exista; ele não cria um
-registro de provisionamento incompleto. O SHA-256 forte registrado no
+O boot normal exige que esse `provisioning.json` já exista e que a imagem
+Android-x86 configurada também esteja presente e corresponda ao hash
+provisionado; ele não cria um registro de provisionamento incompleto. O SHA-256 forte registrado no
 provisionamento é preservado, e o launcher mantém um fingerprint barato do
 qcow2 como último estado observado. Como o qcow2 é mutável por definição, uma
 mudança legítima de tamanho/data não bloqueia o boot seguinte; estado sem
@@ -75,8 +76,9 @@ kiosk, WebView, RHVoice e logcat; ausência de qualquer evidência mantém o
 resultado como `not-validated`.
 
 The stability runner also requires the smoke report to contain the explicit
-manual field `manualEvidence.neoNewsContentObserved=true`; set it only after
-observing real NeoNews content in the same published executable.
+manual fields `manualEvidence.neoNewsContentObserved=true` and
+`manualEvidence.neoNewsPlaybackObserved=true`; set them only after observing
+real NeoNews content and playback in the same published executable.
 
 ```powershell
 .\scripts\validation\Test-LauncherSmoke.ps1 `
@@ -91,6 +93,10 @@ Os switches `-NoConsoleObserved`, `-QemuNoConsoleObserved`, `-TrayObserved`,
 `-UpdatePreservationObserved` só devem ser usados depois da confirmação
 correspondente no executável/runtime publicado; eles registram evidência
 manual e não simulam essa observação.
+
+Os switches `-NeoNewsContentObserved` e `-NeoNewsPlaybackObserved` também
+exigem observação manual do conteúdo real e de sua reprodução durante o
+teste no mesmo executável publicado.
 
 O ícone `launcher/NeoNews.Runtime.Launcher/Assets/NeoNewsRuntime.ico` é embutido no `.exe`. Para recriá-lo após uma alteração visual, execute `scripts/build/New-NeoNewsRuntimeIcon.ps1` antes da publicação.
 

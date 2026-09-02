@@ -54,7 +54,7 @@ hashes/estado. O boot normal não instala componentes desconhecidos.
 
 ## Fluxo de execução
 
-1. validar QEMU, WHPX, ADB e qcow2;
+1. validar QEMU, WHPX, ADB, a imagem Android-x86 aprovada e o qcow2;
 2. iniciar QEMU sem `cmd.exe`, PowerShell ou console visível;
 3. executar `adb start-server` e `adb connect host:port`;
 4. aguardar `get-state=device` e `sys.boot_completed=1`;

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Windows.Input;
@@ -114,13 +113,21 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string HomeAndroidDetail => _snapshot.Adb == "Online" ? "ADB conectado" : "ADB não conectado";
     public string HomeNeoNewsDetail => _snapshot.PackageInstalled ? _snapshot.NeoNews : "Pacote não instalado";
     public string HomeInternetStatus => NetworkStatus;
-    public string NetworkStatus => NetworkInterface.GetIsNetworkAvailable() ? "Conectado" : "Offline";
+    public string NetworkStatus => _snapshot.InternetState switch
+    {
+        InternetRuntimeState.Online => "Online",
+        InternetRuntimeState.Offline => "Offline",
+        _ => "Não verificado"
+    };
     public string AndroidReleaseLabel => $"Android {_controller.Context.Config.Android.Release}";
     public string AndroidApiLabel => $"API {_controller.Context.Config.Android.ApiLevel}";
     public string LauncherVersionLabel => $"Versão {_controller.Context.Config.Launcher.Version}";
-    public string WebViewVersionLabel => string.IsNullOrWhiteSpace(_controller.Context.Config.WebView.InstalledVersion)
-        ? $"Esperada {_controller.Context.Config.WebView.HomologatedVersion}"
-        : _controller.Context.Config.WebView.InstalledVersion;
+    public string WebViewVersionLabel => _snapshot.WebViewState switch
+    {
+        WebViewRuntimeState.Ready => $"Ativa {_controller.Context.Config.WebView.HomologatedVersion}",
+        WebViewRuntimeState.Mismatch when WebViewStatus.StartsWith("Divergente", StringComparison.OrdinalIgnoreCase) => WebViewStatus,
+        _ => $"Esperada {_controller.Context.Config.WebView.HomologatedVersion}"
+    };
     public string VoiceLocaleLabel => _controller.Context.Config.Tts.Locale.Equals("pt-BR", StringComparison.OrdinalIgnoreCase)
         ? "Português Brasil"
         : _controller.Context.Config.Tts.Locale;
@@ -404,7 +411,7 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
             nameof(HomeAndroidDetail), nameof(HomeNeoNewsDetail), nameof(NeoNewsStatusHeading), nameof(NeoNewsStatusDescription),
             nameof(NeoNewsVersionDisplay), nameof(AndroidStatusBrush), nameof(AdbStatusBrush), nameof(NeoNewsStatusBrush),
             nameof(WebViewStatusBrush), nameof(VoiceStatusBrush), nameof(WatchdogStatusBrush), nameof(StartupStatusBrush),
-            nameof(KioskStatus), nameof(KioskStatusBrush),
+            nameof(KioskStatus), nameof(KioskStatusBrush), nameof(StartWithWindows), nameof(WatchdogEnabled),
             nameof(NetworkStatus), nameof(NetworkStatusBrush), nameof(StorageStatus), nameof(StorageStatusBrush)
         }) OnPropertyChanged(name);
     }

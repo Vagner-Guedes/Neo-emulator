@@ -85,7 +85,8 @@ function Test-NeoNewsContentEvidence {
         $reportExecutable = [System.IO.Path]::GetFullPath([string]$Report.executable)
         $selectedExecutable = [System.IO.Path]::GetFullPath($ExecutablePath)
         return $reportExecutable.Equals($selectedExecutable, [StringComparison]::OrdinalIgnoreCase) -and
-            [bool]$Report.manualEvidence.neoNewsContentObserved
+            [bool]$Report.manualEvidence.neoNewsContentObserved -and
+            [bool]$Report.manualEvidence.neoNewsPlaybackObserved
     }
     catch { return $false }
 }
@@ -182,6 +183,7 @@ $evidence.neoNewsContent = [ordered]@{
     fresh = Test-ReportFresh $launcherSmoke
     executableMatches = if ($null -ne $launcherSmoke) { try { [System.IO.Path]::GetFullPath([string]$launcherSmoke.executable).Equals([System.IO.Path]::GetFullPath($ExecutablePath), [StringComparison]::OrdinalIgnoreCase) } catch { $false } } else { $false }
     observed = if ($null -ne $launcherSmoke) { [bool]$launcherSmoke.manualEvidence.neoNewsContentObserved } else { $false }
+    playbackObserved = if ($null -ne $launcherSmoke) { [bool]$launcherSmoke.manualEvidence.neoNewsPlaybackObserved } else { $false }
     ready = Test-NeoNewsContentEvidence $launcherSmoke
 }
 foreach ($entry in @(

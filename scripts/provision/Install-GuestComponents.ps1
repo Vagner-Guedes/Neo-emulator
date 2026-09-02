@@ -59,6 +59,7 @@ $basePaths = [ordered]@{
     qemu = Resolve-ConfiguredPath $config.android.qemu.executable
     adb = Resolve-ConfiguredPath (Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath)
     disk = Resolve-ConfiguredPath $config.android.qemu.disk
+    installerImage = Resolve-ConfiguredPath $config.android.qemu.androidImage
 }
 foreach ($baseName in $basePaths.Keys) {
     $record = $existingState.provenance.$baseName

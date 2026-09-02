@@ -51,7 +51,7 @@ imagem Android quando solicitada; o boot rejeita estado sem essa proveniencia
 ou sem SHA-256 forte. A instalacao opt-in de Native Bridge, WebView e RHVoice
 continua exigindo origem/licenca por componente.
 
-O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
+O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
 
 ## Contrato do runtime
 
@@ -76,7 +76,7 @@ Para alterar o status, ainda é necessário executar no mesmo runtime:
 2. provisionar QEMU x86_64 e ADB localmente, com origem e hashes registrados;
 3. provisionar uma Native Bridge legalmente redistribuível e provar a instalação do APK sem `INSTALL_FAILED_NO_MATCHING_ABIS`;
 4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` exatamente;
-5. validar estabilidade após reinício e executar `Test-RuntimeStability.ps1` com conteúdo real do NeoNews;
+5. validar estabilidade após reinício e executar `Test-RuntimeStability.ps1` com conteúdo real do NeoNews em reprodução;
 6. validar provider WebView 119 em HTML/CSS/JavaScript/HTTPS e no NeoNews;
 7. validar RHVoice com síntese real em `pt-BR`;
 8. executar testes de rede, HLS/m3u8, áudio, offline, kiosk, watchdog, startup, tray, instância única e persistência;

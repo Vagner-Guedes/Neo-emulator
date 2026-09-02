@@ -80,10 +80,13 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
 
             var executable = _context.ResolveQemuPath();
             var disk = _context.ResolveAndroidDiskPath();
+            var androidImage = _context.ResolveAndroidImagePath();
             if (!File.Exists(executable))
                 throw new RuntimeOperationException("QEMU não foi encontrado.", $"Caminho configurado: {executable}");
             if (!File.Exists(disk))
                 throw new RuntimeOperationException("O disco persistente do Android não foi encontrado.", $"Caminho configurado: {disk}");
+            if (!File.Exists(androidImage))
+                throw new RuntimeOperationException("A imagem Android-x86 não foi encontrada.", $"Caminho configurado: {androidImage}; o disco persistente deve ter sido provisionado a partir da imagem aprovada.");
 
             var host = _context.Config.Android.Adb.Host;
             var hostPort = _context.Config.Android.Adb.HostPort;
