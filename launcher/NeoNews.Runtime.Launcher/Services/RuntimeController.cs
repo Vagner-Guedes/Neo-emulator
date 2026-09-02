@@ -94,10 +94,12 @@ public sealed class RuntimeController : IAsyncDisposable
         {
             var packages = await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken);
             var defaultEngine = await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken);
+            var localeCheck = await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken);
             var hasRhvoice = packages.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
             var selected = defaultEngine.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
-            voiceLabel = hasRhvoice ? (selected ? "RHVoice ativa" : "RHVoice instalada") : "RHVoice ausente";
-            ttsState = hasRhvoice && selected ? TtsRuntimeState.Ready : TtsRuntimeState.Missing;
+            var localeReady = localeCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase);
+            voiceLabel = hasRhvoice ? (selected && localeReady ? "RHVoice ativa" : "RHVoice instalada") : "RHVoice ausente";
+            ttsState = hasRhvoice && selected && localeReady ? TtsRuntimeState.Ready : TtsRuntimeState.Missing;
         }
 
         var startupRegistered = await _startup.IsRegisteredAsync(cancellationToken);
@@ -367,9 +369,11 @@ public sealed class RuntimeController : IAsyncDisposable
     {
         var packages = await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken);
         var defaultEngine = await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken);
+        var localeCheck = await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken);
         var packageReady = packages.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
         var selected = defaultEngine.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
-        return (packageReady && selected, $"engineEsperada={_context.Config.Tts.Engine}; default={defaultEngine}; locale={_context.Config.Tts.Locale}; pacoteRhvoice={packageReady}; engineSelecionada={selected}", defaultEngine);
+        var localeReady = localeCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase);
+        return (packageReady && selected && localeReady, $"engineEsperada={_context.Config.Tts.Engine}; default={defaultEngine}; locale={_context.Config.Tts.Locale}; pacoteRhvoice={packageReady}; engineSelecionada={selected}; dadosLocale={localeReady}; retorno={localeCheck}", defaultEngine);
     }
 
     private async Task PersistProvisioningStatusAsync(

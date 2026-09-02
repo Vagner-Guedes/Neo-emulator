@@ -61,6 +61,7 @@
       "disk": "runtime/android/neonews-api25.qcow2",
       "androidImage": "runtime/android/android-x86-7.1-r5.iso",
       "acceleration": "whpx",
+      "gpu": "std",
       "machine": "q35",
       "windowTitle": "NeoNews Android Runtime",
       "memoryMb": 2048,

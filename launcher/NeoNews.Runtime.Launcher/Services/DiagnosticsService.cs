@@ -53,6 +53,7 @@ public sealed class DiagnosticsService
         var webViewDump = adbOnline ? await SafeAsync(() => _adb.GetWebViewDumpAsync(cancellationToken), cancellationToken) : string.Empty;
         var webViewVersion = adbOnline ? await GetWebViewVersionAsync(cancellationToken) : null;
         var packages = adbOnline ? await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken) : string.Empty;
+        var ttsLocaleCheck = adbOnline ? await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken) : string.Empty;
         var nativeBridge = adbOnline ? await SafeNativeBridgeAsync(cancellationToken) : null;
         var apkAbis = ReadApkAbis();
         var apkSignature = ReadApkSignature();
@@ -151,6 +152,8 @@ public sealed class DiagnosticsService
                 expectedEngine = _context.Config.Tts.Engine,
                 locale = _context.Config.Tts.Locale,
                 defaultEngine = adbOnline ? await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken) : null,
+                localeCheck = ttsLocaleCheck,
+                localeReady = ttsLocaleCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || ttsLocaleCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || ttsLocaleCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase),
                 matchingPackages = packages.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
                     .Where(line => line.Contains("rhvoice", StringComparison.OrdinalIgnoreCase) || line.Contains("tts", StringComparison.OrdinalIgnoreCase))
                     .ToArray()

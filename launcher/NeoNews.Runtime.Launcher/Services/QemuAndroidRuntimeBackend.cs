@@ -102,7 +102,7 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 "-device", "virtio-net-pci,netdev=neonewsnet",
                 "-qmp", $"tcp:127.0.0.1:{qmpPort},server=on,wait=off",
                 "-no-reboot",
-                "-vga", "std",
+                "-vga", string.IsNullOrWhiteSpace(qemu.Gpu) ? "std" : qemu.Gpu,
                 "-display", qemu.ShowWindow ? $"gtk,window-title={qemu.WindowTitle}" : "none"
             };
 

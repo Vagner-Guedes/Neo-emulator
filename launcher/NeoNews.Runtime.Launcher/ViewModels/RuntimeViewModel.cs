@@ -115,6 +115,8 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string HomeNeoNewsDetail => _snapshot.PackageInstalled ? _snapshot.NeoNews : "Pacote não instalado";
     public string HomeInternetStatus => NetworkStatus;
     public string NetworkStatus => NetworkInterface.GetIsNetworkAvailable() ? "Conectado" : "Offline";
+    public string AndroidReleaseLabel => $"Android {_controller.Context.Config.Android.Release}";
+    public string AndroidApiLabel => $"API {_controller.Context.Config.Android.ApiLevel}";
     public string LauncherVersionLabel => $"Versão {_controller.Context.Config.Launcher.Version}";
     public string WebViewVersionLabel => string.IsNullOrWhiteSpace(_controller.Context.Config.WebView.InstalledVersion)
         ? $"Esperada {_controller.Context.Config.WebView.HomologatedVersion}"
@@ -267,6 +269,13 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
         config.Android.Optimization.Screen.Height = height;
         config.Android.Optimization.Screen.Density = density;
         config.Android.Emulator.Gpu = gpu;
+        config.Android.Qemu.Gpu = gpu.ToLowerInvariant() switch
+        {
+            "none" => "none",
+            "cirrus" => "cirrus",
+            "qxl" => "qxl",
+            _ => "std"
+        };
         config.Android.Kiosk.DisplaySize = $"{width}x{height}";
         config.Android.Kiosk.DisplayDensity = density;
         config.Android.Kiosk.MonitorIndex = monitor;

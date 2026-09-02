@@ -106,6 +106,7 @@ public sealed class QemuConfig
     public string Disk { get; set; } = "runtime/android/neonews-api25.qcow2";
     public string AndroidImage { get; set; } = "runtime/android/android-x86-7.1-r5.iso";
     public string Acceleration { get; set; } = "whpx";
+    public string Gpu { get; set; } = "std";
     public string Machine { get; set; } = "q35";
     public string WindowTitle { get; set; } = "NeoNews Android Runtime";
     public int MemoryMb { get; set; } = 2048;
