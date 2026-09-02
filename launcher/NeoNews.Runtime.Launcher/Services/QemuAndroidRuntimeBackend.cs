@@ -81,11 +81,11 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             var executable = _context.ResolveQemuPath();
             var disk = _context.ResolveAndroidDiskPath();
             var androidImage = _context.ResolveAndroidImagePath();
-            if (!File.Exists(executable))
+            if (!HasContent(executable))
                 throw new RuntimeOperationException("QEMU não foi encontrado.", $"Caminho configurado: {executable}");
-            if (!File.Exists(disk))
+            if (!HasContent(disk))
                 throw new RuntimeOperationException("O disco persistente do Android não foi encontrado.", $"Caminho configurado: {disk}");
-            if (!File.Exists(androidImage))
+            if (!HasContent(androidImage))
                 throw new RuntimeOperationException("A imagem Android-x86 não foi encontrada.", $"Caminho configurado: {androidImage}; o disco persistente deve ter sido provisionado a partir da imagem aprovada.");
 
             var host = _context.Config.Android.Adb.Host;
@@ -214,5 +214,12 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
         var payload = Encoding.UTF8.GetBytes($"{{\"execute\":\"{command}\"}}\r\n");
         await stream.WriteAsync(payload.AsMemory(), cancellationToken);
         await stream.FlushAsync(cancellationToken);
+    }
+
+    private static bool HasContent(string path)
+    {
+        try { return File.Exists(path) && new FileInfo(path).Length > 0; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 }

@@ -28,6 +28,11 @@ function Resolve-ConfiguredPath([string]$configuredPath) {
     return [System.IO.Path]::GetFullPath((Join-Path $runtimeRoot ($configuredPath -replace '/', '\')))
 }
 
+function Test-NonEmptyFile([string]$path) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    try { return (Get-Item -LiteralPath $path).Length -gt 0 } catch { return $false }
+}
+
 $paths = [ordered]@{
     qemu = Resolve-ConfiguredPath $android.qemu.executable
     adb = Resolve-ConfiguredPath (Join-Path $android.tooling.sdkRoot $android.tooling.adbRelativePath)
@@ -47,9 +52,9 @@ if ($RequireNativeBridge) { $required += 'nativeBridge' }
 if ($RequireWebView) { $required += 'webView' }
 if ($RequireTts) { $required += 'tts' }
 
-$missing = @($required | Where-Object { -not (Test-Path -LiteralPath $paths[$_]) })
+$missing = @($required | Where-Object { -not (Test-NonEmptyFile $paths[$_]) })
 if ($missing.Count -gt 0) {
-    throw "Provisionamento incompleto. Arquivos ausentes: $($missing -join ', '). O script não baixa binários; forneça componentes locais aprovados e repita."
+    throw "Provisionamento incompleto. Arquivos ausentes ou vazios: $($missing -join ', '). O script não baixa binários; forneça componentes locais aprovados e repita."
 }
 
 $statePath = Resolve-ConfiguredPath $android.provisioning.statePath

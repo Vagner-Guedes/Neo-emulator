@@ -156,6 +156,7 @@ $contractChecks = [ordered]@{
     provisioningRejectsWeakOrMissingHash = $launcherSourceText -match 'IsSha256' -and $launcherSourceText -match 'SHA-256 forte'
     provisioningRevalidatesBaseBinaryHashes = $launcherSourceText -match 'foreach \(var componentName' -and $launcherSourceText -match 'ComputeSha256Async\(qemu' -and $launcherSourceText -match 'ComputeSha256Async\(adb'
     provisioningRevalidatesAndroidImageHash = $launcherSourceText -match 'ComputeSha256Async\(image' -and $launcherSourceText -match 'Provenance\["installerImage"\]' -and $launcherSourceText -match 'registeredImageHash'
+    provisioningRejectsEmptyBaseFiles = $launcherSourceText -match 'HasContent\(qemu\)' -and $qemuSource -match 'HasContent\(executable\)' -and $baseProvisioningSource -match 'Test-NonEmptyFile' -and $componentProvisioningSource -match 'Test-NonEmptyFile'
     componentProvisioningMergesState = $componentProvisioningSource -match 'existingState\.provenance' -and $componentProvisioningSource -match 'existingState\.imageHash'
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'installerImage' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"

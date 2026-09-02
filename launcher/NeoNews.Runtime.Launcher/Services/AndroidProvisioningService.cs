@@ -49,15 +49,15 @@ public sealed class AndroidProvisioningService
         var image = _context.ResolveAndroidImagePath();
         var adb = _context.ResolveAdbPath();
         var missing = new List<string>();
-        if (!File.Exists(qemu)) missing.Add($"QEMU: {qemu}");
-        if (!File.Exists(disk)) missing.Add($"disco Android persistente: {disk}");
-        if (!File.Exists(image)) missing.Add($"imagem Android-x86: {image}");
-        if (!File.Exists(adb)) missing.Add($"ADB: {adb}");
+        if (!HasContent(qemu)) missing.Add($"QEMU ausente ou vazio: {qemu}");
+        if (!HasContent(disk)) missing.Add($"disco Android persistente ausente ou vazio: {disk}");
+        if (!HasContent(image)) missing.Add($"imagem Android-x86 ausente ou vazia: {image}");
+        if (!HasContent(adb)) missing.Add($"ADB ausente ou vazio: {adb}");
         if (missing.Count > 0)
         {
             throw new RuntimeOperationException(
                 "O runtime local não está provisionado.",
-                $"Arquivos obrigatórios ausentes:\n{string.Join("\n", missing)}\nO provisionamento deve ser feito antes da execução normal; o launcher não baixa binários pela Internet.");
+                $"Arquivos obrigatórios ausentes ou vazios:\n{string.Join("\n", missing)}\nO provisionamento deve ser feito antes da execução normal; o launcher não baixa binários pela Internet.");
         }
 
         var state = await LoadAsync(cancellationToken);
@@ -172,4 +172,11 @@ public sealed class AndroidProvisioningService
 
     private static bool IsSha256(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length == 64 && value.All(Uri.IsHexDigit);
+
+    private static bool HasContent(string path)
+    {
+        try { return File.Exists(path) && new FileInfo(path).Length > 0; }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
 }

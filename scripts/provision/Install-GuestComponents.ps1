@@ -28,6 +28,12 @@ function Resolve-ConfiguredPath {
     return [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot ($ConfiguredPath -replace '/', '\')))
 }
 
+function Test-NonEmptyFile {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
+    try { return (Get-Item -LiteralPath $Path).Length -gt 0 } catch { return $false }
+}
+
 $statePath = Resolve-ConfiguredPath $config.android.provisioning.statePath
 if (-not (Test-Path -LiteralPath $statePath)) {
     throw "Estado base de provisionamento não encontrado: $statePath. Execute Provision-QemuAndroidRuntime.ps1 antes de instalar componentes."
@@ -66,8 +72,8 @@ foreach ($baseName in $basePaths.Keys) {
     if ($null -eq $record -or [string]$record.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
         throw "A provenance do componente-base '$baseName' não possui hash SHA-256 forte: $statePath."
     }
-    if (-not (Test-Path -LiteralPath $basePaths[$baseName])) {
-        throw "O componente-base '$baseName' não foi encontrado: $($basePaths[$baseName])."
+    if (-not (Test-NonEmptyFile $basePaths[$baseName])) {
+        throw "O componente-base '$baseName' não foi encontrado ou está vazio: $($basePaths[$baseName])."
     }
     if ($baseName -ne 'disk') {
         $currentHash = (Get-FileHash -LiteralPath $basePaths[$baseName] -Algorithm SHA256).Hash
@@ -99,7 +105,7 @@ function Wait-ForBoot {
 
 function Install-Component {
     param([string]$Name, [string]$Path, [string]$Origin)
-    if (-not (Test-Path -LiteralPath $Path)) { throw "$Name não encontrado: $Path" }
+    if (-not (Test-NonEmptyFile $Path)) { throw "$Name não encontrado ou vazio: $Path" }
     $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
     if (-not $PSCmdlet.ShouldProcess($Path, "instalar $Name no serial $script:Serial com adb install -r")) {
         return [ordered]@{ name = $Name; path = $Path; sha256 = $hash; origin = if ($Origin) { $Origin } else { 'not-recorded' }; attempted = $false; succeeded = $false; output = 'WHATIF' }
@@ -134,7 +140,7 @@ if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnv
     $fallbackRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } elseif ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
     $adbPath = Join-Path $fallbackRoot 'platform-tools\adb.exe'
 }
-if (-not (Test-Path -LiteralPath $adbPath)) { throw "ADB não encontrado em $adbPath. Nenhum componente será baixado." }
+if (-not (Test-NonEmptyFile $adbPath)) { throw "ADB não encontrado ou vazio em $adbPath. Nenhum componente será baixado." }
 $script:adbPath = $adbPath
 if (-not $Serial) {
     $Serial = if ($config.android.adb.transport -eq 'tcp') {
