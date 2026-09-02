@@ -39,6 +39,7 @@ try {
 
 $requiredPaths = @(
     'config/runtime.json',
+    'config/android-package-policy.json',
     'docs/AUDIT-ETAPA-1.md',
     'docs/ABI-ETAPA-3.md',
     'docs/WEBVIEW-ETAPA-4.md',
@@ -53,8 +54,10 @@ $requiredPaths = @(
     'scripts/benchmark/QemuBenchmark.Common.ps1',
     'docs/WEBVIEW-CONTENT-PROBE.md',
     'docs/FINAL-REPORT.md',
+    'docs/ANDROID-PACKAGE-OPTIMIZATION.md',
     'scripts/provision/Provision-QemuAndroidRuntime.ps1',
     'scripts/provision/Install-GuestComponents.ps1',
+    'scripts/provision/Optimize-AndroidGuest.ps1',
     'scripts/validation/Test-NativeBridge.ps1',
     'scripts/validation/ValidationEvidence.Common.ps1',
     'scripts/validation/Test-RuntimeStability.ps1',
@@ -86,6 +89,7 @@ $qemuSourcePath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\S
 $qemuSource = if (Test-Path -LiteralPath $qemuSourcePath) { Get-Content -LiteralPath $qemuSourcePath -Raw -Encoding utf8 } else { '' }
 $runtimeControllerPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\RuntimeController.cs'
 $runtimeControllerSource = if (Test-Path -LiteralPath $runtimeControllerPath) { Get-Content -LiteralPath $runtimeControllerPath -Raw -Encoding utf8 } else { '' }
+$runtimeConfigSource = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding utf8 } else { '' }
 $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRuntime.ps1'
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
 $componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1'
@@ -132,6 +136,10 @@ $watchNeoNewsPath = Join-Path $RepositoryRoot 'scripts\runtime\Watch-NeoNews.ps1
 $watchNeoNewsSource = if (Test-Path -LiteralPath $watchNeoNewsPath) { Get-Content -LiteralPath $watchNeoNewsPath -Raw -Encoding utf8 } else { '' }
 $kioskScriptPath = Join-Path $RepositoryRoot 'scripts\runtime\Apply-KioskSettings.ps1'
 $kioskScriptSource = if (Test-Path -LiteralPath $kioskScriptPath) { Get-Content -LiteralPath $kioskScriptPath -Raw -Encoding utf8 } else { '' }
+$optimizationScriptPath = Join-Path $RepositoryRoot 'scripts\provision\Optimize-AndroidGuest.ps1'
+$optimizationScriptSource = if (Test-Path -LiteralPath $optimizationScriptPath) { Get-Content -LiteralPath $optimizationScriptPath -Raw -Encoding utf8 } else { '' }
+$packagePolicyPath = Join-Path $RepositoryRoot 'config\android-package-policy.json'
+$packagePolicySource = if (Test-Path -LiteralPath $packagePolicyPath) { Get-Content -LiteralPath $packagePolicyPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -144,6 +152,29 @@ $contractChecks = [ordered]@{
     noSilentTcg = -not [bool]$configObject.android.qemu.allowTcgForDiagnostics -and $qemuSource -match 'AllowTcgForDiagnostics'
     noQemuEmuKill = $launcherSourceText -notmatch '(?i)adb\s+emu\s+kill'
     noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)' -and $webViewContentSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $ttsSynthesisSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $networkMediaSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall'
+    optimizationPolicyShape = $packagePolicySource -match '"critical"' -and $packagePolicySource -match '"required"' -and $packagePolicySource -match '"optional"' -and $packagePolicySource -match '"disabled"' -and $packagePolicySource -match '"unknown"' -and $packagePolicySource -match '"voiceProtection"'
+    optimizationModesAreExplicit = $optimizationScriptSource -match "ValidateSet\('Audit', 'Apply', 'Rollback'\)" -and $optimizationScriptSource.Contains("[string]`$Mode = 'Audit'")
+    optimizationAuditInventoriesGuest = $optimizationScriptSource -match 'pm list packages' -and $optimizationScriptSource -match 'dumpsys package' -and $optimizationScriptSource -match 'settings list global' -and $optimizationScriptSource -match 'android-packages-before'
+    optimizationPolicyDiscoversGuestPackages = $optimizationScriptSource -match 'Update-PolicyFromInventory' -and $optimizationScriptSource -match 'generatedFromGuest' -and $optimizationScriptSource -match 'unknown'
+    optimizationDiscoversAllRhvoicePackages = $optimizationScriptSource -match 'Find-RhvoiceEvidence' -and $optimizationScriptSource -match 'dumpsys.*package' -and $optimizationScriptSource -match 'rhvoice' -and $optimizationScriptSource -match 'voice' -and $optimizationScriptSource -match 'discoveredPackages'
+    optimizationAddsRhvoiceToCritical = $optimizationScriptSource -match 'voiceNames' -and $optimizationScriptSource -match '\$critical = @\(\(Get-StringArray \$Policy ''critical''\) \+ \$voiceNames'
+    optimizationRequiresSnapshotBeforeApply = $optimizationScriptSource -match 'New-DebloatSnapshot' -and $optimizationScriptSource -match 'Assert-NoQemuUsingDisk' -and $optimizationScriptSource -match 'snapshotRequired'
+    optimizationOnlyAllowsDisableUser = $optimizationScriptSource -match "'disable-user'" -and $optimizationScriptSource -match "'pm', 'disable-user', '--user', '0'" -and $optimizationScriptSource -notmatch '(?i)pm\s+clear|pm\s+uninstall|rm\s+-rf|adb.*uninstall'
+    optimizationRequiresExplicitApproval = $optimizationScriptSource -match 'approved' -and $optimizationScriptSource -match 'policy\.disabled' -and $optimizationScriptSource -match 'ShouldProcess'
+    optimizationProtectsRhvoiceBeforeAndAfter = $optimizationScriptSource -match 'Assert-VoiceProtection' -and $optimizationScriptSource -match 'Invoke-TtsSynthesisGate' -and $optimizationScriptSource -match 'synthesisRequiredAfterEachGroup' -and $optimizationScriptSource -match 'defaultEngineUnchanged'
+    optimizationVerifiesRhvoicePackagePaths = $optimizationScriptSource -match "'pm', 'path'" -and $optimizationScriptSource -match 'packagePathPresent' -and $optimizationScriptSource -match 'missingPackagePaths'
+    optimizationRejectsStaleAuditPlan = $optimizationScriptSource -match 'Assert-AuditPlan' -and $optimizationScriptSource -match 'audit-complete' -and $optimizationScriptSource -match 'caminho do pacote'
+    optimizationFullGateRequiresFreshValidatedEvidence = $optimizationScriptSource -match 'MinimumTimestamp' -and $optimizationScriptSource -match 'runtime-stability.json' -and $optimizationScriptSource -match "-eq 'validated'" -and $optimizationScriptSource -match 'freshForGroup'
+    optimizationRollsBackLastGroup = $optimizationScriptSource -match 'Restore-ChangedGroup' -and $optimizationScriptSource -match "'pm', 'enable'" -and $optimizationScriptSource -match 'RollbackRequired'
+    optimizationDoesNotUninstallVoice = $optimizationScriptSource -notmatch '(?i)uninstall|pm\s+clear|rm\s+-rf'
+    firstRunReadyGateWaitsForPackageManager = $launcherSourceText -match 'WaitForPackageManagerAsync' -and $launcherSourceText -match 'pm list packages' -and $launcherSourceText -match 'pm path android'
+    firstRunReadyGateWaitsForSettingsProvider = $launcherSourceText -match 'WaitForSettingsProviderAsync' -and $launcherSourceText -match 'settings"\s*,\s*"list"\s*,\s*"global' -and $launcherSourceText -match 'settings"\s*,\s*"list"\s*,\s*"secure'
+    firstRunConfiguresLocaleBeforeNeoNews = $launcherSourceText -match 'EnsureGuestLocaleAsync' -and $launcherSourceText -match 'EnsurePtBrLocaleAsync' -and $launcherSourceText.IndexOf('EnsureGuestLocaleAsync') -lt $launcherSourceText.IndexOf('_neoNews.StartAsync')
+    firstRunRebootsAndRevalidatesLocale = $launcherSourceText -match 'RebootGuestAsync' -and $launcherSourceText -match 'MarkRebootPerformedAsync' -and $launcherSourceText -match 'ReadLocaleAsync'
+    firstRunPersistsStateMachine = $launcherSourceText -match 'SetStageAsync' -and $launcherSourceText -match 'SetErrorAsync' -and $launcherSourceText -match 'SetReadinessAsync' -and $launcherSourceText -match 'NEONEWS_RUNTIME_VALIDATION'
+    firstBootUsesSeparateTimeout = $runtimeConfigSource -match 'FirstBootSeconds' -and $runtimeControllerSource -match 'WaitForConfiguredBootAsync' -and $runtimeControllerSource -match 'PackageManagerReady'
+    diagnosticsIncludesFirstRunState = $launcherSourceText -match 'packageManagerReady = provisioningState\.PackageManagerReady' -and $launcherSourceText -match 'localeValidated = provisioningState\.LocaleValidated' -and $launcherSourceText -match 'lastError = provisioningState\.LastError'
+    runtimeConfigHasVoiceProtection = $configObject.android.optimization.voiceProtection.enabled -eq $true -and $configObject.android.optimization.voiceProtection.engine -match '(?i)^rhvoice$' -and $configObject.android.optimization.voiceProtection.locale -eq 'pt-BR' -and $configObject.android.optimization.voiceProtection.rollbackOnFailure -eq $true
     portableRuntimePaths = [string]$configObject.android.qemu.executable -match '(?i)^runtime[\\/]' -and [string]$configObject.android.qemu.disk -match '(?i)^runtime[\\/]'
     qemuEnvironmentFallbackDisabled = -not [bool]$configObject.android.tooling.allowEnvironmentFallback
     installEvidenceTracksAdbSuccess = $launcherSourceText -match 'LastInstallSucceeded' -and $launcherSourceText -match 'InstallApkAsync'
@@ -205,6 +236,7 @@ $contractChecks = [ordered]@{
     componentProvisioningVerifiesGuestIdentity = $componentProvisioningSource -match 'ro\.build\.version\.release' -and $componentProvisioningSource -match 'ro\.build\.version\.sdk' -and $componentProvisioningSource -match '\$guestRelease' -and $componentProvisioningSource -match '\$guestApi'
     baseProvisioningRequiresOrigin = $baseProvisioningSource -match 'requiredOriginNames' -and $baseProvisioningSource -match 'origins\[\$requiredOriginName\]' -and $launcherSourceText -match 'string\.IsNullOrWhiteSpace\(component\.Origin\)'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
+    publishIncludesOptimizationArtifacts = $publishSource -match 'android-package-policy\.json' -and $publishSource -match 'Optimize-AndroidGuest\.ps1' -and $publishSource -match 'Test-TtsSynthesis\.ps1' -and $publishSource -match 'tools\\tts-probe'
     publishPreservesPersistentDisk = $publishSource -match 'persistentDiskTargetPath' -and $publishSource -match 'Preservando disco persistente existente' -and $publishSource -match 'OrdinalIgnoreCase'
     guestNetworkQmpNegotiatesCapabilities = $networkMediaSource -match 'qmp_capabilities' -and $networkMediaSource -match 'set_link' -and $networkMediaSource -match 'Test-QemuQmpSuccess' -and $networkMediaSource -match 'qmpLinkDownConfirmed' -and $networkMediaSource -match 'qmpLinkRestoreConfirmed'
     qmpReadersSkipAsyncEvents = $qemuBenchmarkCommonSource -match 'function Read-QemuQmpResponse' -and $qemuBenchmarkCommonSource -match 'QMP events' -and $qemuBenchmarkCommonSource -match 'Read-QemuQmpResponse \$reader' -and $networkMediaSource -match 'Read-QemuQmpResponse \$reader'

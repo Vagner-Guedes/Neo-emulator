@@ -40,6 +40,11 @@ public sealed class RuntimeTimeoutConfig
 {
     public int AdbSeconds { get; set; } = 30;
     public int BootSeconds { get; set; } = 180;
+    public int FirstBootSeconds { get; set; } = 300;
+    public int PackageManagerSeconds { get; set; } = 120;
+    public int SettingsProviderSeconds { get; set; } = 60;
+    public int LocaleSeconds { get; set; } = 120;
+    public int TtsSeconds { get; set; } = 90;
     public int NeoNewsStartSeconds { get; set; } = 120;
     public int InstallSeconds { get; set; } = 600;
     public int EmulatorStopSeconds { get; set; } = 20;
@@ -145,6 +150,13 @@ public sealed class ProvisioningConfig
 
 public sealed class OptimizationConfig
 {
+    public string PolicyPath { get; set; } = "config/android-package-policy.json";
+    public string InventoryPath { get; set; } = "reports/android-packages-before.txt";
+    public string PlanPath { get; set; } = "reports/android-debloat-plan.json";
+    public string ResultPath { get; set; } = "reports/android-optimization-result.json";
+    public string ComparisonPath { get; set; } = "reports/android-optimization-result.md";
+    public string SnapshotPath { get; set; } = "runtime/android/backups/neonews-before-debloat.qcow2";
+    public string LogPath { get; set; } = "logs/android-optimization.log";
     public ScreenConfig Screen { get; set; } = new();
     public int RamMb { get; set; } = 2048;
     public int CpuCores { get; set; } = 4;
@@ -153,7 +165,20 @@ public sealed class OptimizationConfig
     public bool AudioInput { get; set; } = true;
     public bool AudioOutput { get; set; } = true;
     public string Profile { get; set; } = "signage-landscape";
+    public VoiceProtectionConfig VoiceProtection { get; set; } = new();
     public string BenchmarkScript { get; set; } = string.Empty;
+}
+
+public sealed class VoiceProtectionConfig
+{
+    public bool Enabled { get; set; } = true;
+    public string Engine { get; set; } = "RHVoice";
+    public string Locale { get; set; } = "pt-BR";
+    public bool RequireSynthesis { get; set; } = true;
+    public bool RequireAudioBytes { get; set; } = true;
+    public bool NeverModifySelectedEngine { get; set; } = true;
+    public bool NeverDisableDiscoveredPackages { get; set; } = true;
+    public bool RollbackOnFailure { get; set; } = true;
 }
 
 public sealed class ScreenConfig

@@ -159,16 +159,24 @@ public sealed class RuntimeController : IAsyncDisposable
             {
                 progress?.Report(new RuntimeProgress("Preparando ambiente", "Validando componentes locais...", 5));
                 await _provisioning.ValidateLocalRuntimeAsync(cancellationToken);
+                await _provisioning.SetStageAsync("HOST_VALIDATION", cancellationToken);
                 await _backend.StartAsync(progress, cancellationToken);
+                await _provisioning.SetStageAsync("ANDROID_START", cancellationToken);
                 _state.Set(RuntimeState.WaitingForAdb);
-                await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+                await WaitForConfiguredBootAsync(progress, cancellationToken);
+                await _provisioning.SetStageAsync("BOOT_COMPLETED", cancellationToken);
+                await _provisioning.SetStageAsync("PACKAGE_MANAGER_READY", cancellationToken);
+                await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
                 await EnsureGuestIdentityAsync(cancellationToken);
+                await EnsureGuestLocaleAsync(progress, cancellationToken);
                 _state.Set(RuntimeState.Running);
+                await _provisioning.SetStageAsync("AndroidReady", cancellationToken);
                 await RefreshSnapshotAsync(cancellationToken);
                 progress?.Report(new RuntimeProgress("Android online", "O guest está pronto.", 100));
             }
-            catch
+            catch (Exception exception)
             {
+                try { await _provisioning.SetErrorAsync(exception, CancellationToken.None); } catch { }
                 await CleanupFailedStartAsync();
                 throw;
             }
@@ -330,30 +338,47 @@ public sealed class RuntimeController : IAsyncDisposable
             _lastAbiCompatibility = null;
             progress?.Report(new RuntimeProgress("Preparando ambiente", "Validando componentes locais...", 5));
             await _provisioning.ValidateLocalRuntimeAsync(cancellationToken);
+            await _provisioning.SetStageAsync("HOST_VALIDATION", cancellationToken);
             await _backend.StartAsync(progress, cancellationToken);
+            await _provisioning.SetStageAsync("ANDROID_START", cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
             progress?.Report(new RuntimeProgress("Aguardando ADB", $"Conectando a {_adb.Serial}...", 35));
-            await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+            await WaitForConfiguredBootAsync(progress, cancellationToken);
+            await _provisioning.SetStageAsync("BOOT_COMPLETED", cancellationToken);
+            await _provisioning.SetStageAsync("PACKAGE_MANAGER_READY", cancellationToken);
+            await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
             await EnsureGuestIdentityAsync(cancellationToken);
+            await EnsureGuestLocaleAsync(progress, cancellationToken);
+            await _provisioning.SetStageAsync("NATIVE_BRIDGE_VALIDATION", cancellationToken);
             var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !bridge.Ready) throw new RuntimeOperationException("O Native Bridge ARM não está disponível.", bridge.Detail);
+            await _provisioning.SetStageAsync("WEBVIEW_VALIDATION", cancellationToken);
             var webView = await ReadWebViewAsync(cancellationToken);
             if (_context.Config.Android.Provisioning.RequireWebView && !webView.Ready) throw new RuntimeOperationException("O WebView homologado não está disponível.", webView.Detail);
+            await _provisioning.SetStageAsync("TTS_VALIDATION", cancellationToken);
             var tts = await ValidateTtsAsync(cancellationToken);
             if (_context.Config.Android.Provisioning.RequireTts && !tts.Ready) throw new RuntimeOperationException("A voz RHVoice pt-BR não está disponível.", tts.Detail);
+            await _provisioning.SetStageAsync("NEONEWS_INSTALLATION", cancellationToken);
             _state.Set(RuntimeState.StartingNeoNews);
             await _neoNews.StartAsync(progress, cancellationToken);
+            await _provisioning.SetStageAsync("NEONEWS_INSTALL_VALIDATION", cancellationToken);
             _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), _neoNews.LastInstallSucceeded, cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !_lastAbiCompatibility.RuntimeStable) throw new RuntimeOperationException("O NeoNews não permaneceu estável com a ABI ARM.", $"primaryCpuAbi={_lastAbiCompatibility.PrimaryCpuAbi}; selectedApkAbi={_lastAbiCompatibility.SelectedApkAbi}; runtimeStable=false");
+            await _provisioning.SetStageAsync("NEONEWS_START", cancellationToken);
             await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
-            if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _kiosk.EnterAsync(progress, cancellationToken); }
+            await _provisioning.SetStageAsync("NEONEWS_RUNTIME_VALIDATION", cancellationToken);
+            if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _provisioning.SetStageAsync("KIOSK", cancellationToken); await _kiosk.EnterAsync(progress, cancellationToken); }
+            await _provisioning.SetStageAsync("WATCHDOG", cancellationToken);
             await StartSupervisorIfEnabledAsync();
+            await _provisioning.SetReadinessAsync(!_context.Config.Startup.AutoKiosk || _kiosk.IsActive, !_context.Config.Supervisor.RestartOnActivityLoss || _supervisor.IsActive, cancellationToken);
             _state.Set(RuntimeState.Running);
+            await _provisioning.SetStageAsync("Ready", cancellationToken);
             await RefreshSnapshotAsync(cancellationToken);
             progress?.Report(new RuntimeProgress("Sistema pronto", "QEMU, Android, NeoNews, kiosk e watchdog ativos.", 100));
         }
-        catch
+        catch (Exception exception)
         {
+            try { await _provisioning.SetErrorAsync(exception, CancellationToken.None); } catch { }
             await CleanupFailedStartAsync();
             throw;
         }
@@ -397,12 +422,73 @@ public sealed class RuntimeController : IAsyncDisposable
         if (!await _backend.IsRunningAsync(cancellationToken))
         {
             await _provisioning.ValidateLocalRuntimeAsync(cancellationToken);
+            await _provisioning.SetStageAsync("HOST_VALIDATION", cancellationToken);
             await _backend.StartAsync(progress, cancellationToken);
+            await _provisioning.SetStageAsync("ANDROID_START", cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
         }
-        await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+        await WaitForConfiguredBootAsync(progress, cancellationToken);
+        await _provisioning.SetStageAsync("BOOT_COMPLETED", cancellationToken);
+        await _provisioning.SetStageAsync("PACKAGE_MANAGER_READY", cancellationToken);
+        await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
         await EnsureGuestIdentityAsync(cancellationToken);
+        await EnsureGuestLocaleAsync(progress, cancellationToken);
+        await _provisioning.SetStageAsync("AndroidReady", cancellationToken);
         await StartSupervisorIfEnabledAsync();
+    }
+
+    private async Task EnsureGuestLocaleAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        if (!_context.Config.Android.Optimization.VoiceProtection.Enabled &&
+            string.IsNullOrWhiteSpace(_context.Config.Tts.Locale))
+        {
+            return;
+        }
+
+        var requestedLocale = string.IsNullOrWhiteSpace(_context.Config.Tts.Locale)
+            ? _context.Config.Android.Optimization.VoiceProtection.Locale
+            : _context.Config.Tts.Locale;
+        if (!requestedLocale.Equals("pt-BR", StringComparison.OrdinalIgnoreCase))
+            throw new RuntimeOperationException("O locale configurado não é suportado pelo runtime.", $"Locale esperado para a primeira execução: pt-BR; configurado={requestedLocale}.");
+
+        progress?.Report(new RuntimeProgress("Configurando idioma", "Validando Português (Brasil) antes de abrir o NeoNews...", 71));
+        await _provisioning.SetStageAsync("LOCALE_CONFIGURATION", cancellationToken);
+        var locale = await _adb.ReadLocaleAsync(cancellationToken);
+        if (!locale.IsPtBr)
+        {
+            _state.Set(RuntimeState.Preparing);
+            var configured = await _adb.EnsurePtBrLocaleAsync(cancellationToken);
+            if (configured.RebootRequired)
+            {
+                _state.Set(RuntimeState.Recovering);
+                progress?.Report(new RuntimeProgress("Reiniciando Android", "O locale pt-BR exige reinicialização controlada...", 73));
+                await _adb.RebootGuestAsync(cancellationToken);
+                await _provisioning.MarkRebootPerformedAsync(cancellationToken);
+                await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.LocaleSeconds)), cancellationToken);
+            }
+            locale = await _adb.ReadLocaleAsync(cancellationToken);
+        }
+
+        if (!locale.IsPtBr)
+        {
+            throw new RuntimeOperationException(
+                "O idioma Português (Brasil) não foi validado.",
+                $"requested={locale.Requested}; effective={locale.Effective}; persist.sys.locale={locale.PersistedLocale}; system_locales={locale.SystemLocales}");
+        }
+        _logs.Info("provisioning", $"LOCALE_OK requested={locale.Requested}; effective={locale.Effective}; rebootRequired={locale.RebootRequired}.");
+        await _provisioning.SetStageAsync("LOCALE_VALIDATION", cancellationToken);
+        progress?.Report(new RuntimeProgress("Idioma validado", "Português (Brasil) confirmado; NeoNews pode iniciar.", 75));
+    }
+
+    private async Task WaitForConfiguredBootAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        var state = await _provisioning.LoadAsync(cancellationToken);
+        var firstBoot = state is null || !state.PackageManagerReady;
+        var seconds = firstBoot
+            ? _context.Config.Timeouts.FirstBootSeconds
+            : _context.Config.Timeouts.BootSeconds;
+        progress?.Report(new RuntimeProgress(firstBoot ? "Primeiro boot Android" : "Boot Android", firstBoot ? "Aguardando dexopt, Package Manager e Settings Provider..." : "Aguardando o guest persistente...", 40));
+        await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, seconds)), cancellationToken);
     }
 
     private Task StartSupervisorIfEnabledAsync() =>
@@ -455,6 +541,12 @@ public sealed class RuntimeController : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var state = await _provisioning.LoadAsync(cancellationToken) ?? new ProvisioningState();
+        state.PackageManagerReady = true;
+        state.SettingsProviderReady = true;
+        state.LocaleValidated = true;
+        state.NeoNewsInstalled = true;
+        state.NeoNewsRunning = true;
+        state.LastError = string.Empty;
         state.NativeBridgeStatus = bridge.Ready ? "ready" : "unavailable";
         state.WebViewVersion = webView.Version;
         state.TtsStatus = tts.Ready ? $"ready:{tts.DefaultEngine}" : "missing-or-not-selected";

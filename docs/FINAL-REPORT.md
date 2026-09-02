@@ -26,6 +26,7 @@ falhar.
 | NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
 | Persistência | qcow2 externo, estado obrigatório em `runtime/state/provisioning.json` e hash forte preservado | implementado; não executado |
 | WebView/TTS | provider ativo, ABI nativa, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e síntese real são pré-condições do fluxo completo | implementado; não homologado |
+| Otimização Android | inventário real, política descoberta, snapshot, debloat reversível e proteção RHVoice antes/depois de cada grupo | implementado; não executado sem guest |
 | Rede/mídia/offline | probe local para DNS, HTTP/HTTPS, HLS/MediaPlayer, cache e NIC QMP reversível | implementado; não executado sem guest provisionado |
 | Kiosk | serviço existente usa o contrato do backend, valida geometria/estilo da janela e restaura configurações | compilado |
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
@@ -59,6 +60,8 @@ ou sem SHA-256 forte. A instalacao opt-in de Native Bridge, WebView e RHVoice
 continua exigindo origem/licenca por componente.
 
 O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, o disco/guest inicializado, Native Bridge, WebView e RHVoice nao estao provisionados.
+
+O fluxo de otimização agora está documentado em `docs/ANDROID-PACKAGE-OPTIMIZATION.md`. O modo `Audit` não altera o guest; o modo `Apply` exige aprovação explícita, snapshot e gate RHVoice com packages preservados, engine padrão inalterada, locale `pt-BR`, síntese real e áudio não vazio após cada grupo.
 
 Os relatorios de benchmark so podem aprovar o gate de desligamento quando registram a negociacao QMP, o envio de `quit`, a saida do processo e `forcedKill=false` em todas as execucoes.
 

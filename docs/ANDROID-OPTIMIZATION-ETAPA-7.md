@@ -1,7 +1,13 @@
 # Otimização Android — Etapa 7
 
-Data: **2026-09-01**  
+Data: **2026-09-02**
 Script: [`scripts/provision/Configure-NeoNewsAvd.ps1`](../scripts/provision/Configure-NeoNewsAvd.ps1)
+
+Para o backend QEMU adotado pelo runtime, o debloat de packages não é feito
+por este script de AVD. Use o fluxo auditável em
+[`ANDROID-PACKAGE-OPTIMIZATION.md`](ANDROID-PACKAGE-OPTIMIZATION.md), que
+descobre os packages do guest, cria snapshot e protege o RHVoice antes de
+qualquer `disable-user`.
 
 ## Perfil aplicado
 

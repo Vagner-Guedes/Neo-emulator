@@ -125,6 +125,13 @@ public sealed class AdbService
         return ExecuteShellAsync(arguments, timeout, cancellationToken);
     }
 
+    public Task<ProcessResult> ShellResultAsync(
+        IEnumerable<string> arguments,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default,
+        bool logOutput = false) =>
+        ExecuteAsync(new[] { "shell" }.Concat(arguments), timeout, cancellationToken, logOutput);
+
     private async Task<string> ExecuteShellAsync(IEnumerable<string> arguments, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         var result = await ExecuteAsync(new[] { "shell" }.Concat(arguments), timeout, cancellationToken, logOutput: false);
@@ -174,8 +181,12 @@ public sealed class AdbService
                 var boot = await GetPropertyAsync("sys.boot_completed", cancellationToken);
                 if (boot == "1")
                 {
+                    progress?.Report(new RuntimeProgress("Aguardando Package Manager", "Validando pm list packages e pm path android...", 62));
+                    await WaitForPackageManagerAsync(TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.PackageManagerSeconds)), cancellationToken);
+                    progress?.Report(new RuntimeProgress("Aguardando Settings Provider", "Validando settings antes do provisionamento...", 66));
+                    await WaitForSettingsProviderAsync(TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.SettingsProviderSeconds)), cancellationToken);
                     SetState(AdbRuntimeState.Ready);
-                    progress?.Report(new RuntimeProgress("Android pronto", "sys.boot_completed=1", 70));
+                    progress?.Report(new RuntimeProgress("Android pronto", "Android, Package Manager e Settings Provider prontos.", 70));
                     return;
                 }
 
@@ -193,6 +204,92 @@ public sealed class AdbService
         throw new RuntimeOperationException(
             "Não foi possível conectar ao Android.",
             $"ADB não confirmou o boot do transporte {Serial} em {timeout.TotalSeconds:0} segundos. Último estado: {State}.");
+    }
+
+    public async Task WaitForPackageManagerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        ProcessResult? lastPackages = null;
+        ProcessResult? lastAndroidPath = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lastPackages = await ShellResultAsync(["pm", "list", "packages"], TimeSpan.FromSeconds(20), cancellationToken);
+            lastAndroidPath = await ShellResultAsync(["pm", "path", "android"], TimeSpan.FromSeconds(20), cancellationToken);
+            var packagesReady = lastPackages.Succeeded && lastPackages.StandardOutput.Contains("package:", StringComparison.OrdinalIgnoreCase);
+            var androidPathReady = lastAndroidPath.Succeeded && lastAndroidPath.StandardOutput.Contains("package:", StringComparison.OrdinalIgnoreCase);
+            if (packagesReady && androidPathReady) return;
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds)), cancellationToken);
+        }
+
+        throw new RuntimeOperationException(
+            "O Package Manager do Android não ficou pronto.",
+            $"pm list packages: exit={lastPackages?.ExitCode}; {lastPackages?.StandardError}; pm path android: exit={lastAndroidPath?.ExitCode}; {lastAndroidPath?.StandardError}");
+    }
+
+    public async Task WaitForSettingsProviderAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var deadline = DateTimeOffset.UtcNow + timeout;
+        ProcessResult? lastGlobal = null;
+        ProcessResult? lastSecure = null;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lastGlobal = await ShellResultAsync(["settings", "list", "global"], TimeSpan.FromSeconds(20), cancellationToken);
+            lastSecure = await ShellResultAsync(["settings", "list", "secure"], TimeSpan.FromSeconds(20), cancellationToken);
+            var globalReady = lastGlobal.Succeeded && !lastGlobal.StandardError.Contains("error", StringComparison.OrdinalIgnoreCase);
+            var secureReady = lastSecure.Succeeded && !lastSecure.StandardError.Contains("error", StringComparison.OrdinalIgnoreCase);
+            if (globalReady && secureReady) return;
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds)), cancellationToken);
+        }
+
+        throw new RuntimeOperationException(
+            "O Settings Provider do Android não ficou pronto.",
+            $"settings global: exit={lastGlobal?.ExitCode}; {lastGlobal?.StandardError}; settings secure: exit={lastSecure?.ExitCode}; {lastSecure?.StandardError}");
+    }
+
+    public async Task<LocaleValidationResult> ReadLocaleAsync(CancellationToken cancellationToken = default)
+    {
+        var locale = await GetPropertyAsync("persist.sys.locale", cancellationToken);
+        var language = await GetPropertyAsync("persist.sys.language", cancellationToken);
+        var country = await GetPropertyAsync("persist.sys.country", cancellationToken);
+        var systemLocales = await GetSettingAsync("system", "system_locales", cancellationToken);
+        var effective = FirstNonEmpty(locale, systemLocales, CombineLocale(language, country));
+        return new LocaleValidationResult("pt-BR", effective, IsPtBr(effective), locale, language, country, systemLocales);
+    }
+
+    public async Task<LocaleValidationResult> EnsurePtBrLocaleAsync(CancellationToken cancellationToken = default)
+    {
+        var current = await ReadLocaleAsync(cancellationToken);
+        if (current.IsPtBr) return current with { RebootRequired = false };
+
+        var changed = false;
+        var localeResult = await ShellResultAsync(["setprop", "persist.sys.locale", "pt-BR"], TimeSpan.FromSeconds(20), cancellationToken);
+        if (localeResult.Succeeded) changed = true;
+        var languageResult = await ShellResultAsync(["setprop", "persist.sys.language", "pt"], TimeSpan.FromSeconds(20), cancellationToken);
+        var countryResult = await ShellResultAsync(["setprop", "persist.sys.country", "BR"], TimeSpan.FromSeconds(20), cancellationToken);
+        changed = changed || languageResult.Succeeded || countryResult.Succeeded;
+        var settingsResult = await ShellResultAsync(["settings", "put", "system", "system_locales", "pt-BR"], TimeSpan.FromSeconds(20), cancellationToken);
+        changed = changed || settingsResult.Succeeded;
+        if (!changed)
+        {
+            throw new RuntimeOperationException(
+                "Não foi possível configurar o idioma do Android.",
+                $"setprop locale: {localeResult.StandardError}; setprop language: {languageResult.StandardError}; setprop country: {countryResult.StandardError}; settings: {settingsResult.StandardError}");
+        }
+
+        var after = await ReadLocaleAsync(cancellationToken);
+        return after with { RebootRequired = !after.IsPtBr };
+    }
+
+    public async Task RebootGuestAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await ShellResultAsync(["reboot"], TimeSpan.FromSeconds(20), cancellationToken);
+        if (!result.Succeeded && !result.StandardError.Contains("closed", StringComparison.OrdinalIgnoreCase) && !result.StandardError.Contains("offline", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException("Não foi possível reiniciar o Android.", $"adb shell reboot: exit={result.ExitCode}; {result.StandardError}; {result.StandardOutput}");
+        }
+        SetState(AdbRuntimeState.Booting);
     }
 
     public async Task<bool> IsPackageInstalledAsync(string packageName, CancellationToken cancellationToken = default)
@@ -404,6 +501,14 @@ public sealed class AdbService
 
     private static void ReportStateProgress(IProgress<RuntimeProgress>? progress, string phase, string detail, double? percent) =>
         progress?.Report(new RuntimeProgress(phase, detail, percent));
+
+    private static string FirstNonEmpty(params string[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;
+
+    private static string CombineLocale(string language, string country) =>
+        string.IsNullOrWhiteSpace(language) ? string.Empty : string.IsNullOrWhiteSpace(country) ? language : $"{language}-{country}";
+
+    private static bool IsPtBr(string value) =>
+        Regex.IsMatch(value ?? string.Empty, @"^(pt[-_]?(BR|rBR)|pt_BR)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 }
 
 public sealed record AndroidGuestValidationResult(
@@ -412,3 +517,13 @@ public sealed record AndroidGuestValidationResult(
     string BootCompleted,
     bool Ready,
     string Detail);
+
+public sealed record LocaleValidationResult(
+    string Requested,
+    string Effective,
+    bool IsPtBr,
+    string PersistedLocale,
+    string PersistedLanguage,
+    string PersistedCountry,
+    string SystemLocales,
+    bool RebootRequired = false);

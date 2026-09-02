@@ -7,6 +7,7 @@ Runtime Windows para sinalização digital com guest Android-x86 7.1.2/API 25, Q
 O runtime está migrando para o backend QEMU x86_64 com disco persistente e ADB TCP. A ISO Android-x86 7.1-r5 já foi validada localmente, mas a homologação completa permanece pendente até que QEMU standalone, disco persistente, Native Bridge ARM, WebView 119, RHVoice e o APK oficial sejam provisionados e testados no mesmo guest. O APK proprietário e demais componentes externos permanecem fora do Git.
 
 Consulte [`docs/FINAL-REPORT.md`](docs/FINAL-REPORT.md) para evidências e pendências.
+Para a otimização controlada do guest e a proteção absoluta do RHVoice, consulte [`docs/ANDROID-PACKAGE-OPTIMIZATION.md`](docs/ANDROID-PACKAGE-OPTIMIZATION.md).
 
 ## Primeira execução
 

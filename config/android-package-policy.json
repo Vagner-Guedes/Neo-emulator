@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "generatedFromGuest": null,
+  "critical": [],
+  "required": [],
+  "optional": [],
+  "disabled": [],
+  "unknown": [],
+  "voiceProtection": {
+    "enabled": true,
+    "expectedEngine": "RHVoice",
+    "expectedLocale": "pt-BR",
+    "synthesisRequired": true,
+    "discoveredPackages": [],
+    "baselineDefaultEngine": "",
+    "forbiddenAutomaticOperations": [
+      "remove-voice-package",
+      "clear-voice-data",
+      "replace-voice-package",
+      "change-voice-engine"
+    ]
+  }
+}

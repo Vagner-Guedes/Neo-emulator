@@ -27,6 +27,11 @@ $persistentDiskTargetPath = [System.IO.Path]::GetFullPath((Join-Path $outputPath
 if ($LASTEXITCODE -ne 0) { throw "A publicação falhou com código $LASTEXITCODE." }
 $layoutDirectories = @(
     "config",
+    "scripts",
+    "scripts\provision",
+    "scripts\validation",
+    "tools",
+    "tools\tts-probe",
     "runtime",
     "runtime\qemu",
     "runtime\android",
@@ -45,8 +50,22 @@ foreach ($directory in $layoutDirectories) {
     New-Item -ItemType Directory -Path (Join-Path $outputPath $directory) -Force | Out-Null
 }
 Copy-Item -Path (Join-Path $repositoryRoot "config\runtime.json") -Destination (Join-Path $outputPath "config\runtime.json") -Force
+Copy-Item -Path (Join-Path $repositoryRoot "config\android-package-policy.json") -Destination (Join-Path $outputPath "config\android-package-policy.json") -Force
 Copy-Item -Path (Join-Path $repositoryRoot "docs\*") -Destination (Join-Path $outputPath "docs") -Recurse -Force
 Copy-Item -Path (Join-Path $repositoryRoot "README.md") -Destination $outputPath -Force
+
+# Keep the operator-side optimization and voice-evidence workflow available in
+# the portable publication. These are scripts/probes only; no APK is copied.
+foreach ($supportFile in @(
+    "scripts\provision\Optimize-AndroidGuest.ps1",
+    "scripts\validation\Test-TtsSynthesis.ps1",
+    "scripts\validation\ValidationEvidence.Common.ps1"
+)) {
+    $sourceSupportFile = Join-Path $repositoryRoot $supportFile
+    $destinationSupportFile = Join-Path $outputPath $supportFile
+    Copy-Item -LiteralPath $sourceSupportFile -Destination $destinationSupportFile -Force
+}
+Copy-Item -Path (Join-Path $repositoryRoot "tools\tts-probe\*") -Destination (Join-Path $outputPath "tools\tts-probe") -Recurse -Force
 
 # Runtime binaries and guest images are intentionally external to the EXE.
 # Copy only the local runtime directories required by the portable layout;

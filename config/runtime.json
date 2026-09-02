@@ -13,6 +13,11 @@
   "timeouts": {
     "adbSeconds": 30,
     "bootSeconds": 180,
+    "firstBootSeconds": 300,
+    "packageManagerSeconds": 120,
+    "settingsProviderSeconds": 60,
+    "localeSeconds": 120,
+    "ttsSeconds": 90,
     "neoNewsStartSeconds": 120,
     "installSeconds": 600,
     "emulatorStopSeconds": 20,
@@ -92,6 +97,13 @@
       "requireTts": true
     },
     "optimization": {
+      "policyPath": "config/android-package-policy.json",
+      "inventoryPath": "reports/android-packages-before.txt",
+      "planPath": "reports/android-debloat-plan.json",
+      "resultPath": "reports/android-optimization-result.json",
+      "comparisonPath": "reports/android-optimization-result.md",
+      "snapshotPath": "runtime/android/backups/neonews-before-debloat.qcow2",
+      "logPath": "logs/android-optimization.log",
       "screen": {
         "width": 1920,
         "height": 1080,
@@ -104,6 +116,16 @@
       "audioInput": true,
       "audioOutput": true,
       "profile": "signage-landscape",
+      "voiceProtection": {
+        "enabled": true,
+        "engine": "RHVoice",
+        "locale": "pt-BR",
+        "requireSynthesis": true,
+        "requireAudioBytes": true,
+        "neverModifySelectedEngine": true,
+        "neverDisableDiscoveredPackages": true,
+        "rollbackOnFailure": true
+      },
       "benchmarkScript": "scripts/benchmark/Measure-QemuAndroidRuntime.ps1"
     },
     "kiosk": {

@@ -89,6 +89,7 @@ public sealed class DiagnosticsService
             ? primaryCpuAbi
             : null);
         var guest = adbOnline ? await GetGuestDiagnosticsAsync(cancellationToken) : GuestDiagnostics.Empty;
+        var locale = adbOnline ? await SafeLocaleAsync(cancellationToken) : new LocaleValidationResult("pt-BR", string.Empty, false, string.Empty, string.Empty, string.Empty, string.Empty);
         var memory = adbOnline ? LimitLines(await SafeAsync(() => _adb.GetMemoryDumpAsync(cancellationToken), cancellationToken), 80) : [];
         var graphics = adbOnline ? LimitLines(await SafeAsync(() => _adb.GetGraphicsDumpAsync(cancellationToken), cancellationToken), 80) : [];
         var rawLogcat = adbOnline ? await SafeAsync(() => _adb.GetLogcatAsync(240, cancellationToken), cancellationToken) : string.Empty;
@@ -135,6 +136,18 @@ public sealed class DiagnosticsService
                 : new
                 {
                     schema = provisioningState.Schema,
+                    stage = provisioningState.Stage,
+                    completed = provisioningState.Completed,
+                    packageManagerReady = provisioningState.PackageManagerReady,
+                    settingsProviderReady = provisioningState.SettingsProviderReady,
+                    localeValidated = provisioningState.LocaleValidated,
+                    rebootPerformed = provisioningState.RebootPerformed,
+                    neoNewsInstalled = provisioningState.NeoNewsInstalled,
+                    neoNewsRunning = provisioningState.NeoNewsRunning,
+                    kioskActive = provisioningState.KioskActive,
+                    watchdogActive = provisioningState.WatchdogActive,
+                    lastAttempt = provisioningState.LastAttempt,
+                    lastError = provisioningState.LastError,
                     androidImageVersion = provisioningState.AndroidImageVersion,
                     nativeBridgeStatus = provisioningState.NativeBridgeStatus,
                     webViewVersion = provisioningState.WebViewVersion,
@@ -161,6 +174,17 @@ public sealed class DiagnosticsService
                 abi2 = guest.Abi2,
                 nativeBridge = guest.NativeBridge,
                 bootCompleted = guest.BootCompleted,
+                locale = new
+                {
+                    requested = locale.Requested,
+                    effective = locale.Effective,
+                    validated = locale.IsPtBr,
+                    persistedLocale = locale.PersistedLocale,
+                    persistedLanguage = locale.PersistedLanguage,
+                    persistedCountry = locale.PersistedCountry,
+                    systemLocales = locale.SystemLocales,
+                    rebootRequired = locale.RebootRequired
+                },
                 ip = guest.Ip,
                 dns = guest.Dns,
                 route = guest.Route,
@@ -322,6 +346,17 @@ public sealed class DiagnosticsService
         try { return await new NativeBridgeValidationService(_context, _adb).ValidateGuestAsync(cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial de Native Bridge: {exception.Message}"); return null; }
+    }
+
+    private async Task<LocaleValidationResult> SafeLocaleAsync(CancellationToken cancellationToken)
+    {
+        try { return await _adb.ReadLocaleAsync(cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logs.Warning("launcher", $"Diagnóstico parcial do locale: {exception.Message}");
+            return new LocaleValidationResult("pt-BR", string.Empty, false, string.Empty, string.Empty, string.Empty, string.Empty);
+        }
     }
 
     private async Task<ProvisioningState?> SafeProvisioningStateAsync(CancellationToken cancellationToken)
