@@ -240,6 +240,11 @@ $contractChecks['operationalScriptsUsePublishedRuntimeRoot'] =
     $ensureNeoNewsSource -match '\$configPathFull' -and $ensureNeoNewsSource -match 'Join-Path \$runtimeRoot' -and
     $watchNeoNewsSource -match '\$configPathFull' -and $watchNeoNewsSource -match 'Join-Path \$runtimeRoot' -and
     $kioskScriptSource -match '\$configPathFull' -and $kioskScriptSource -match 'Join-Path \$runtimeRoot'
+$contractChecks['legacyEnsureEmulatorIsGuardedForQemu'] =
+    $ensureNeoNewsSource -match '\$StartEmulator' -and
+    $ensureNeoNewsSource -match '\$config\.android\.backend' -and
+    $ensureNeoNewsSource -match 'qemu-android-x86' -and
+    $ensureNeoNewsSource -match 'NeoNewsRuntime\.exe --start'
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }

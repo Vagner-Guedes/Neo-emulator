@@ -55,6 +55,9 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+if ($StartEmulator -and $config.android.backend -eq 'qemu-android-x86') {
+    throw 'O backend configurado é QEMU. Use NeoNewsRuntime.exe --start; este script só mantém compatibilidade com AVDs legados.'
+}
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 if (-not [string]::IsNullOrWhiteSpace($ReportPath) -and -not [System.IO.Path]::IsPathRooted($ReportPath)) {

@@ -16,6 +16,11 @@ O bootstrap do runtime:
 - só relança `TerminalActivity` quando o pacote existe;
 - pode parar um AVD iniciado pelo próprio processo com `-StopEmulatorOnFailure`.
 
+O parâmetro `-StartEmulator` permanece somente para compatibilidade com os
+AVDs legados. Quando `android.backend` está configurado como
+`qemu-android-x86`, o script recusa o desvio para `emulator.exe` e orienta o
+uso de `NeoNewsRuntime.exe --start`.
+
 ## Validação
 
 Com o AVD x86 já bootado e `-MaxAttempts 1`, o bootstrap retornou:
