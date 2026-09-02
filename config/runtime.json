@@ -67,7 +67,7 @@
       "androidImage": "runtime/android/android-x86-7.1-r5.iso",
       "acceleration": "whpx",
       "gpu": "std",
-      "machine": "q35",
+      "machine": "pc",
       "windowTitle": "NeoNews Android Runtime",
       "memoryMb": 2048,
       "cpuCores": 4,

@@ -83,8 +83,11 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             var executable = _context.ResolveQemuPath();
             var disk = _context.ResolveAndroidDiskPath();
             var androidImage = _context.ResolveAndroidImagePath();
+            var qemuShareDirectory = Path.Combine(Path.GetDirectoryName(executable) ?? _context.RootDirectory, "share");
             if (!HasContent(executable))
                 throw new RuntimeOperationException("QEMU não foi encontrado.", $"Caminho configurado: {executable}");
+            if (!HasContent(Path.Combine(qemuShareDirectory, "bios-256k.bin")))
+                throw new RuntimeOperationException("O firmware portátil do QEMU não foi encontrado.", $"Diretório esperado: {qemuShareDirectory}. A distribuição precisa preservar o diretório share ao lado do executável.");
             if (!HasContent(disk))
                 throw new RuntimeOperationException("O disco persistente do Android não foi encontrado.", $"Caminho configurado: {disk}");
             if (!HasContent(androidImage))
@@ -103,14 +106,15 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             var arguments = new List<string>
             {
                 "-name", qemu.WindowTitle,
-                "-machine", string.IsNullOrWhiteSpace(qemu.Machine) ? "q35" : qemu.Machine,
+                "-machine", string.IsNullOrWhiteSpace(qemu.Machine) ? "pc" : qemu.Machine,
                 "-accel", acceleration,
+                "-L", qemuShareDirectory,
                 "-m", effectiveMemoryMb.ToString(),
                 "-smp", Math.Max(1, Math.Min(qemu.CpuCores, Environment.ProcessorCount)).ToString(),
-                "-drive", $"file={disk},if=virtio,format=qcow2",
+                "-drive", $"file={disk},if=ide,format=qcow2",
                 "-boot", "order=c",
                 "-netdev", $"user,id=neonewsnet,hostfwd=tcp:{host}:{hostPort}-:{guestPort}",
-                "-device", "virtio-net-pci,netdev=neonewsnet,id=neonewsnic",
+                "-device", "e1000,netdev=neonewsnet,id=neonewsnic",
                 "-qmp", $"tcp:127.0.0.1:{qmpPort},server=on,wait=off",
                 "-monitor", "none",
                 "-serial", "none",

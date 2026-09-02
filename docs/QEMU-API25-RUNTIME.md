@@ -1,6 +1,6 @@
 # QEMU Android-x86 API 25
 
-O backend comercial do NeoNews Runtime é `QemuAndroidRuntimeBackend`. Ele inicia o guest x86_64 com `-accel whpx`, usa um qcow2 persistente e encaminha ADB do host para o guest:
+O backend comercial do NeoNews Runtime é `QemuAndroidRuntimeBackend`. Ele inicia o guest x86_64 com `-accel whpx`, usa a máquina compatível `pc`, um disco IDE qcow2 persistente, a NIC `e1000` compatível com o Android-x86 API 25 e encaminha ADB do host para o guest:
 
 ```text
 127.0.0.1:<hostPort>  ->  guest:<guestPort>
@@ -12,13 +12,14 @@ O backend comercial do NeoNews Runtime é `QemuAndroidRuntimeBackend`. Ele inici
 ```text
 runtime/
   qemu/qemu-system-x86_64.exe
+  qemu/share/              # firmware/ROMs do mesmo pacote QEMU
   android/android-x86-7.1-r5.iso
   android/neonews-api25.qcow2
   adb/adb.exe
   state/provisioning.json
 ```
 
-O disco não é recriado durante o boot nem durante a atualização do launcher. Native Bridge, WebView, RHVoice e o APK oficial são pacotes externos; ficam fora da publicação e devem ser fornecidos separadamente pelo operador, com origem, licença e hash registrados.
+O disco não é recriado durante o boot nem durante a atualização do launcher. O diretório `share` é obrigatório: o backend passa `-L runtime/qemu/share` e valida `bios-256k.bin` antes de iniciar. Native Bridge, WebView, RHVoice e o APK oficial são pacotes externos; ficam fora da publicação e devem ser fornecidos separadamente pelo operador, com origem, licença e hash registrados.
 
 ## Provisionamento
 

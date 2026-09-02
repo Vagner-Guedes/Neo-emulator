@@ -145,6 +145,10 @@ $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -joi
 $contractChecks = [ordered]@{
     qemuBackend = $qemuSource -match 'class QemuAndroidRuntimeBackend'
     whpxRequired = $qemuSource -match 'CheckWhpx' -and $qemuSource -match '"-accel"'
+    qemuPassesPortableFirmwarePrefix = $qemuSource -match 'qemuShareDirectory' -and $qemuSource -match '"-L"'
+    qemuRequiresPortableFirmware = $qemuSource -match 'bios-256k.bin' -and $qemuSource -match 'share'
+    qemuAndroidX86UsesCompatibleDefaults = [string]$configObject.android.qemu.machine -eq 'pc' -and $qemuSource -match 'if=ide' -and $qemuSource -match 'e1000' -and $qemuBenchmarkCommonSource -match 'if=ide' -and $qemuBenchmarkCommonSource -match 'e1000'
+    benchmarkPassesPortableFirmwarePrefix = $qemuBenchmarkCommonSource -match 'qemuShareDirectory' -and $qemuBenchmarkCommonSource -match "'-L'"
     qmpShutdown = $qemuSource -match 'RequestQmpShutdownAsync' -and $qemuSource -match 'qmp_capabilities' -and $qemuSource -match 'ReadQmpResponseAsync' -and $qemuSource -match 'IsQmpSuccess' -and $qemuSource -match '"quit"'
     persistentQcow2 = [string]$configObject.android.qemu.disk -match '(?i)\.qcow2$' -and $qemuSource -match 'format=qcow2'
     qemuRequiresProvisionedAndroidImage = $qemuSource -match 'ResolveAndroidImagePath' -and $qemuSource -match 'androidImage' -and $qemuSource -match 'Imagem Android-x86'
