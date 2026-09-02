@@ -46,6 +46,8 @@ $requiredPaths = @(
     'docs/NEONEWS-ETAPA-6.md',
     'docs/QEMU-API25-RUNTIME.md',
     'docs/QEMU-BENCHMARK.md',
+    'docs/GUEST-NETWORK-MEDIA.md',
+    'docs/QEMU-PERSISTENCE.md',
     'scripts/benchmark/Measure-QemuAndroidRuntime.ps1',
     'scripts/benchmark/Run-QemuNeoNewsBenchmark.ps1',
     'scripts/benchmark/QemuBenchmark.Common.ps1',
@@ -60,13 +62,26 @@ $requiredPaths = @(
     'tools/tts-probe/MainActivity.java',
     'tools/webview-probe/AndroidManifest.xml',
     'tools/webview-probe/MainActivity.java',
+    'scripts/validation/Test-GuestNetworkMedia.ps1',
+    'scripts/validation/Test-QemuPersistence.ps1',
+    'tools/media-probe/AndroidManifest.xml',
+    'tools/media-probe/MainActivity.java',
+    'launcher/NeoNews.Runtime.Launcher/Services/AndroidRuntimeParsing.cs',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })
 $appIgnored = $false
 Push-Location $RepositoryRoot
 try {
-    $ignoreResults = foreach ($candidate in @('app.apk', 'NeoNews.apk')) {
+    $ignoreResults = foreach ($candidate in @(
+        'app.apk',
+        'NeoNews.apk',
+        'packages/neonews/neonews.apk',
+        'packages/webview/webview.apk',
+        'packages/tts/rhvoice.apk',
+        'packages/nativebridge/nativebridge.apk',
+        'packages/nativebridge/nativebridge.zip'
+    )) {
         git check-ignore --quiet -- $candidate
         $LASTEXITCODE -eq 0
     }

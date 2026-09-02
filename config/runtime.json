@@ -24,7 +24,7 @@
     "backend": "qemu-android-x86",
     "apiLevel": 25,
     "release": "7.1.2",
-    "imageVariant": "android-x86-r5",
+    "imageVariant": "android-x86-7.1-r5",
     "preferredAbi": "x86",
     "preferredApkAbi": "armeabi-v7a",
     "preferredImage": "runtime/android/android-x86-7.1-r5.iso",
@@ -134,6 +134,7 @@
   "webView": {
     "provider": "com.google.android.webview",
     "homologatedVersion": "119.0.6045.193",
+    "requireNativeGuestAbi": true,
     "installedVersion": "55.0.2883.91",
     "status": "version-mismatch",
     "validated": false,

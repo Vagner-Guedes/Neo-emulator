@@ -47,7 +47,7 @@ public sealed class KioskService
         await _adb.PutSettingAsync("global", "stay_on_while_plugged_in", kiosk.StayAwakePluggedIn.ToString(), cancellationToken);
         await _adb.PutSettingAsync("secure", "screensaver_enabled", "0", cancellationToken);
         await _adb.PutSettingAsync("system", "accelerometer_rotation", "0", cancellationToken);
-        await _adb.PutSettingAsync("system", "user_rotation", "1", cancellationToken);
+        await _adb.PutSettingAsync("system", "user_rotation", ResolveRotation(kiosk.Orientation).ToString(), cancellationToken);
         await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
 
         CaptureAndMaximizeEmulatorWindow();
@@ -122,6 +122,14 @@ public sealed class KioskService
         var match = Regex.Match(text, $"(?m)^{Regex.Escape(label)}:\\s*(\\S+)");
         return match.Success ? match.Groups[1].Value : null;
     }
+
+    private static int ResolveRotation(string orientation) => orientation.Trim().ToLowerInvariant() switch
+    {
+        "portrait" => 0,
+        "reverse-portrait" => 2,
+        "reverse-landscape" => 3,
+        _ => 1
+    };
 
     private sealed record GuestState(
         string PolicyControl,

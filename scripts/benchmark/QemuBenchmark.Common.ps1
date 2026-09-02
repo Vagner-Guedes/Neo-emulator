@@ -44,18 +44,40 @@ function Wait-QemuBenchmarkBoot {
         [int]$TimeoutSeconds
     )
 
+    return (Wait-QemuBenchmarkMilestones -AdbPath $AdbPath -Serial $Serial -TimeoutSeconds $TimeoutSeconds).booted
+}
+
+function Wait-QemuBenchmarkMilestones {
+    param(
+        [string]$AdbPath,
+        [string]$Serial,
+        [int]$TimeoutSeconds
+    )
+
+    $startedAt = Get-Date
     $null = & $AdbPath start-server 2>&1
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $deadline = $startedAt.AddSeconds($TimeoutSeconds)
+    $adbReadyAt = $null
+    $bootedAt = $null
     do {
         if ($Serial -match ':') { $null = & $AdbPath connect $Serial 2>&1 }
         $state = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state')
         if ($state.Text -match '(?im)^device$') {
+            if ($null -eq $adbReadyAt) { $adbReadyAt = Get-Date }
             $boot = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'getprop', 'sys.boot_completed')
-            if ($boot.Text -match '(?im)^1$') { return $true }
+            if ($boot.Text -match '(?im)^1$') { $bootedAt = Get-Date; break }
         }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
-    return $false
+
+    [ordered]@{
+        adbReady = $null -ne $adbReadyAt
+        booted = $null -ne $bootedAt
+        bootedAt = $bootedAt
+        adbReadySeconds = if ($adbReadyAt) { [math]::Round(($adbReadyAt - $startedAt).TotalSeconds, 2) } else { $null }
+        bootSeconds = if ($bootedAt) { [math]::Round(($bootedAt - $startedAt).TotalSeconds, 2) } else { $null }
+        adbToBootSeconds = if ($adbReadyAt -and $bootedAt) { [math]::Round(($bootedAt - $adbReadyAt).TotalSeconds, 2) } else { $null }
+    }
 }
 
 function New-QemuBenchmarkArguments {
@@ -68,6 +90,21 @@ function New-QemuBenchmarkArguments {
     $qemu = $Config.android.qemu
     $adb = $Config.android.adb
     $display = if ([bool]$qemu.showWindow) { 'default' } else { 'none' }
+    $requestedMemoryMb = [math]::Max(512, [int]$qemu.memoryMb)
+    $availableMemoryMb = 0
+    $gcMemoryInfoMethod = [System.GC].GetMethod('GetGCMemoryInfo', [type[]]@())
+    if ($gcMemoryInfoMethod) {
+        try { $availableMemoryMb = [math]::Floor(($gcMemoryInfoMethod.Invoke($null, $null).TotalAvailableMemoryBytes) / 1MB) } catch { $availableMemoryMb = 0 }
+    }
+    if ($availableMemoryMb -le 0) {
+        try {
+            $operatingSystem = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+            $availableMemoryMb = [math]::Floor(([double]$operatingSystem.TotalVisibleMemorySize * 1KB) / 1MB)
+        }
+        catch { $availableMemoryMb = 0 }
+    }
+    $memoryLimitMb = if ($availableMemoryMb -gt 0) { [math]::Max(512, [int]($availableMemoryMb * 0.75)) } else { $requestedMemoryMb }
+    $effectiveMemoryMb = [math]::Min($requestedMemoryMb, $memoryLimitMb)
     $arguments = [System.Collections.Generic.List[string]]::new()
     $arguments.Add('-name')
     $arguments.Add([string]$qemu.windowTitle)
@@ -76,7 +113,7 @@ function New-QemuBenchmarkArguments {
     $arguments.Add('-accel')
     $arguments.Add('whpx')
     $arguments.Add('-m')
-    $arguments.Add([string][math]::Max(512, [int]$qemu.memoryMb))
+    $arguments.Add([string]$effectiveMemoryMb)
     $arguments.Add('-smp')
     $arguments.Add([string][math]::Max(1, [math]::Min([int]$qemu.cpuCores, [Environment]::ProcessorCount)))
     $arguments.Add('-drive')
@@ -86,7 +123,7 @@ function New-QemuBenchmarkArguments {
     $arguments.Add('-netdev')
     $arguments.Add("user,id=neonewsnet,hostfwd=tcp:$($adb.host):$($adb.hostPort)-:$($adb.guestPort)")
     $arguments.Add('-device')
-    $arguments.Add('virtio-net-pci,netdev=neonewsnet')
+    $arguments.Add('virtio-net-pci,netdev=neonewsnet,id=neonewsnic')
     $arguments.Add('-qmp')
     $arguments.Add("tcp:127.0.0.1:$($qemu.qmpPort),server=on,wait=off")
     $arguments.Add('-no-reboot')
@@ -100,14 +137,9 @@ function New-QemuBenchmarkArguments {
         $arguments.Add('-device')
         $arguments.Add('AC97,audiodev=neonewsaudio')
     }
-    $imageConfigured = [string]$Config.android.qemu.androidImage
-    if (-not [string]::IsNullOrWhiteSpace($imageConfigured)) {
-        $image = if ([System.IO.Path]::IsPathRooted($imageConfigured)) { $imageConfigured } else { Join-Path $RepositoryRoot ($imageConfigured -replace '/', '\') }
-        if (Test-Path -LiteralPath $image) {
-            $arguments.Insert(0, $image)
-            $arguments.Insert(0, '-cdrom')
-        }
-    }
+    # The installer image belongs to provisioning. Normal benchmark boots use
+    # only the persistent qcow2, so an update cannot accidentally boot from an
+    # ISO or mutate the guest setup.
     return $arguments.ToArray()
 }
 
@@ -123,7 +155,13 @@ function Start-QemuBenchmarkProcess {
     $startInfo.WorkingDirectory = $WorkingDirectory
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add([string]$argument) }
+    # Windows PowerShell 5.1 runs on .NET Framework, whose
+    # ProcessStartInfo has no ArgumentList property. The configured runtime
+    # paths may contain spaces, so quote each argument for the Win32 parser.
+    $startInfo.Arguments = (($Arguments | ForEach-Object {
+        $value = [string]$_
+        if ($value -match '[\s"]') { '"' + $value.Replace('"', '\"') + '"' } else { $value }
+    }) -join ' ')
     return [System.Diagnostics.Process]::Start($startInfo)
 }
 
@@ -178,6 +216,9 @@ function Get-QemuBenchmarkMetrics {
         param([string[]]$Arguments)
         (Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments $Arguments).Text
     }
+    $packageName = [string]$Config.neonews.packageName
+    $packageDump = & $read @('shell', 'dumpsys', 'package', $packageName)
+    $activityDump = & $read @('shell', 'dumpsys', 'activity', 'activities')
     [ordered]@{
         release = & $read @('shell', 'getprop', 'ro.build.version.release')
         apiLevel = & $read @('shell', 'getprop', 'ro.build.version.sdk')
@@ -187,7 +228,114 @@ function Get-QemuBenchmarkMetrics {
         logicalDensity = & $read @('shell', 'wm', 'density')
         memory = Get-QemuBenchmarkLines -Text (& $read @('shell', 'dumpsys', 'meminfo')) -Count 30
         graphics = Get-QemuBenchmarkLines -Text (& $read @('shell', 'dumpsys', 'gfxinfo')) -Count 30
-        packagePresent = ((& $read @('shell', 'pm', 'path', [string]$Config.neonews.packageName)) -match '^package:')
-        activity = & $read @('shell', 'dumpsys', 'activity', 'activities')
+        packagePresent = ((& $read @('shell', 'pm', 'path', $packageName)) -match '^package:')
+        packageVersion = if ($packageDump -match 'versionName=([^\s]+)') { $Matches[1] } else { $null }
+        primaryCpuAbi = if ($packageDump -match 'primaryCpuAbi=([^\s]+)') { $Matches[1] } else { $null }
+        activity = $activityDump
+    }
+}
+
+function Start-QemuBenchmarkNeoNews {
+    param(
+        [string]$AdbPath,
+        [string]$Serial,
+        [object]$Config,
+        [int]$TimeoutSeconds = 120
+    )
+
+    $packageName = [string]$Config.neonews.packageName
+    $configuredActivity = [string]$Config.neonews.launchActivity
+    $activityName = if ($configuredActivity -match '/') { ($configuredActivity -split '/')[-1] } else { $configuredActivity }
+    if ($activityName.StartsWith('.')) { $activityName = $activityName.Substring(1) }
+    if ($activityName.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $activityName = $activityName.Substring($packageName.Length + 1) }
+    $component = "$packageName/.$activityName"
+    $path = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'pm', 'path', $packageName)
+    if ($path.ExitCode -ne 0 -or $path.Text -notmatch '(?m)^package:') {
+        return [ordered]@{ packagePresent = $false; launchSucceeded = $false; activityRunning = $false; component = $component; detail = $path.Text }
+    }
+    $null = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'am', 'force-stop', $packageName)
+    $startedAt = Get-Date
+    $start = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'am', 'start', '-W', '-n', $component)
+    $launchSucceeded = $start.ExitCode -eq 0 -and $start.Text -notmatch '(?i)Error:|Exception|does not exist'
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $activityRunning = $false
+    while ($launchSucceeded -and (Get-Date) -lt $deadline) {
+        $dump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities')
+        $activityRunning = $dump.Text.Contains($component, [System.StringComparison]::Ordinal)
+        if ($activityRunning) { break }
+        Start-Sleep -Seconds 1
+    }
+    [ordered]@{
+        packagePresent = $true
+        launchSucceeded = $launchSucceeded
+        activityRunning = $activityRunning
+        component = $component
+        launchSeconds = if ($activityRunning) { [math]::Round(((Get-Date) - $startedAt).TotalSeconds, 2) } else { $null }
+        startOutput = $start.Text
+    }
+}
+
+function Get-QemuHostMetrics {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [int]$SampleSeconds = 2
+    )
+
+    if (-not $Process) { return [ordered]@{ processAlive = $false } }
+    try {
+        $Process.Refresh()
+        $beforeCpu = $Process.TotalProcessorTime.TotalSeconds
+        $beforeAt = Get-Date
+        Start-Sleep -Seconds ([math]::Max(1, $SampleSeconds))
+        $Process.Refresh()
+        $afterCpu = $Process.TotalProcessorTime.TotalSeconds
+        $elapsed = ((Get-Date) - $beforeAt).TotalSeconds
+        [ordered]@{
+            processAlive = -not $Process.HasExited
+            workingSetBytes = $Process.WorkingSet64
+            privateMemoryBytes = $Process.PrivateMemorySize64
+            cpuSeconds = [math]::Round($afterCpu, 3)
+            cpuPercentOfHost = if ($elapsed -gt 0) { [math]::Round((($afterCpu - $beforeCpu) / $elapsed / [math]::Max(1, [Environment]::ProcessorCount)) * 100, 2) } else { $null }
+            sampleSeconds = [math]::Round($elapsed, 2)
+        }
+    }
+    catch {
+        [ordered]@{ processAlive = $false; error = $_.Exception.Message }
+    }
+}
+
+function Test-QemuBenchmarkStability {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$AdbPath,
+        [string]$Serial,
+        [string]$ActivityComponent,
+        [int]$DurationSeconds = 60,
+        [int]$PollSeconds = 5
+    )
+
+    $samples = New-Object System.Collections.Generic.List[object]
+    $deadline = (Get-Date).AddSeconds([math]::Max(0, $DurationSeconds))
+    do {
+        $processAlive = $false
+        try { $Process.Refresh(); $processAlive = -not $Process.HasExited } catch { }
+        $adbState = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state')
+        $activityRunning = $false
+        if ($adbState.Text -match '(?im)^device$') {
+            $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities')
+            $shortComponent = if ($ActivityComponent -match '/') {
+                $parts = $ActivityComponent -split '/', 2
+                "$($parts[0])/.$(($parts[1] -replace '^\.', ''))"
+            } else { $ActivityComponent }
+            $activityRunning = $activityDump.Text.Contains($ActivityComponent, [System.StringComparison]::Ordinal) -or
+                               $activityDump.Text.Contains($shortComponent, [System.StringComparison]::Ordinal)
+        }
+        $samples.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); processAlive = $processAlive; adbState = $adbState.Text; activityRunning = $activityRunning })
+        if ((Get-Date) -lt $deadline) { Start-Sleep -Seconds ([math]::Max(1, $PollSeconds)) }
+    } while ((Get-Date) -lt $deadline)
+    [ordered]@{
+        durationSeconds = [math]::Max(0, $DurationSeconds)
+        samples = @($samples)
+        stable = @($samples | Where-Object { -not $_.processAlive -or $_.adbState -notmatch '(?im)^device$' -or -not $_.activityRunning }).Count -eq 0
     }
 }

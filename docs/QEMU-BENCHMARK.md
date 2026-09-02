@@ -4,18 +4,22 @@ The legacy AVD benchmark scripts remain available for historical comparison.
 The commercial runtime path uses the QEMU-specific scripts below.
 
 `Measure-QemuAndroidRuntime.ps1` starts the configured persistent qcow2 with
-WHPX, waits for ADB TCP and `sys.boot_completed=1`, then records Android
-release/API/ABI, display configuration, `dumpsys meminfo`, `dumpsys gfxinfo`,
-package presence, and the QEMU shutdown result.
+WHPX, records the ADB-ready and `sys.boot_completed=1` milestones, starts the
+installed NeoNews activity, samples QEMU working set/private memory and CPU in
+an idle phase and an application-workload phase, captures Android release/API/
+ABI/display/memory/graphics data, and runs a prolonged activity stability
+window before requesting QMP shutdown.
 
 ```powershell
 .\scripts\benchmark\Measure-QemuAndroidRuntime.ps1 `
   -ReportPath .\reports\qemu-baseline.json
 ```
 
-`Run-QemuNeoNewsBenchmark.ps1` repeats the same boot/shutdown cycle and reports
-boot min/average/max plus stability across all iterations. It does not install,
-uninstall, clear data, or recreate the qcow2 disk.
+`Run-QemuNeoNewsBenchmark.ps1` repeats the same boot, NeoNews launch, workload,
+stability and shutdown cycle. It reports ADB-ready, ADB-to-boot, boot-to-app,
+boot min/average/max, host memory/CPU samples, and stability across all
+iterations. It does not install, uninstall, clear data, or recreate the qcow2
+disk; the official APK and guest components must already be provisioned.
 
 ```powershell
 .\scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1 `
@@ -24,4 +28,6 @@ uninstall, clear data, or recreate the qcow2 disk.
 ```
 
 Both scripts fail when QEMU, the configured ADB, the persistent disk, or WHPX
-is missing. Shutdown uses QMP and never uses `adb emu kill`.
+is missing, or when the configured Android release/API or NeoNews activity is
+not stable. Use `-StabilitySeconds` to set the evidence window explicitly.
+Shutdown uses QMP and never uses `adb emu kill`.

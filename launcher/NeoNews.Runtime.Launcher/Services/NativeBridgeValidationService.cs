@@ -62,7 +62,7 @@ public sealed class NativeBridgeValidationService
         var primary = await _adb.GetPrimaryCpuAbiAsync(packageName, cancellationToken);
         var selected = primary is not null && apkAbis.Contains(primary, StringComparer.OrdinalIgnoreCase)
             ? primary
-            : apkAbis.FirstOrDefault(abi => abi.Equals(_context.Config.Android.NativeBridge.PreferredAbi, StringComparison.OrdinalIgnoreCase));
+            : null;
         var launched = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);
         var stable = false;
         if (guest.Ready && installSucceeded && selected is not null && launched)

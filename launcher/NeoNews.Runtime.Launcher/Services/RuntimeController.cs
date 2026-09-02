@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using NeoNews.Runtime.Launcher.Models;
 
 namespace NeoNews.Runtime.Launcher.Services;
@@ -154,6 +153,7 @@ public sealed class RuntimeController : IAsyncDisposable
                 await _backend.StartAsync(progress, cancellationToken);
                 _state.Set(RuntimeState.WaitingForAdb);
                 await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+                await EnsureGuestIdentityAsync(cancellationToken);
                 _state.Set(RuntimeState.Running);
                 await RefreshSnapshotAsync(cancellationToken);
                 progress?.Report(new RuntimeProgress("Android online", "O guest está pronto.", 100));
@@ -287,6 +287,7 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.WaitingForAdb);
             progress?.Report(new RuntimeProgress("Aguardando ADB", $"Conectando a {_adb.Serial}...", 35));
             await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+            await EnsureGuestIdentityAsync(cancellationToken);
             var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !bridge.Ready) throw new RuntimeOperationException("O Native Bridge ARM não está disponível.", bridge.Detail);
             var webView = await ReadWebViewAsync(cancellationToken);
@@ -353,6 +354,7 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.WaitingForAdb);
         }
         await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.BootSeconds)), cancellationToken);
+        await EnsureGuestIdentityAsync(cancellationToken);
         await _supervisor.StartAsync();
     }
 
@@ -364,16 +366,24 @@ public sealed class RuntimeController : IAsyncDisposable
         catch (Exception exception) { _logs.Warning("launcher", $"Não foi possível extrair ABIs do APK local: {exception.Message}"); return _context.Config.NeoNews.SupportedApkAbis; }
     }
 
+    private async Task EnsureGuestIdentityAsync(CancellationToken cancellationToken)
+    {
+        var guest = await _adb.ValidateGuestIdentityAsync(_context.Config.Android.Release, _context.Config.Android.ApiLevel, cancellationToken);
+        if (!guest.Ready)
+            throw new RuntimeOperationException("A imagem Android não corresponde ao runtime configurado.", guest.Detail);
+    }
+
     private async Task<(bool Ready, string Label, string Detail, string Version)> ReadWebViewAsync(CancellationToken cancellationToken)
     {
         var providerDump = await SafeAsync(() => _adb.GetWebViewDumpAsync(cancellationToken), cancellationToken);
         var packageDump = await SafeAsync(() => _adb.GetPackageDumpAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken);
-        var match = Regex.Match(packageDump, @"versionName=([^\s]+)");
-        var version = match.Success ? match.Groups[1].Value : string.Empty;
-        var providerReady = providerDump.Contains(_context.Config.WebView.Provider, StringComparison.OrdinalIgnoreCase);
-        var ready = providerReady && version.Equals(_context.Config.WebView.HomologatedVersion, StringComparison.OrdinalIgnoreCase);
+        var version = AndroidRuntimeParsing.ReadVersionName(packageDump) ?? string.Empty;
+        var primaryAbi = AndroidRuntimeParsing.ReadPrimaryCpuAbi(packageDump);
+        var providerReady = AndroidRuntimeParsing.IsActiveWebViewProvider(providerDump, _context.Config.WebView.Provider);
+        var abiReady = !_context.Config.WebView.RequireNativeGuestAbi || AndroidRuntimeParsing.IsX86Abi(primaryAbi);
+        var ready = providerReady && version.Equals(_context.Config.WebView.HomologatedVersion, StringComparison.OrdinalIgnoreCase) && abiReady;
         var label = string.IsNullOrWhiteSpace(version) ? "Não encontrado" : ready ? "Validado" : $"Divergente ({version})";
-        return (ready, label, $"providerAtivo={providerReady}; provider={_context.Config.WebView.Provider}; versão={version}; esperada={_context.Config.WebView.HomologatedVersion}", version);
+        return (ready, label, $"providerAtivo={providerReady}; provider={_context.Config.WebView.Provider}; versão={version}; esperada={_context.Config.WebView.HomologatedVersion}; primaryCpuAbi={primaryAbi}; ABI nativa x86={abiReady}", version);
     }
 
     private async Task<(bool Ready, string Detail, string DefaultEngine)> ValidateTtsAsync(CancellationToken cancellationToken)

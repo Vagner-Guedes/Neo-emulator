@@ -134,6 +134,23 @@ public sealed class AdbService
     public Task<string> GetPropertyAsync(string property, CancellationToken cancellationToken = default) =>
         ShellAsync(["getprop", property], TimeSpan.FromSeconds(10), cancellationToken);
 
+    public async Task<AndroidGuestValidationResult> ValidateGuestIdentityAsync(
+        string expectedRelease,
+        int expectedApiLevel,
+        CancellationToken cancellationToken = default)
+    {
+        var release = await GetPropertyAsync("ro.build.version.release", cancellationToken);
+        var api = await GetPropertyAsync("ro.build.version.sdk", cancellationToken);
+        var bootCompleted = await GetPropertyAsync("sys.boot_completed", cancellationToken);
+        var releaseMatches = string.IsNullOrWhiteSpace(expectedRelease) || release.Equals(expectedRelease, StringComparison.OrdinalIgnoreCase);
+        var apiMatches = api.Equals(expectedApiLevel.ToString(), StringComparison.OrdinalIgnoreCase);
+        var ready = bootCompleted == "1" && releaseMatches && apiMatches;
+        var detail = ready
+            ? $"Android {release} / API {api} com sys.boot_completed=1."
+            : $"Guest incompatível: release={release}; esperado={expectedRelease}; api={api}; esperada={expectedApiLevel}; sys.boot_completed={bootCompleted}.";
+        return new AndroidGuestValidationResult(release, api, bootCompleted, ready, detail);
+    }
+
     public Task<string> GetSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
         ShellAsync(["settings", "get", scope, name], TimeSpan.FromSeconds(15), cancellationToken);
 
@@ -276,15 +293,15 @@ public sealed class AdbService
     public Task InstallAuthorizedApkAsync(string apkPath, CancellationToken cancellationToken = default) => InstallApkAsync(apkPath, cancellationToken);
 
     public Task PutSettingAsync(string scope, string name, string value, CancellationToken cancellationToken = default) =>
-        ExecuteAndIgnoreAsync(["shell", "settings", "put", scope, name, value], TimeSpan.FromSeconds(20), cancellationToken);
+        ExecuteCheckedAsync(["shell", "settings", "put", scope, name, value], TimeSpan.FromSeconds(20), cancellationToken, $"settings put {scope}/{name}");
 
     public Task DeleteSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
-        ExecuteAndIgnoreAsync(["shell", "settings", "delete", scope, name], TimeSpan.FromSeconds(20), cancellationToken);
+        ExecuteCheckedAsync(["shell", "settings", "delete", scope, name], TimeSpan.FromSeconds(20), cancellationToken, $"settings delete {scope}/{name}");
 
     public async Task SetDisplayAsync(string size, int density, CancellationToken cancellationToken = default)
     {
-        await ExecuteAndIgnoreAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken);
-        await ExecuteAndIgnoreAsync(["shell", "wm", "density", density.ToString()], TimeSpan.FromSeconds(20), cancellationToken);
+        await ExecuteCheckedAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken, "wm size");
+        await ExecuteCheckedAsync(["shell", "wm", "density", density.ToString()], TimeSpan.FromSeconds(20), cancellationToken, "wm density");
     }
 
     public Task<string> GetDisplaySizeAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "size"], TimeSpan.FromSeconds(20), cancellationToken);
@@ -298,9 +315,15 @@ public sealed class AdbService
     public Task<string> GetGraphicsDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "gfxinfo"], TimeSpan.FromSeconds(30), cancellationToken);
     public Task<string> GetLogcatAsync(int lines, CancellationToken cancellationToken = default) => ShellAsync(["logcat", "-d", "-b", "all", "-t", lines.ToString()], TimeSpan.FromMinutes(2), cancellationToken);
 
-    private async Task ExecuteAndIgnoreAsync(IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken)
+    private async Task ExecuteCheckedAsync(IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken, string operation)
     {
-        _ = await ExecuteAsync(arguments, timeout, cancellationToken);
+        var result = await ExecuteAsync(arguments, timeout, cancellationToken);
+        if (!result.Succeeded)
+        {
+            throw new RuntimeOperationException(
+                "Não foi possível aplicar a configuração do Android.",
+                $"Operação: {operation}; exit code: {result.ExitCode}; stderr: {result.StandardError}; stdout: {result.StandardOutput}");
+        }
     }
 
     private void ValidateApkFile(string apkPath)
@@ -352,3 +375,10 @@ public sealed class AdbService
     private static void ReportStateProgress(IProgress<RuntimeProgress>? progress, string phase, string detail, double? percent) =>
         progress?.Report(new RuntimeProgress(phase, detail, percent));
 }
+
+public sealed record AndroidGuestValidationResult(
+    string Release,
+    string ApiLevel,
+    string BootCompleted,
+    bool Ready,
+    string Detail);

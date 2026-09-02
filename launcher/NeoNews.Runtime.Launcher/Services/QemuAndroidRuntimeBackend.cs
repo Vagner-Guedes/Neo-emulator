@@ -89,21 +89,27 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             var hostPort = _context.Config.Android.Adb.HostPort;
             var guestPort = _context.Config.Android.Adb.GuestPort;
             var qmpPort = qemu.QmpPort;
+            var requestedMemoryMb = Math.Max(512, qemu.MemoryMb);
+            var availableMemoryMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024L * 1024L);
+            var memoryLimitMb = availableMemoryMb > 0
+                ? Math.Max(512L, availableMemoryMb * 3 / 4)
+                : requestedMemoryMb;
+            var effectiveMemoryMb = Math.Min((long)requestedMemoryMb, memoryLimitMb);
             var arguments = new List<string>
             {
                 "-name", qemu.WindowTitle,
                 "-machine", string.IsNullOrWhiteSpace(qemu.Machine) ? "q35" : qemu.Machine,
                 "-accel", acceleration,
-                "-m", Math.Max(512, qemu.MemoryMb).ToString(),
+                "-m", effectiveMemoryMb.ToString(),
                 "-smp", Math.Max(1, Math.Min(qemu.CpuCores, Environment.ProcessorCount)).ToString(),
                 "-drive", $"file={disk},if=virtio,format=qcow2",
                 "-boot", "order=c",
                 "-netdev", $"user,id=neonewsnet,hostfwd=tcp:{host}:{hostPort}-:{guestPort}",
-                "-device", "virtio-net-pci,netdev=neonewsnet",
+                "-device", "virtio-net-pci,netdev=neonewsnet,id=neonewsnic",
                 "-qmp", $"tcp:127.0.0.1:{qmpPort},server=on,wait=off",
                 "-no-reboot",
                 "-vga", string.IsNullOrWhiteSpace(qemu.Gpu) ? "std" : qemu.Gpu,
-                "-display", qemu.ShowWindow ? $"gtk,window-title={qemu.WindowTitle}" : "none"
+                "-display", qemu.ShowWindow ? "default" : "none"
             };
 
             if (_context.Config.Android.Optimization.AudioOutput)
@@ -112,17 +118,6 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 arguments.Add("driver=dsound,id=neonewsaudio");
                 arguments.Add("-device");
                 arguments.Add("AC97,audiodev=neonewsaudio");
-            }
-
-            var image = _context.ResolveAndroidImagePath();
-            if (File.Exists(image))
-            {
-                arguments.Insert(10, image);
-                arguments.Insert(10, "-cdrom");
-            }
-            else
-            {
-                _logs.Warning("qemu", $"Imagem de instalação opcional não encontrada; usando somente o disco persistente: {image}");
             }
 
             progress?.Report(new RuntimeProgress("Iniciando Android", $"QEMU x86_64 com WHPX; ADB {host}:{hostPort} → guest:{guestPort}", 20));

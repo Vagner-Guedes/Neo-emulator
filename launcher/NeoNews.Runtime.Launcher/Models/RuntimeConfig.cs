@@ -192,6 +192,7 @@ public sealed class WebViewConfig
 {
     public string Provider { get; set; } = "com.google.android.webview";
     public string HomologatedVersion { get; set; } = string.Empty;
+    public bool RequireNativeGuestAbi { get; set; } = true;
     public string InstalledVersion { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public bool Validated { get; set; }

@@ -4,7 +4,13 @@ param(
     [switch]$RequireInstallerImage,
     [switch]$RequireNativeBridge,
     [switch]$RequireWebView,
-    [switch]$RequireTts
+    [switch]$RequireTts,
+    [string]$QemuOrigin,
+    [string]$AdbOrigin,
+    [string]$AndroidImageOrigin,
+    [string]$NativeBridgeOrigin,
+    [string]$WebViewOrigin,
+    [string]$TtsOrigin
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,17 +64,38 @@ foreach ($name in $paths.Keys) {
         }
     }
 }
+$origins = [ordered]@{
+    qemu = $QemuOrigin
+    adb = $AdbOrigin
+    disk = 'local-persistent-guest-disk'
+    installerImage = $AndroidImageOrigin
+    nativeBridge = $NativeBridgeOrigin
+    webView = $WebViewOrigin
+    tts = $TtsOrigin
+}
+$provenance = [ordered]@{}
+foreach ($name in $paths.Keys) {
+    $hasFile = $fileRecords.Contains($name)
+    $origin = [string]$origins[$name]
+    $provenance[$name] = [ordered]@{
+        path = $paths[$name]
+        sha256 = if ($hasFile) { $fileRecords[$name].sha256 } else { $null }
+        origin = if ([string]::IsNullOrWhiteSpace($origin)) { 'not-recorded' } else { $origin }
+        status = if (-not $hasFile) { 'not-present' } elseif ([string]::IsNullOrWhiteSpace($origin) -and $name -notin @('disk')) { 'present-origin-missing' } else { 'present' }
+    }
+}
 
 $state = [ordered]@{
     schema = 1
     androidImageVersion = $android.release
-    nativeBridgeStatus = if ($fileRecords.Contains('nativeBridge')) { 'provisioned-local' } else { 'not-provisioned' }
+    nativeBridgeStatus = if (-not $fileRecords.Contains('nativeBridge')) { 'not-provisioned' } elseif ([string]::IsNullOrWhiteSpace($NativeBridgeOrigin)) { 'provisioned-local-origin-missing' } else { 'provisioned-local-origin-recorded' }
     webViewVersion = $config.webView.homologatedVersion
-    ttsStatus = if ($fileRecords.Contains('tts')) { 'provisioned-local' } else { 'not-provisioned' }
+    ttsStatus = if (-not $fileRecords.Contains('tts')) { 'not-provisioned' } elseif ([string]::IsNullOrWhiteSpace($TtsOrigin)) { 'provisioned-local-origin-missing' } else { 'provisioned-local-origin-recorded' }
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
     imageHash = $fileRecords['disk'].sha256
     files = $fileRecords
+    provenance = $provenance
 }
 $state | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $statePath -Encoding utf8
 Write-Output ($state | ConvertTo-Json -Depth 8)

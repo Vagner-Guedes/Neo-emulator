@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
         RegisterGlobalExceptionHandlers();
+        SessionEnding += (_, _) => HandleSessionEnding();
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _singleInstance = new SingleInstanceService();
         var command = RuntimeCommandParser.Parse(e.Args);
@@ -136,9 +137,40 @@ public partial class App : System.Windows.Application
             _pipeCancellation?.Cancel();
             _tray?.Dispose();
             _mainWindow?.AllowClose();
+            ShutdownControllerForProcessExit();
             _pipeCancellation?.Dispose();
             _singleInstance?.Dispose();
         }
         base.OnExit(e);
+    }
+
+    private void ShutdownControllerForProcessExit()
+    {
+        if (_controller is null) return;
+        try
+        {
+            // OnExit is synchronous and can be raised by Windows session
+            // shutdown. Run the async cleanup off the dispatcher so QMP and
+            // process waits can finish without leaving QEMU orphaned.
+            var shutdown = Task.Run(() => _controller.ShutdownAsync(CancellationToken.None));
+            if (!shutdown.Wait(TimeSpan.FromSeconds(30)))
+                _controller.Logs.Warning("launcher", "Encerramento excedeu 30 segundos durante a saída do processo.");
+        }
+        catch (Exception exception)
+        {
+            try { _controller.Logs.Error("launcher", "Falha no encerramento síncrono do runtime.", exception); } catch { }
+        }
+    }
+
+    private void HandleSessionEnding()
+    {
+        if (_exiting) return;
+        _exiting = true;
+        _pipeCancellation?.Cancel();
+        _tray?.Dispose();
+        _mainWindow?.AllowClose();
+        ShutdownControllerForProcessExit();
+        _pipeCancellation?.Dispose();
+        _singleInstance?.Dispose();
     }
 }

@@ -22,6 +22,22 @@ Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do reposit�
 .\scripts\validation\Test-NativeBridge.ps1
 ```
 
+Depois do provisionamento do guest, os probes de integração são executados
+separadamente e falham sem declarar homologação quando falta evidência real:
+
+```powershell
+.\scripts\validation\Test-WebViewContent.ps1
+.\scripts\validation\Test-TtsSynthesis.ps1
+.\scripts\validation\Test-GuestNetworkMedia.ps1 -HlsUrl https://seu-host/aprovado/playlist.m3u8
+.\scripts\validation\Test-QemuPersistence.ps1
+.\scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1 -Iterations 3 -StabilitySeconds 60
+```
+
+O probe de rede/mídia exige uma URL HLS aprovada pelo ambiente e valida apenas
+o guest (DNS, HTTP/HTTPS, playlist, reprodução, cache e perda reversível da
+NIC); a renderização do conteúdo proprietário do NeoNews continua sendo uma
+etapa de homologação separada.
+
 O launcher WPF pode ser compilado com o SDK local .NET 8:
 
 ```powershell

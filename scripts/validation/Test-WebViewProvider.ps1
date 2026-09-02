@@ -41,6 +41,14 @@ function Wait-ForBoot {
     return $false
 }
 
+function Test-ActiveWebViewProvider {
+    param([string]$Dump, [string]$Provider)
+    $currentLine = $Dump -split "`r?`n" |
+        Where-Object { $_ -match '(?i)Current WebView package' } |
+        Select-Object -First 1
+    return $null -ne $currentLine -and $currentLine -match [regex]::Escape($Provider)
+}
+
 $adbRelativePath = Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath
 $adbPath = Resolve-ConfiguredPath $adbRelativePath
 if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) {
@@ -76,11 +84,15 @@ $api = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.
 $abi = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.product.cpu.abi')
 $versionMatch = [regex]::Match($packageDump, 'versionName=([^\s]+)')
 $installedVersion = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { $null }
+$primaryCpuAbiMatch = [regex]::Match($packageDump, 'primaryCpuAbi=([^\s]+)')
+$primaryCpuAbi = if ($primaryCpuAbiMatch.Success) { $primaryCpuAbiMatch.Groups[1].Value } else { $null }
 $expectedVersion = [string]$config.webView.homologatedVersion
 $providerPresent = $packageList -match [regex]::Escape("package:$packageName")
-$providerActive = $webViewDump -match [regex]::Escape($packageName)
+$providerActive = Test-ActiveWebViewProvider -Dump $webViewDump -Provider $packageName
 $versionMatches = $installedVersion -eq $expectedVersion
 $apiMatches = $api -eq [string]$config.android.apiLevel
+$nativeGuestAbi = $primaryCpuAbi -in @('x86', 'x86_64')
+$nativeAbiMatches = -not [bool]$config.webView.requireNativeGuestAbi -or $nativeGuestAbi
 
 $contentTest = $null
 if (-not [string]::IsNullOrWhiteSpace($ContentUrl)) {
@@ -100,8 +112,8 @@ if (-not [string]::IsNullOrWhiteSpace($ContentUrl)) {
     }
 }
 
-$providerValidated = $providerPresent -and $providerActive -and $versionMatches -and $apiMatches
-$status = if ($providerValidated -and ($null -eq $contentTest -or $contentTest.succeeded)) { 'validated' } elseif (-not $providerPresent) { 'missing-provider' } elseif (-not $versionMatches) { 'version-mismatch' } elseif (-not $apiMatches) { 'api-mismatch' } elseif ($null -ne $contentTest) { 'content-test-failed' } else { 'provider-inactive' }
+$providerValidated = $providerPresent -and $providerActive -and $versionMatches -and $apiMatches -and $nativeAbiMatches
+$status = if ($providerValidated -and ($null -eq $contentTest -or $contentTest.succeeded)) { 'validated' } elseif (-not $providerPresent) { 'missing-provider' } elseif (-not $versionMatches) { 'version-mismatch' } elseif (-not $apiMatches) { 'api-mismatch' } elseif (-not $nativeAbiMatches) { 'non-native-guest-abi' } elseif ($null -ne $contentTest) { 'content-test-failed' } else { 'provider-inactive' }
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     transport = $config.android.adb.transport
@@ -114,6 +126,9 @@ $result = [ordered]@{
         packagePresent = $providerPresent
         providerActive = $providerActive
         versionMatches = $versionMatches
+        primaryCpuAbi = $primaryCpuAbi
+        nativeGuestAbi = $nativeGuestAbi
+        nativeAbiMatches = $nativeAbiMatches
         status = if ($providerValidated) { 'validated' } else { 'not-validated' }
     }
     contentTest = $contentTest

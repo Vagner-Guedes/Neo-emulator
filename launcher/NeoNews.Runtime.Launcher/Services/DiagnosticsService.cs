@@ -58,6 +58,7 @@ public sealed class DiagnosticsService
         var apkAbis = ReadApkAbis();
         var apkSignature = ReadApkSignature();
         var primaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_neoNews.PackageName, cancellationToken), cancellationToken) ?? string.Empty : string.Empty;
+        var webViewPrimaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken) : null;
         var validatedAbi = _getAbiCompatibility?.Invoke();
         var selectedApkAbi = validatedAbi?.SelectedApkAbi ?? (!string.IsNullOrWhiteSpace(primaryCpuAbi) && apkAbis.Contains(primaryCpuAbi, StringComparer.OrdinalIgnoreCase)
             ? primaryCpuAbi
@@ -68,6 +69,7 @@ public sealed class DiagnosticsService
         var rawLogcat = adbOnline ? await SafeAsync(() => _adb.GetLogcatAsync(240, cancellationToken), cancellationToken) : string.Empty;
         var relevantLogcat = FilterRelevantLogcat(rawLogcat);
         var startupRegistered = await SafeBoolAsync(() => _startup.IsRegisteredAsync(cancellationToken), cancellationToken);
+        var startupValid = startupRegistered && await SafeBoolAsync(() => _startup.ValidateAsync(Environment.ProcessPath ?? string.Empty, cancellationToken), cancellationToken);
 
         var report = new
         {
@@ -81,6 +83,7 @@ public sealed class DiagnosticsService
                 architecture = RuntimeInformation.OSArchitecture.ToString(),
                 processArchitecture = RuntimeInformation.ProcessArchitecture.ToString(),
                 is64BitProcess = Environment.Is64BitProcess,
+                processor = Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER") ?? string.Empty,
                 processorCount = Environment.ProcessorCount,
                 availableMemoryBytes = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes,
                 freeSpaceBytes = drive.AvailableFreeSpace,
@@ -94,18 +97,25 @@ public sealed class DiagnosticsService
                 backend = _backend.Name,
                 backendProcessId = _backend.ProcessId,
                 backendProcess = backendRunning,
+                backendWindowHandle = _backend.WindowHandle.ToInt64(),
                 qemu = _context.ResolveQemuPath(),
                 qemuVersion,
                 androidDisk = _context.ResolveAndroidDiskPath(),
+                runtimeDirectory = _context.RootDirectory,
                 requiredFiles = integrity,
                 whpx
             },
             android = new
             {
-                state = adbOnline ? "Online" : backendRunning ? "Booting" : "Offline",
+                state = guest.BootCompleted == "1" ? "Online" : backendRunning ? "Booting" : "Offline",
                 adb = new { online = adbOnline, state = _adb.State.ToString(), serial = _adb.Serial },
                 release = guest.Release,
                 apiLevel = guest.ApiLevel,
+                expectedRelease = _context.Config.Android.Release,
+                expectedApiLevel = _context.Config.Android.ApiLevel,
+                identityMatches = guest.BootCompleted == "1" &&
+                                   guest.Release.Equals(_context.Config.Android.Release, StringComparison.OrdinalIgnoreCase) &&
+                                   guest.ApiLevel.Equals(_context.Config.Android.ApiLevel.ToString(), StringComparison.OrdinalIgnoreCase),
                 abi = guest.Abi,
                 abiList = guest.AbiList,
                 abi2 = guest.Abi2,
@@ -146,8 +156,14 @@ public sealed class DiagnosticsService
                 expected = _context.Config.WebView.HomologatedVersion,
                 installed = webViewVersion,
                 provider = _context.Config.WebView.Provider,
-                providerActive = webViewDump.Contains(_context.Config.WebView.Provider, StringComparison.OrdinalIgnoreCase),
-                status = webViewVersion == _context.Config.WebView.HomologatedVersion && webViewDump.Contains(_context.Config.WebView.Provider, StringComparison.OrdinalIgnoreCase) ? "validated" : "version-mismatch"
+                primaryCpuAbi = webViewPrimaryCpuAbi,
+                providerActive = AndroidRuntimeParsing.IsActiveWebViewProvider(webViewDump, _context.Config.WebView.Provider),
+                nativeGuestAbi = AndroidRuntimeParsing.IsX86Abi(webViewPrimaryCpuAbi),
+                status = webViewVersion == _context.Config.WebView.HomologatedVersion &&
+                         AndroidRuntimeParsing.IsActiveWebViewProvider(webViewDump, _context.Config.WebView.Provider) &&
+                         (!_context.Config.WebView.RequireNativeGuestAbi || AndroidRuntimeParsing.IsX86Abi(webViewPrimaryCpuAbi))
+                    ? "validated"
+                    : "version-mismatch"
             },
             voice = new
             {
@@ -161,7 +177,7 @@ public sealed class DiagnosticsService
                     .ToArray()
             },
             watchdog = new { active = _supervisor.IsActive },
-            startup = new { registered = startupRegistered },
+            startup = new { registered = startupRegistered, valid = startupValid, executable = Environment.ProcessPath },
             memory,
             graphics,
             logcat = relevantLogcat
@@ -218,7 +234,12 @@ public sealed class DiagnosticsService
         {
             ["qemu"] = _context.ResolveQemuPath(),
             ["adb"] = _context.ResolveAdbPath(),
-            ["androidDisk"] = _context.ResolveAndroidDiskPath()
+            ["androidDisk"] = _context.ResolveAndroidDiskPath(),
+            ["androidImage"] = _context.ResolveAndroidImagePath(),
+            ["neoNewsApk"] = _context.ResolveApkPath(),
+            ["webViewPackage"] = _context.ResolveProvisioningPackagePath(_context.Config.Android.Provisioning.WebViewPackagePath),
+            ["ttsPackage"] = _context.ResolveProvisioningPackagePath(_context.Config.Android.Provisioning.TtsPackagePath),
+            ["nativeBridgePackage"] = _context.ResolveProvisioningPackagePath(_context.Config.Android.Provisioning.NativeBridgePackagePath)
         };
         var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in paths)
@@ -240,8 +261,7 @@ public sealed class DiagnosticsService
     private async Task<string?> GetWebViewVersionAsync(CancellationToken cancellationToken)
     {
         var dump = await SafeAsync(() => _adb.GetPackageDumpAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken);
-        var match = Regex.Match(dump, @"versionName=([^\s]+)");
-        return match.Success ? match.Groups[1].Value : null;
+        return AndroidRuntimeParsing.ReadVersionName(dump);
     }
 
     private async Task<NativeBridgeValidationResult?> SafeNativeBridgeAsync(CancellationToken cancellationToken)

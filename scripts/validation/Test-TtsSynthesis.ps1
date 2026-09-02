@@ -119,6 +119,8 @@ if ($BuildOnly) {
 $null = (Invoke-Adb @('start-server'))
 if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $Serial) }
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial." }
+$defaultEngine = (Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')).Text
+$defaultEngineMatches = $defaultEngine -match '(?i)rhvoice'
 $install = Invoke-Adb @('-s', $Serial, 'install', '-r', $probeApk)
 if ($install.ExitCode -ne 0 -or $install.Text -notmatch '(?im)\bSuccess\b') { throw "Falha ao instalar o probe TTS: $($install.Text)" }
 $null = Invoke-Adb @('-s', $Serial, 'shell', 'am', 'force-stop', $probePackage)
@@ -135,7 +137,10 @@ while ((Get-Date) -lt $deadline) {
 $audioListing = (Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'ls', '-l', 'files/tts.wav')).Text
 $audioSizeMatch = [regex]::Match($audioListing, '\s(\d+)\s+tts\.wav$')
 $audioBytes = if ($audioSizeMatch.Success) { [int64]$audioSizeMatch.Groups[1].Value } else { 0 }
-$synthesisSucceeded = $probeResult -match '^status=ok' -and $audioBytes -gt 0
+$probeEngineMatch = [regex]::Match($probeResult, 'engine=([^;]+)')
+$probeEngine = if ($probeEngineMatch.Success) { $probeEngineMatch.Groups[1].Value } else { '' }
+$probeLocale = $probeResult -match '(?i)locale=pt-BR'
+$synthesisSucceeded = $probeResult -match '^status=ok' -and $audioBytes -gt 0 -and $defaultEngineMatches -and $probeEngine -match '(?i)rhvoice' -and $probeLocale
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     transport = $config.android.adb.transport
@@ -144,7 +149,11 @@ $result = [ordered]@{
     phrase = 'Teste de voz do NeoNews Runtime.'
     locale = [string]$config.tts.locale
     requestedEngine = [string]$config.tts.engine
+    defaultEngine = $defaultEngine
+    defaultEngineMatches = $defaultEngineMatches
     probeResult = $probeResult
+    probeEngine = $probeEngine
+    probeLocale = $probeLocale
     audio = [ordered]@{ path = 'files/tts.wav'; bytes = $audioBytes; nonEmpty = $audioBytes -gt 0 }
     status = if ($synthesisSucceeded) { 'validated' } else { 'synthesis-failed' }
 }

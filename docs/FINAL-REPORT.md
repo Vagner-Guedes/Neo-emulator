@@ -19,12 +19,13 @@ O projeto agora possui o caminho de runtime preparado para a homologação funci
 | Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi` e relatório de compatibilidade | implementado; não homologado |
 | NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
 | Persistência | qcow2 externo e estado em `runtime/state/provisioning.json` | implementado; não executado |
-| WebView/TTS | provider ativo, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e engine padrão são pré-condições do fluxo completo | implementado; não homologado |
+| WebView/TTS | provider ativo, ABI nativa, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e síntese real são pré-condições do fluxo completo | implementado; não homologado |
+| Rede/mídia/offline | probe local para DNS, HTTP/HTTPS, HLS/MediaPlayer, cache e NIC QMP reversível | implementado; não executado sem guest provisionado |
 | Kiosk | serviço existente usa o contrato do backend e localiza a janela por PID/título | compilado |
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown e limite de tentativas | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
 | Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
-| Regressão | `Test-RuntimeRepository.ps1` | 24 scripts, JSON e ignore checks aprovados |
+| Regressão | `Test-RuntimeRepository.ps1` | 26 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; APK externo copiado sem alteração (58.954.286 bytes) |

@@ -1,8 +1,9 @@
 # Entradas proprietárias fornecidas externamente; não distribuir no repositório.
 /app.apk
 /packages/neonews/*.apk
-/packages/webview/*.apk
-/packages/tts/*.apk
+/packages/webview/*
+/packages/tts/*
+/packages/nativebridge/*
 /NeoNews.apk
 **/NeoNews.apk
 
@@ -18,6 +19,7 @@
 # Artefatos de build e arquivos locais do .NET/WPF.
 /tools/tts-probe/build/
 /tools/webview-probe/build/
+/tools/media-probe/build/
 [Bb]in/
 [Oo]bj/
 /dist/

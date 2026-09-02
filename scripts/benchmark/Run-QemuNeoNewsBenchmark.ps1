@@ -3,6 +3,9 @@ param(
     [string]$ConfigPath,
     [int]$Iterations = 3,
     [int]$BootTimeoutSeconds = 180,
+    [int]$NeoNewsTimeoutSeconds = 120,
+    [int]$StabilitySeconds = 60,
+    [int]$HostSampleSeconds = 2,
     [string]$ReportPath = 'reports/qemu-benchmark.json'
 )
 
@@ -29,23 +32,55 @@ $arguments = New-QemuBenchmarkArguments -Config $config -DiskPath $paths.Disk -R
 $runs = @()
 for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
     $startedAt = Get-Date
-    $process = Start-QemuBenchmarkProcess -Executable $paths.Qemu -Arguments $arguments -WorkingDirectory $repositoryRoot
-    $processId = $process.Id
-    $booted = Wait-QemuBenchmarkBoot -AdbPath $paths.Adb -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
-    $bootSeconds = if ($booted) { [math]::Round(((Get-Date) - $startedAt).TotalSeconds, 2) } else { $null }
-    $metrics = if ($booted) { Get-QemuBenchmarkMetrics -AdbPath $paths.Adb -Serial $serial -Config $config } else { $null }
-    $stopped = Stop-QemuBenchmarkProcess -Process $process -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+    $process = $null
+    $processId = $null
+    $milestones = $null
+    $launch = $null
+    $hostIdle = $null
+    $hostWorkload = $null
+    $metrics = $null
+    $stability = $null
+    $stopped = $false
+    try {
+        $process = Start-QemuBenchmarkProcess -Executable $paths.Qemu -Arguments $arguments -WorkingDirectory $repositoryRoot
+        $processId = $process.Id
+        $milestones = Wait-QemuBenchmarkMilestones -AdbPath $paths.Adb -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
+        if ($milestones.booted) {
+            $hostIdle = Get-QemuHostMetrics -Process $process -SampleSeconds $HostSampleSeconds
+            $launch = Start-QemuBenchmarkNeoNews -AdbPath $paths.Adb -Serial $serial -Config $config -TimeoutSeconds $NeoNewsTimeoutSeconds
+            if ($launch.activityRunning -and $milestones.bootedAt) { $launch['bootToNeoNewsSeconds'] = [math]::Round(((Get-Date) - $milestones.bootedAt).TotalSeconds, 2) }
+            $hostWorkload = if ($launch.activityRunning) { Get-QemuHostMetrics -Process $process -SampleSeconds $HostSampleSeconds } else { $null }
+            $metrics = Get-QemuBenchmarkMetrics -AdbPath $paths.Adb -Serial $serial -Config $config
+            $metrics.identityMatches = [string]$metrics.release -eq [string]$config.android.release -and [string]$metrics.apiLevel -eq [string]$config.android.apiLevel
+            $stability = if ($launch.activityRunning) {
+                Test-QemuBenchmarkStability -Process $process -AdbPath $paths.Adb -Serial $serial -ActivityComponent $launch.component -DurationSeconds $StabilitySeconds
+            } else { [ordered]@{ durationSeconds = $StabilitySeconds; stable = $false; samples = @(); reason = 'activity-not-running' } }
+        }
+    }
+    finally {
+        if ($process) {
+            $stopped = Stop-QemuBenchmarkProcess -Process $process -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+            $process = $null
+        }
+    }
     $runs += [pscustomobject]@{
         iteration = $iteration
         processId = $processId
-        booted = $booted
-        bootSeconds = $bootSeconds
+        adbReady = if ($milestones) { $milestones.adbReady } else { $false }
+        adbReadySeconds = if ($milestones) { $milestones.adbReadySeconds } else { $null }
+        booted = if ($milestones) { $milestones.booted } else { $false }
+        bootSeconds = if ($milestones) { $milestones.bootSeconds } else { $null }
+        adbToBootSeconds = if ($milestones) { $milestones.adbToBootSeconds } else { $null }
         stopped = $stopped
+        app = $launch
+        hostIdle = $hostIdle
+        hostWorkload = $hostWorkload
         guest = $metrics
+        stability = $stability
     }
     if ($iteration -lt $Iterations) { Start-Sleep -Seconds 2 }
 }
-$successful = @($runs | Where-Object { $_.booted -and $_.stopped })
+$successful = @($runs | Where-Object { $_.booted -and $_.stopped -and $_.guest.identityMatches -and $_.app.launchSucceeded -and $_.app.activityRunning -and $_.stability.stable })
 $bootValues = @($runs | Where-Object { $null -ne $_.bootSeconds } | ForEach-Object { [double]$_.bootSeconds })
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
@@ -61,6 +96,9 @@ $result = [ordered]@{
         bootAverageSeconds = if ($bootValues.Count) { [math]::Round(($bootValues | Measure-Object -Average).Average, 2) } else { $null }
         bootMaxSeconds = if ($bootValues.Count) { ($bootValues | Measure-Object -Maximum).Maximum } else { $null }
         stableAcrossAllRestarts = $successful.Count -eq $Iterations
+        neoNewsLaunchSeconds = @($runs | Where-Object { $null -ne $_.app.launchSeconds } | ForEach-Object { [double]$_.app.launchSeconds })
+        bootToNeoNewsSeconds = @($runs | Where-Object { $null -ne $_.app.bootToNeoNewsSeconds } | ForEach-Object { [double]$_.app.bootToNeoNewsSeconds })
+        stabilitySeconds = $StabilitySeconds
     }
     status = if ($successful.Count -eq $Iterations) { 'qemu-runtime-stable' } else { 'incomplete' }
 }

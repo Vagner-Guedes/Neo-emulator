@@ -45,13 +45,15 @@ public sealed class RuntimeContext
     {
         var configured = ResolvePath(Path.Combine(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.AdbRelativePath));
         if (File.Exists(configured)) return configured;
-        return FindToolInRoots("adb.exe", Config.Android.Tooling.AdbRelativePath);
+        return Config.Android.Tooling.AllowEnvironmentFallback
+            ? FindToolInRoots("adb.exe", Config.Android.Tooling.AdbRelativePath)
+            : configured;
     }
 
     public string ResolveQemuPath()
     {
         var configured = ResolvePath(Config.Android.Qemu.Executable);
-        return File.Exists(configured) ? configured : configured;
+        return configured;
     }
 
     public string ResolveAndroidDiskPath() => ResolvePath(Config.Android.Qemu.Disk);
@@ -66,7 +68,9 @@ public sealed class RuntimeContext
     {
         var configured = ResolvePath(Path.Combine(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.EmulatorRelativePath));
         if (File.Exists(configured)) return configured;
-        return FindToolInRoots("emulator.exe", Config.Android.Tooling.EmulatorRelativePath);
+        return Config.Android.Tooling.AllowEnvironmentFallback
+            ? FindToolInRoots("emulator.exe", Config.Android.Tooling.EmulatorRelativePath)
+            : configured;
     }
 
     public string ResolveApkPath()

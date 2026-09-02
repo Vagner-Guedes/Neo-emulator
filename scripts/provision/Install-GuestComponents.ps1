@@ -6,6 +6,9 @@ param(
     [switch]$InstallWebView,
     [switch]$InstallTts,
     [switch]$SetRhVoiceDefault,
+    [string]$NativeBridgeOrigin,
+    [string]$WebViewOrigin,
+    [string]$TtsOrigin,
     [int]$BootTimeoutSeconds = 180,
     [string]$ReportPath = 'reports/guest-components.json'
 )
@@ -46,16 +49,34 @@ function Wait-ForBoot {
 }
 
 function Install-Component {
-    param([string]$Name, [string]$Path)
+    param([string]$Name, [string]$Path, [string]$Origin)
     if (-not (Test-Path -LiteralPath $Path)) { throw "$Name não encontrado: $Path" }
     $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
     if (-not $PSCmdlet.ShouldProcess($Path, "instalar $Name no serial $script:Serial com adb install -r")) {
-        return [ordered]@{ name = $Name; path = $Path; sha256 = $hash; attempted = $false; succeeded = $false; output = 'WHATIF' }
+        return [ordered]@{ name = $Name; path = $Path; sha256 = $hash; origin = if ($Origin) { $Origin } else { 'not-recorded' }; attempted = $false; succeeded = $false; output = 'WHATIF' }
     }
     $result = Invoke-Adb @('-s', $script:Serial, 'install', '-r', $Path)
     $succeeded = $result.ExitCode -eq 0 -and $result.Text -match '(?im)\bSuccess\b'
     if (-not $succeeded) { throw "Falha ao instalar ${Name}: $($result.Text)" }
-    return [ordered]@{ name = $Name; path = $Path; sha256 = $hash; attempted = $true; succeeded = $true; output = $result.Text }
+    return [ordered]@{ name = $Name; path = $Path; sha256 = $hash; origin = if ($Origin) { $Origin } else { 'not-recorded' }; attempted = $true; succeeded = $true; output = $result.Text }
+}
+
+function Assert-NativeWebViewAbi {
+    param([string]$Path)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    try {
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+        try {
+            $abis = @($archive.Entries | ForEach-Object {
+                if ($_.FullName -match '^lib/([^/]+)/') { $Matches[1] }
+            } | Sort-Object -Unique)
+        }
+        finally { $archive.Dispose() }
+    }
+    catch { throw "O pacote WebView não pôde ser lido como APK/ZIP: $Path. $($_.Exception.Message)" }
+    if ($abis.Count -eq 0 -or ($abis -notcontains 'x86' -and $abis -notcontains 'x86_64')) {
+        throw "O WebView fornecido não contém ABI nativa x86/x86_64: $($abis -join ', '). Não instalar um WebView ARM no guest x86."
+    }
 }
 
 $adbRelativePath = Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath
@@ -83,9 +104,13 @@ if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos." }
 
 $components = New-Object System.Collections.Generic.List[object]
-if ($InstallNativeBridge) { $components.Add((Install-Component 'Native Bridge' (Resolve-ConfiguredPath $config.android.provisioning.nativeBridgePackagePath))) }
-if ($InstallWebView) { $components.Add((Install-Component 'WebView' (Resolve-ConfiguredPath $config.android.provisioning.webViewPackagePath))) }
-if ($InstallTts) { $components.Add((Install-Component 'RHVoice' (Resolve-ConfiguredPath $config.android.provisioning.ttsPackagePath))) }
+if ($InstallNativeBridge) { $components.Add((Install-Component 'Native Bridge' (Resolve-ConfiguredPath $config.android.provisioning.nativeBridgePackagePath) $NativeBridgeOrigin)) }
+if ($InstallWebView) {
+    $webViewPath = Resolve-ConfiguredPath $config.android.provisioning.webViewPackagePath
+    Assert-NativeWebViewAbi $webViewPath
+    $components.Add((Install-Component 'WebView' $webViewPath $WebViewOrigin))
+}
+if ($InstallTts) { $components.Add((Install-Component 'RHVoice' (Resolve-ConfiguredPath $config.android.provisioning.ttsPackagePath) $TtsOrigin)) }
 
 $packages = (Invoke-Adb @('-s', $Serial, 'shell', 'pm', 'list', 'packages')).Text
 $webViewDump = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'package', [string]$config.webView.provider)).Text
@@ -110,16 +135,26 @@ $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath
 $reportDirectory = Split-Path -Parent $reportFullPath
 if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 
+$provenance = [ordered]@{}
+foreach ($component in $components) {
+    $provenance[$component.name] = [ordered]@{
+        path = $component.path
+        sha256 = $component.sha256
+        origin = $component.origin
+        status = if ($component.succeeded) { 'installed' } else { 'not-installed' }
+    }
+}
 $state = [ordered]@{
     schema = 1
     androidImageVersion = $config.android.release
-    nativeBridgeStatus = if ($InstallNativeBridge) { 'installed-local-pending-runtime-test' } else { 'unchanged' }
+    nativeBridgeStatus = if (-not $InstallNativeBridge) { 'unchanged' } elseif ([string]::IsNullOrWhiteSpace($NativeBridgeOrigin)) { 'installed-local-origin-missing-pending-runtime-test' } else { 'installed-local-origin-recorded-pending-runtime-test' }
     webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { '' }
     ttsStatus = if ($rhvoicePackages.Count -gt 0 -and $defaultEngine -match '(?i)rhvoice') { 'selected-local-pending-synthesis-test' } elseif ($rhvoicePackages.Count -gt 0) { 'installed-local-not-selected' } else { 'missing' }
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
     imageHash = ''
     files = @($components)
+    provenance = $provenance
     guest = [ordered]@{ serial = $Serial; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
 }
 $stateJson = $state | ConvertTo-Json -Depth 10

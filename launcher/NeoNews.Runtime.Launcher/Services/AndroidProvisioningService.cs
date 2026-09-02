@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using NeoNews.Runtime.Launcher.Models;
 
 namespace NeoNews.Runtime.Launcher.Services;
@@ -13,6 +14,16 @@ public sealed class ProvisioningState
     public string NeoNewsVersion { get; set; } = string.Empty;
     public DateTimeOffset LastValidation { get; set; }
     public string ImageHash { get; set; } = string.Empty;
+    [JsonPropertyName("provenance")]
+    public Dictionary<string, ProvisionedComponent> Provenance { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class ProvisionedComponent
+{
+    public string Path { get; set; } = string.Empty;
+    public string Sha256 { get; set; } = string.Empty;
+    public string Origin { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
 }
 
 public sealed class AndroidProvisioningService

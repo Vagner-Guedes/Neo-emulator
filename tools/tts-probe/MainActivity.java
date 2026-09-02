@@ -53,8 +53,15 @@ public final class MainActivity extends Activity {
 
             @Override
             public void onDone(String utteranceId) {
+                if ("synthesis".equals(utteranceId)) {
+                    synthesisDone = true;
+                    Bundle params = new Bundle();
+                    params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "speak");
+                    if (textToSpeech.speak(TEXT, TextToSpeech.QUEUE_FLUSH, params, "speak") != TextToSpeech.SUCCESS) {
+                        finishWithError("speak-request-failed");
+                    }
+                }
                 if ("speak".equals(utteranceId)) speakDone = true;
-                if ("synthesis".equals(utteranceId)) synthesisDone = true;
                 if (speakDone && synthesisDone) {
                     writeResult("status=ok;engine=" + textToSpeech.getDefaultEngine() + ";locale=pt-BR");
                 }
@@ -71,12 +78,9 @@ public final class MainActivity extends Activity {
             }
         });
 
-        Bundle params = new Bundle();
-        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "speak");
-        int speakStatus = textToSpeech.speak(TEXT, TextToSpeech.QUEUE_FLUSH, params, "speak");
         int synthesisStatus = textToSpeech.synthesizeToFile(TEXT, null, audioFile, "synthesis");
-        if (synthesisStatus != TextToSpeech.SUCCESS || speakStatus != TextToSpeech.SUCCESS) {
-            finishWithError("request-failed:synthesis=" + synthesisStatus + ",speak=" + speakStatus);
+        if (synthesisStatus != TextToSpeech.SUCCESS) {
+            finishWithError("request-failed:synthesis=" + synthesisStatus);
         }
     }
 

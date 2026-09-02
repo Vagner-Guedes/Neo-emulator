@@ -51,9 +51,13 @@ public sealed class NeoNewsService
         }
         ValidateAuthorizedApk(apkPath);
         var status = await GetStatusAsync(cancellationToken);
+        var installedVersionCode = status.Installed
+            ? await _adb.GetPackageVersionCodeAsync(PackageName, cancellationToken)
+            : null;
         var versionMismatch = status.Installed &&
                               !string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) &&
                               !string.Equals(status.Version, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase);
+        versionMismatch = versionMismatch || (status.Installed && _context.Config.NeoNews.VersionCode > 0 && installedVersionCode != _context.Config.NeoNews.VersionCode);
         if (!status.Installed || versionMismatch)
         {
             progress?.Report(new RuntimeProgress("Instalando NeoNews", "APK local autorizado encontrado; instalando no Android...", 78));
