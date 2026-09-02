@@ -77,7 +77,7 @@ public sealed class KioskService
             await _adb.PutSettingAsync("system", "user_rotation", ResolveRotation(kiosk.Orientation).ToString(), cancellationToken);
             await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
 
-            var windowCaptured = CaptureAndMaximizeEmulatorWindow();
+            var windowCaptured = await CaptureAndMaximizeEmulatorWindowAsync(cancellationToken);
             var windowRequired = _context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
                 ? _context.Config.Android.Qemu.ShowWindow
                 : _context.Config.Android.Emulator.ShowWindow;
@@ -230,6 +230,21 @@ public sealed class KioskService
             return false;
         }
         return true;
+    }
+
+    private async Task<bool> CaptureAndMaximizeEmulatorWindowAsync(CancellationToken cancellationToken)
+    {
+        // QEMU can publish its native window after the process and guest are
+        // already running. Retry briefly using the backend PID/title pair;
+        // never search for an unrelated global window by title alone.
+        const int attempts = 12;
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (CaptureAndMaximizeEmulatorWindow()) return true;
+            if (attempt + 1 < attempts) await Task.Delay(250, cancellationToken);
+        }
+        return false;
     }
 
     private bool IsKioskWindowApplied()
