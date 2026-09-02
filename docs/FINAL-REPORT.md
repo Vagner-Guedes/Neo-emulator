@@ -6,7 +6,7 @@ Data da atualização: **2026-09-02**
 
 O projeto agora possui o caminho de runtime preparado para a homologação funcional do APK ARM oficial, sem modificar, recompilar, resignar ou substituir o APK. O backend padrão foi migrado para **QEMU x86_64 + WHPX**, com Android-x86 7.1.2/API 25, disco persistente, janela gráfica identificável e ADB sobre TCP.
 
-**Status atual: NÃO HOMOLOGADO.** A infraestrutura foi implementada e verificada estaticamente, mas os binários externos do QEMU, ADB, imagem Android-x86, disco qcow2, Native Bridge, WebView 119 e RHVoice ainda não estão presentes nesta cópia de trabalho. Portanto, não há evidência honesta de execução do NeoNews no novo guest.
+**Status atual: NÃO HOMOLOGADO.** A infraestrutura foi implementada e verificada estaticamente. A ISO oficial Android-x86 7.1-r5 já está presente e validada por SHA-1 (`1E65CB2E37B415576939398BAF4C8A92330FBB24`), mas QEMU standalone, ADB, disco qcow2, Native Bridge, WebView 119 e RHVoice ainda não estão provisionados nesta cópia de trabalho. Portanto, não há evidência honesta de execução do NeoNews no novo guest.
 
 Os gates de instalação, ABI, kiosk e provisionamento foram deliberadamente
 endurecidos nesta rodada: o launcher não transforma um pacote já presente em
@@ -40,7 +40,7 @@ falhar.
 
 ## Verificacao local desta rodada
 
-A publicação de verificação `dist/NeoNewsRuntime-current` foi gerada depois do build Release e passou pelo smoke do executável publicado. O relatório registrou janela WPF responsiva, single-instance, CLI, `--exit`, caminho com espaços e ausência de processos residuais; os campos manuais de console, tray e hotkey foram registrados explicitamente. A coleta fresca `--diagnostics` também terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponível e os arquivos externos ausentes.
+A publicação de verificação `dist/NeoNewsRuntime-current` foi gerada depois do build Release e passou pelo smoke do executável publicado. O relatório registrou janela WPF responsiva, single-instance, CLI, `--exit`, caminho com espaços e ausência de processos residuais; os campos manuais de console, tray e hotkey foram registrados explicitamente. A coleta fresca `--diagnostics` também terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponível, a ISO Android-x86 validada e os demais arquivos externos ausentes.
 
 Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo. O smoke do launcher também grava, por padrão, ao lado do executável que foi testado; o checklist compara esse diretório com o diagnóstico e com a estabilidade integrada quando ambos existem, evitando misturar publicações diferentes.
 
@@ -58,7 +58,7 @@ imagem Android quando solicitada; o boot rejeita estado sem essa proveniencia
 ou sem SHA-256 forte. A instalacao opt-in de Native Bridge, WebView e RHVoice
 continua exigindo origem/licenca por componente.
 
-O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
+O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, o disco/guest inicializado, Native Bridge, WebView e RHVoice nao estao provisionados.
 
 Os relatorios de benchmark so podem aprovar o gate de desligamento quando registram a negociacao QMP, o envio de `quit`, a saida do processo e `forcedKill=false` em todas as execucoes.
 
@@ -81,7 +81,7 @@ O provisionamento é separado da execução normal. [`Provision-QemuAndroidRunti
 
 Para alterar o status, ainda é necessário executar no mesmo runtime:
 
-1. provisionar a release oficial Android-x86 7.1-r5/API 25 e o disco persistente;
+1. criar/provisionar o disco persistente a partir da ISO Android-x86 7.1-r5/API 25 já validada;
 2. provisionar QEMU x86_64 e ADB localmente, com origem e hashes registrados;
 3. provisionar uma Native Bridge legalmente redistribuível e provar a instalação do APK sem `INSTALL_FAILED_NO_MATCHING_ABIS`;
 4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` exatamente;
