@@ -42,6 +42,125 @@ function Invoke-Adb([string[]]$Arguments) {
     return (Invoke-AdbResult $Arguments).Text
 }
 
+function Read-ApkUInt16([byte[]]$Data, [int]$Offset) {
+    if ($Offset -lt 0 -or $Offset + 2 -gt $Data.Length) { throw "Leitura AXML fora dos limites em 0x$('{0:X}' -f $Offset)." }
+    return [int]($Data[$Offset] -bor ([int]$Data[$Offset + 1] -shl 8))
+}
+
+function Read-ApkUInt32([byte[]]$Data, [int]$Offset) {
+    if ($Offset -lt 0 -or $Offset + 4 -gt $Data.Length) { throw "Leitura AXML fora dos limites em 0x$('{0:X}' -f $Offset)." }
+    return [uint32]($Data[$Offset] -bor ([uint32]$Data[$Offset + 1] -shl 8) -bor ([uint32]$Data[$Offset + 2] -shl 16) -bor ([uint32]$Data[$Offset + 3] -shl 24))
+}
+
+function Get-ApkAxmString {
+    param(
+        [byte[]]$Data,
+        [int[]]$Offsets,
+        [int]$StringsBase,
+        [int]$PoolEnd,
+        [bool]$Utf8,
+        [uint32]$Index
+    )
+
+    if ($Index -eq [uint32]::MaxValue -or $Index -ge [uint32]$Offsets.Count) { return $null }
+    $cursor = $StringsBase + $Offsets[[int]$Index]
+    if ($cursor -lt $StringsBase -or $cursor -ge $PoolEnd) { throw 'String pool AXML fora dos limites.' }
+    if ($Utf8) {
+        $firstLength = [int]$Data[$cursor++]
+        if (($firstLength -band 0x80) -ne 0) { $firstLength = (($firstLength -band 0x7F) -shl 8) -bor [int]$Data[$cursor++] }
+        $byteLength = [int]$Data[$cursor++]
+        if (($byteLength -band 0x80) -ne 0) { $byteLength = (($byteLength -band 0x7F) -shl 8) -bor [int]$Data[$cursor++] }
+        if ($cursor -lt 0 -or $cursor + $byteLength -gt $PoolEnd) { throw 'String UTF-8 AXML fora dos limites.' }
+        return [System.Text.Encoding]::UTF8.GetString($Data, $cursor, $byteLength)
+    }
+
+    $characterLength = Read-ApkUInt16 $Data $cursor
+    $cursor += 2
+    if (($characterLength -band 0x8000) -ne 0) {
+        $secondLength = Read-ApkUInt16 $Data $cursor
+        $cursor += 2
+        $characterLength = (($characterLength -band 0x7FFF) -shl 16) -bor $secondLength
+    }
+    $byteLength = $characterLength * 2
+    if ($cursor -lt 0 -or $cursor + $byteLength -gt $PoolEnd) { throw 'String UTF-16 AXML fora dos limites.' }
+    return [System.Text.Encoding]::Unicode.GetString($Data, $cursor, $byteLength)
+}
+
+function Read-ApkManifestIdentity([string]$Path) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $entry = $archive.GetEntry('AndroidManifest.xml')
+        if ($null -eq $entry) { throw 'O APK não contém AndroidManifest.xml.' }
+        $entryStream = $entry.Open()
+        $memory = [System.IO.MemoryStream]::new()
+        try { $entryStream.CopyTo($memory); $data = $memory.ToArray() }
+        finally { $memory.Dispose(); $entryStream.Dispose() }
+    }
+    finally { $archive.Dispose() }
+
+    if ($data.Length -lt 8 -or (Read-ApkUInt16 $data 0) -ne 0x0003) { throw 'AndroidManifest.xml não está no formato AXML esperado.' }
+    $xmlHeaderSize = Read-ApkUInt16 $data 2
+    $xmlSize = [int](Read-ApkUInt32 $data 4)
+    if ($xmlHeaderSize -lt 8 -or $xmlSize -gt $data.Length -or $xmlHeaderSize -gt $xmlSize) { throw 'Cabeçalho XML AXML inválido.' }
+
+    $poolOffset = $xmlHeaderSize
+    if ($poolOffset + 28 -gt $xmlSize -or (Read-ApkUInt16 $data $poolOffset) -ne 0x0001) { throw 'String pool AXML ausente ou inválido.' }
+    $poolHeaderSize = Read-ApkUInt16 $data ($poolOffset + 2)
+    $poolSize = [int](Read-ApkUInt32 $data ($poolOffset + 4))
+    $stringCount = Read-ApkUInt32 $data ($poolOffset + 8)
+    $flags = Read-ApkUInt32 $data ($poolOffset + 16)
+    $stringsOffset = [int](Read-ApkUInt32 $data ($poolOffset + 20))
+    if ($poolHeaderSize -lt 28 -or $poolSize -lt $poolHeaderSize -or $poolOffset + $poolSize -gt $xmlSize) { throw 'String pool AXML inválido.' }
+    $offsetsBase = $poolOffset + $poolHeaderSize
+    $offsetsEnd = $offsetsBase + ([int]$stringCount * 4)
+    if ($offsetsBase -lt $poolOffset -or $offsetsEnd -gt $poolOffset + $poolSize) { throw 'Índices do string pool AXML inválidos.' }
+    $offsets = New-Object int[] ([int]$stringCount)
+    for ($index = 0; $index -lt [int]$stringCount; $index++) { $offsets[$index] = [int](Read-ApkUInt32 $data ($offsetsBase + $index * 4)) }
+    $stringsBase = $poolOffset + $stringsOffset
+    $poolEnd = $poolOffset + $poolSize
+    $utf8 = (($flags -band 0x00000100) -ne 0)
+    $packageName = $null
+    $versionName = $null
+    $versionCode = $null
+    $offset = $poolOffset + $poolSize
+    while ($offset + 8 -le $xmlSize) {
+        $chunkType = Read-ApkUInt16 $data $offset
+        $chunkHeaderSize = Read-ApkUInt16 $data ($offset + 2)
+        $chunkSize = [int](Read-ApkUInt32 $data ($offset + 4))
+        if ($chunkHeaderSize -lt 8 -or $chunkSize -lt $chunkHeaderSize -or $offset + $chunkSize -gt $xmlSize) { throw "Chunk AXML inválido em 0x$('{0:X}' -f $offset)." }
+        if ($chunkType -eq 0x0102 -and $chunkHeaderSize -ge 16) {
+            $extension = $offset + $chunkHeaderSize
+            $nameIndex = Read-ApkUInt32 $data ($extension + 4)
+            if ((Get-ApkAxmString $data $offsets $stringsBase $poolEnd $utf8 $nameIndex) -eq 'manifest') {
+                $attributeStart = Read-ApkUInt16 $data ($extension + 8)
+                $attributeSize = Read-ApkUInt16 $data ($extension + 10)
+                $attributeCount = Read-ApkUInt16 $data ($extension + 12)
+                if ($attributeSize -lt 20) { throw 'Atributos AXML inválidos.' }
+                $attributes = $extension + $attributeStart
+                $attributesEnd = $attributes + $attributeCount * $attributeSize
+                if ($attributes -lt $extension -or $attributesEnd -gt $offset + $chunkSize) { throw 'Atributos AXML fora dos limites.' }
+                for ($attributeIndex = 0; $attributeIndex -lt $attributeCount; $attributeIndex++) {
+                    $attribute = $attributes + $attributeIndex * $attributeSize
+                    $attributeName = Get-ApkAxmString $data $offsets $stringsBase $poolEnd $utf8 (Read-ApkUInt32 $data ($attribute + 4))
+                    $rawValueIndex = Read-ApkUInt32 $data ($attribute + 8)
+                    $valueType = [int]$data[$attribute + 15]
+                    $valueData = Read-ApkUInt32 $data ($attribute + 16)
+                    $value = if ($rawValueIndex -ne [uint32]::MaxValue) { Get-ApkAxmString $data $offsets $stringsBase $poolEnd $utf8 $rawValueIndex } elseif ($valueType -eq 0x03) { Get-ApkAxmString $data $offsets $stringsBase $poolEnd $utf8 $valueData } else { $null }
+                    switch ($attributeName) {
+                        'package' { $packageName = $value }
+                        'versionName' { $versionName = $value }
+                        'versionCode' { if ($valueType -eq 0x10 -or $valueType -eq 0x11) { $versionCode = [uint32]$valueData } }
+                    }
+                }
+            }
+        }
+        $offset += $chunkSize
+    }
+    if ([string]::IsNullOrWhiteSpace($packageName)) { throw 'AndroidManifest.xml não contém o atributo package.' }
+    return [pscustomobject]@{ PackageName = $packageName; VersionName = $versionName; VersionCode = $versionCode }
+}
+
 function Test-ActivityRunning([string]$Dump) {
     $candidates = @(
         $activity,
@@ -101,6 +220,13 @@ if (Test-Path -LiteralPath $ApkPath) {
         } | Sort-Object -Unique)
     }
     finally { $archive.Dispose() }
+}
+$apkIdentity = Read-ApkManifestIdentity $ApkPath
+if ($apkIdentity.PackageName -ne [string]$config.neonews.packageName) {
+    throw "O APK oficial possui package '$($apkIdentity.PackageName)', esperado '$($config.neonews.packageName)'. Nenhuma instalação foi tentada."
+}
+if ($apkIdentity.VersionName -ne [string]$config.neonews.versionName -or [int64]$apkIdentity.VersionCode -ne [int64]$config.neonews.versionCode) {
+    throw "O APK oficial possui versão '$($apkIdentity.VersionName)'/$($apkIdentity.VersionCode), esperada '$($config.neonews.versionName)'/$($config.neonews.versionCode). Nenhuma instalação foi tentada."
 }
 $preferredApkAbi = if ($config.android.nativeBridge.preferredAbi) { [string]$config.android.nativeBridge.preferredAbi } else { [string]$config.android.preferredApkAbi }
 if ($apkAbis.Count -eq 0 -or ($preferredApkAbi -and $apkAbis -notcontains $preferredApkAbi)) {
@@ -214,6 +340,10 @@ $report = [ordered]@{
     nativeBridgeAbi2 = $abi2
     nativeBridgeReady = $bridgeReady
     apkAbis = $apkAbis
+    apkPackageName = $apkIdentity.PackageName
+    apkVersionName = $apkIdentity.VersionName
+    apkVersionCode = $apkIdentity.VersionCode
+    apkIdentityMatches = $apkIdentity.PackageName -eq [string]$config.neonews.packageName -and $apkIdentity.VersionName -eq [string]$config.neonews.versionName -and [int64]$apkIdentity.VersionCode -eq [int64]$config.neonews.versionCode
     selectedApkAbi = $selectedApkAbi
     installSucceeded = $installSucceeded
     primaryCpuAbi = $primaryCpuAbi

@@ -156,6 +156,7 @@ $contractChecks = [ordered]@{
     diagnosticsIncludesApkIdentity = $launcherSourceText -match 'apkMetadata\?\.PackageName' -and $launcherSourceText -match 'apkMetadata\?\.VersionName' -and $launcherSourceText -match 'apkMetadata\?\.VersionCode'
     apkPreinstallIdentityValidation = $launcherSourceText -match 'ApkManifestService\.Read\(apkPath\)' -and $launcherSourceText -match 'metadata\.PackageName\.Equals\(PackageName' -and $launcherSourceText -match 'metadata\.VersionCode'
     apkPreinstallAbiValidation = $launcherSourceText -match 'ReadApkAbis\(apkPath\)' -and $launcherSourceText -match 'apkAbis\.Contains\(preferredAbi' -and $launcherSourceText -match 'containsGuestAbi'
+    nativeBridgeProbePreflightManifest = $nativeBridgeValidationSource -match 'Read-ApkManifestIdentity' -and $nativeBridgeValidationSource -match '\$apkIdentity\.PackageName' -and $nativeBridgeValidationSource -match '\$apkIdentity\.VersionCode' -and $nativeBridgeValidationSource -match 'Nenhuma'
     nativeBridgeProbeDefinesPreferredAbi = $nativeBridgeValidationSource.Contains('$preferredApkAbi')
     nativeBridgeProbeRejectsMissingPreferredAbi = $nativeBridgeValidationSource.Contains('Nenhuma')
     nativeBridgeProbeRejectsGuestAbi = $nativeBridgeValidationSource.Contains("'x86', 'x86_64'")
