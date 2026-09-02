@@ -35,6 +35,8 @@ Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O dire
 
 O script de publicação não copia APKs, Native Bridge, WebView, RHVoice ou outros pacotes externos. O operador deve provisionar esses arquivos separadamente no diretório `packages/` da distribuição, após confirmar origem, licença e hash. Quando o APK autorizado estiver em `packages/neonews/neonews.apk`, o comando `--start` instala-o automaticamente se o pacote ainda não estiver presente no Android.
 
+Ao atualizar uma distribuição existente, a publicação preserva o qcow2 configurado quando o arquivo persistente já existe no destino. A substituição do disco deve ser uma operação explícita de provisionamento, nunca um efeito colateral da atualização do launcher.
+
 O diagnóstico só marca `installSucceeded=true` quando observou `adb install -r`
 retornar `Success`; iniciar um APK já instalado pode comprovar estabilidade e
 ABI, mas não falsifica a evidência de uma atualização.

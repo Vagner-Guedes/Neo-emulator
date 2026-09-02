@@ -43,14 +43,6 @@ public sealed class NeoNewsService
 
     public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
-        var apkPath = _context.ResolveApkPath();
-        if (!File.Exists(apkPath))
-        {
-            throw new RuntimeOperationException(
-                "NeoNews.apk oficial não foi encontrado.",
-                $"Pacote esperado: {PackageName}. APK local necessário para provar a assinatura em: {apkPath}.");
-        }
-        ValidateAuthorizedApk(apkPath);
         var status = await GetStatusAsync(cancellationToken);
         var installedVersionCode = status.Installed
             ? await _adb.GetPackageVersionCodeAsync(PackageName, cancellationToken)
@@ -59,8 +51,18 @@ public sealed class NeoNewsService
                               !string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) &&
                               !string.Equals(status.Version, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase);
         versionMismatch = versionMismatch || (status.Installed && _context.Config.NeoNews.VersionCode > 0 && installedVersionCode != _context.Config.NeoNews.VersionCode);
-        if (!status.Installed || versionMismatch)
+        var installationRequired = !status.Installed || versionMismatch;
+        if (installationRequired)
         {
+            var apkPath = _context.ResolveApkPath();
+            if (!File.Exists(apkPath))
+            {
+                var reason = !status.Installed ? "o pacote não está instalado" : "a versão instalada não corresponde à configuração";
+                throw new RuntimeOperationException(
+                    "NeoNews.apk oficial não foi encontrado.",
+                    $"O {reason}; forneça o APK local autorizado em {apkPath} para instalar/atualizar. Um pacote já instalado e compatível pode iniciar offline sem o arquivo local.");
+            }
+            ValidateAuthorizedApk(apkPath);
             progress?.Report(new RuntimeProgress("Instalando NeoNews", "APK local autorizado encontrado; instalando no Android...", 78));
             LastInstallSucceeded = false;
             await _adb.InstallApkAsync(apkPath, cancellationToken);

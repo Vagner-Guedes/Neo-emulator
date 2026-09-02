@@ -17,6 +17,10 @@ else {
 if (-not $dotnetPath) { throw "SDK .NET 8 não encontrado." }
 
 $outputPath = Join-Path $repositoryRoot $OutputDirectory
+$runtimeConfig = Get-Content -LiteralPath (Join-Path $repositoryRoot "config\runtime.json") -Raw -Encoding utf8 | ConvertFrom-Json
+$persistentDiskRelativePath = ([string]$runtimeConfig.android.qemu.disk) -replace '/', '\'
+$persistentDiskSourcePath = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $persistentDiskRelativePath))
+$persistentDiskTargetPath = [System.IO.Path]::GetFullPath((Join-Path $outputPath $persistentDiskRelativePath))
 & $dotnetPath publish $projectPath --configuration Release --runtime win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:PublishTrimmed=false -p:PublishReadyToRun=false --output $outputPath
@@ -53,7 +57,14 @@ foreach ($runtimeDirectory in @("qemu", "android", "adb")) {
     $sourceDirectory = Join-Path $repositoryRoot ("runtime\" + $runtimeDirectory)
     $destinationDirectory = Join-Path $outputPath ("runtime\" + $runtimeDirectory)
     if (Test-Path -LiteralPath $sourceDirectory) {
-        Copy-Item -LiteralPath $sourceDirectory -Destination $destinationDirectory -Recurse -Force
+        foreach ($item in @(Get-ChildItem -LiteralPath $sourceDirectory -Force)) {
+            $itemSourcePath = [System.IO.Path]::GetFullPath($item.FullName)
+            if ($itemSourcePath.Equals($persistentDiskSourcePath, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $persistentDiskTargetPath)) {
+                Write-Host "Preservando disco persistente existente: $persistentDiskTargetPath"
+                continue
+            }
+            Copy-Item -LiteralPath $item.FullName -Destination $destinationDirectory -Recurse -Force
+        }
     }
 }
 Write-Host "NeoNewsRuntime publicado em $outputPath"
