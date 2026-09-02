@@ -80,7 +80,8 @@ if (Test-Path -LiteralPath $ApkPath) {
 }
 $packageDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'package', $packageName)
 $primaryCpuAbi = if ($packageDump -match 'primaryCpuAbi=([^\s]+)') { $Matches[1] } else { $null }
-$selectedApkAbi = if ($primaryCpuAbi -and $apkAbis -contains $primaryCpuAbi) { $primaryCpuAbi } else { $null }
+$preferredApkAbi = if ($config.android.nativeBridge.preferredAbi) { [string]$config.android.nativeBridge.preferredAbi } else { [string]$config.android.preferredApkAbi }
+$selectedApkAbi = if ($primaryCpuAbi -and $apkAbis -contains $primaryCpuAbi -and $primaryCpuAbi -eq $preferredApkAbi) { $primaryCpuAbi } else { $null }
 $launchOutput = ''
 $launchSucceeded = $false
 if ($installSucceeded -or $packageDump -match "Package \[$([regex]::Escape($packageName))\]") {
@@ -94,7 +95,7 @@ $logcat = Invoke-Adb @('-s', $serial, 'shell', 'logcat', '-d', '-b', 'all', '-t'
 $relevantLogcat = @($logcat -split "`r?`n" | Where-Object { $_ -match 'com\.in9midia\.neonews\.player|AndroidRuntime|linker|native bridge|SIGSEGV|FATAL|dex2oat|chromium|WebView' })
 $failurePattern = 'UnsatisfiedLinkError|linker.*(error|fail)|SIGSEGV|FATAL EXCEPTION|dex2oat.*(error|fail)|zygote.*(error|fail)|chromium.*(error|fail)|WebView.*(error|fail)'
 $initialErrors = @($relevantLogcat | Where-Object { $_ -match $failurePattern })
-$runtimeStable = $guestIdentityMatches -and $bridgeReady -and $installSucceeded -and $launchSucceeded -and $activityRunning -and $initialErrors.Count -eq 0
+$runtimeStable = $guestIdentityMatches -and $bridgeReady -and $installSucceeded -and $selectedApkAbi -and $launchSucceeded -and $activityRunning -and $initialErrors.Count -eq 0
 
 $restartResults = New-Object System.Collections.Generic.List[object]
 for ($restart = 1; $restart -le [math]::Max(0, $RestartCount) -and $runtimeStable; $restart++) {

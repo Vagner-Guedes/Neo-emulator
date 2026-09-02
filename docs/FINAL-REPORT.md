@@ -59,7 +59,7 @@ Para alterar o status, ainda é necessário executar no mesmo runtime:
 1. provisionar a release oficial Android-x86 7.1-r5/API 25 e o disco persistente;
 2. provisionar QEMU x86_64 e ADB localmente, com origem e hashes registrados;
 3. provisionar uma Native Bridge legalmente redistribuível e provar a instalação do APK sem `INSTALL_FAILED_NO_MATCHING_ABIS`;
-4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` ou equivalente;
+4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` exatamente;
 5. validar estabilidade após reinício e conteúdo real do NeoNews;
 6. validar provider WebView 119 em HTML/CSS/JavaScript/HTTPS e no NeoNews;
 7. validar RHVoice com síntese real em `pt-BR`;

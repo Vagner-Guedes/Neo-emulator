@@ -362,7 +362,7 @@ public sealed class AdbService
             if (abis.Length == 0 || (supported.Count > 0 && !abis.Intersect(supported, StringComparer.OrdinalIgnoreCase).Any()))
                 throw new RuntimeOperationException("O APK selecionado não é compatível com o NeoNews.", $"Nenhuma ABI esperada foi encontrada. ABIs do APK: {string.Join(", ", abis)}; esperadas: {string.Join(", ", supported)}.");
             if (!string.IsNullOrWhiteSpace(preferred) && !abis.Contains(preferred, StringComparer.OrdinalIgnoreCase))
-                _logs.Warning("launcher", $"ABI preferencial {preferred} não está no APK; a instalação usará uma ABI compatível disponível.");
+                throw new RuntimeOperationException("O APK não contém a ABI ARM32 homologada.", $"ABI preferencial ausente: {preferred}; ABIs do APK: {string.Join(", ", abis)}.");
         }
         catch (InvalidDataException exception)
         {

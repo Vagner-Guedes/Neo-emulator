@@ -135,7 +135,18 @@ $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath
 $reportDirectory = Split-Path -Parent $reportFullPath
 if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 
+$existingState = $null
+if (Test-Path -LiteralPath $statePath) {
+    try { $existingState = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json }
+    catch { throw "O estado de provisionamento existente não pôde ser lido: $statePath. $($_.Exception.Message)" }
+}
+
 $provenance = [ordered]@{}
+if ($existingState -and $existingState.provenance) {
+    foreach ($entry in $existingState.provenance.PSObject.Properties) {
+        $provenance[$entry.Name] = $entry.Value
+    }
+}
 foreach ($component in $components) {
     $provenance[$component.name] = [ordered]@{
         path = $component.path
@@ -144,6 +155,7 @@ foreach ($component in $components) {
         status = if ($component.succeeded) { 'installed' } else { 'not-installed' }
     }
 }
+$existingFiles = if ($existingState -and $existingState.files) { @($existingState.files) } else { @() }
 $state = [ordered]@{
     schema = 1
     androidImageVersion = $config.android.release
@@ -152,8 +164,9 @@ $state = [ordered]@{
     ttsStatus = if ($rhvoicePackages.Count -gt 0 -and $defaultEngine -match '(?i)rhvoice') { 'selected-local-pending-synthesis-test' } elseif ($rhvoicePackages.Count -gt 0) { 'installed-local-not-selected' } else { 'missing' }
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
-    imageHash = ''
-    files = @($components)
+    imageHash = if ($existingState) { [string]$existingState.imageHash } else { '' }
+    diskFingerprint = if ($existingState) { [string]$existingState.diskFingerprint } else { '' }
+    files = @($existingFiles + @($components))
     provenance = $provenance
     guest = [ordered]@{ serial = $Serial; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
 }

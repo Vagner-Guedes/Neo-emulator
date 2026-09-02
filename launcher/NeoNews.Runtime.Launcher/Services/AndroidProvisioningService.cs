@@ -62,8 +62,28 @@ public sealed class AndroidProvisioningService
         if (state is null)
         {
             throw new RuntimeOperationException(
-                "O provisionamento local ainda nÃ£o foi registrado.",
+                "O provisionamento local ainda não foi registrado.",
                 "Execute scripts/provision/Provision-QemuAndroidRuntime.ps1 com os componentes locais aprovados antes do boot normal.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(state.AndroidImageVersion) &&
+            !state.AndroidImageVersion.Equals(_context.Config.Android.Release, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "O registro de provisionamento aponta para outra release Android.",
+                $"Release registrada={state.AndroidImageVersion}; esperada={_context.Config.Android.Release}; estado={_context.ResolveProvisioningStatePath()}.");
+        }
+        if (!IsSha256(state.ImageHash))
+        {
+            throw new RuntimeOperationException(
+                "O registro de provisionamento não possui SHA-256 forte do disco.",
+                "Reexecute scripts/provision/Provision-QemuAndroidRuntime.ps1; o boot normal não substitui esse hash por um marcador fraco.");
+        }
+        if (state.Provenance is null || state.Provenance.Count == 0)
+        {
+            throw new RuntimeOperationException(
+                "O registro de provisionamento não possui proveniência dos componentes.",
+                $"Estado sem entradas de provenance: {_context.ResolveProvisioningStatePath()}.");
         }
 
         state.Schema = 1;
@@ -81,7 +101,6 @@ public sealed class AndroidProvisioningService
         // Provision-QemuAndroidRuntime.ps1 records the strong SHA-256 in
         // ImageHash. Keep it intact; DiskFingerprint is only the cheap
         // per-boot change marker.
-        if (string.IsNullOrWhiteSpace(state.ImageHash)) state.ImageHash = fingerprint;
         await SaveAsync(state, cancellationToken);
         _logs.Info("provisioning", $"Estrutura local validada. QEMU={qemu}; disco={disk}; ADB={adb}.");
         return state;
@@ -113,4 +132,7 @@ public sealed class AndroidProvisioningService
         cancellationToken.ThrowIfCancellationRequested();
         return $"{info.Length:x}-{info.LastWriteTimeUtc.Ticks:x}";
     }
+
+    private static bool IsSha256(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length == 64 && value.All(Uri.IsHexDigit);
 }

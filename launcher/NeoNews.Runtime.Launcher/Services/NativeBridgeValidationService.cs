@@ -60,7 +60,11 @@ public sealed class NativeBridgeValidationService
     {
         var guest = await ValidateGuestAsync(cancellationToken);
         var primary = await _adb.GetPrimaryCpuAbiAsync(packageName, cancellationToken);
+        var preferredAbi = string.IsNullOrWhiteSpace(_context.Config.Android.NativeBridge.PreferredAbi)
+            ? _context.Config.Android.PreferredApkAbi
+            : _context.Config.Android.NativeBridge.PreferredAbi;
         var selected = primary is not null && apkAbis.Contains(primary, StringComparer.OrdinalIgnoreCase)
+                       && (string.IsNullOrWhiteSpace(preferredAbi) || primary.Equals(preferredAbi, StringComparison.OrdinalIgnoreCase))
             ? primary
             : null;
         var launched = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);

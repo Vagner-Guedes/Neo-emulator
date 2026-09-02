@@ -92,10 +92,13 @@ $contractChecks = [ordered]@{
     installEvidenceTracksAdbSuccess = $launcherSourceText -match 'LastInstallSucceeded' -and $launcherSourceText -match 'InstallApkAsync'
     noConfiguredAbiEvidenceFallback = $runtimeControllerSource -notmatch 'return\s+_context\.Config\.NeoNews\.SupportedApkAbis'
     existingInstallCanReachStabilityGate = $launcherSourceText -match 'guest\.Ready\s+&&\s+selected\s+is\s+not\s+null\s+&&\s+launched'
+    arm32NativeBridgeAbiIsRequired = $launcherSourceText -match 'PreferredAbi' -and $launcherSourceText -match 'primary\.Equals\(preferredAbi'
     kioskRestoresGuestStateOnFailedEntry = $launcherSourceText -match 'capturedHere' -and $launcherSourceText -match 'RestoreGuestStateAsync'
     kioskValidatesWindowGeometry = $launcherSourceText -match 'IsKioskWindowApplied' -and $launcherSourceText -match 'GetWindowRect'
     normalBootRequiresProvisioningState = $launcherSourceText -match 'Provisionamento local ainda' -and $launcherSourceText -match 'DiskFingerprint'
     provisioningPreservesStrongDiskHash = $launcherSourceText -match 'Keep it intact' -and $launcherSourceText -match 'ImageHash'
+    provisioningRejectsWeakOrMissingHash = $launcherSourceText -match 'IsSha256' -and $launcherSourceText -match 'SHA-256 forte'
+    componentProvisioningMergesState = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1') -Raw -Encoding utf8) -match 'existingState\.provenance' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1') -Raw -Encoding utf8) -match 'existingState\.imageHash'
 }
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }

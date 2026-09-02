@@ -63,7 +63,11 @@ public sealed class DiagnosticsService
         // Never infer the selected APK ABI from configuration. It is evidence
         // only when package-manager output (or the full Native Bridge check)
         // observed a primaryCpuAbi in the APK's actual ABI set.
-        var selectedApkAbi = validatedAbi?.SelectedApkAbi ?? (!string.IsNullOrWhiteSpace(primaryCpuAbi) && apkAbis.Contains(primaryCpuAbi, StringComparer.OrdinalIgnoreCase)
+        var preferredApkAbi = string.IsNullOrWhiteSpace(_context.Config.Android.NativeBridge.PreferredAbi)
+            ? _context.Config.Android.PreferredApkAbi
+            : _context.Config.Android.NativeBridge.PreferredAbi;
+        var selectedApkAbi = validatedAbi?.SelectedApkAbi ?? (!string.IsNullOrWhiteSpace(primaryCpuAbi) && apkAbis.Contains(primaryCpuAbi, StringComparer.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(preferredApkAbi) || primaryCpuAbi.Equals(preferredApkAbi, StringComparison.OrdinalIgnoreCase))
             ? primaryCpuAbi
             : null);
         var guest = adbOnline ? await GetGuestDiagnosticsAsync(cancellationToken) : GuestDiagnostics.Empty;

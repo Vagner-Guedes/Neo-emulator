@@ -46,7 +46,7 @@ O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndr
 O boot normal exige que esse `provisioning.json` já exista; ele não cria um
 registro de provisionamento incompleto. O SHA-256 forte registrado do disco é
 preservado, e o launcher mantém apenas um fingerprint barato separado para
-detectar mudanças entre boots.
+detectar mudanças entre boots; estado sem SHA-256/proveniência é rejeitado.
 
 Com o guest online, `scripts/provision/Install-GuestComponents.ps1` faz a
 instalação opt-in desses componentes com `adb install -r`, sem uninstall ou
