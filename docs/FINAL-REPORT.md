@@ -95,6 +95,14 @@ fornecidos para a prova live. O checklist fresco contra a mesma pasta produziu
 31 itens, 0 aprovados, 0 falhas e 17 pendencias, mantendo o status
 `not-approved`.
 
+Na investigacao adicional em sessao `-snapshot`, o console root confirmou
+`ro.kernel.qemu` vazio, `ro.adb.secure` vazio, `service.adb.tcp.port` vazio,
+`persist.adb.tcp.port=5555`, `sys.usb.config=adb` e `tcp6 :::5555 LISTEN`.
+Depois de aplicar `10.0.2.15` a `wifi_eth`, o listener continuou sem responder
+ao pacote CNXN bruto; a tentativa ADB permaneceu `offline`. A evidencia
+reforca que o forwarding e o endereco do guest nao sao suficientes para
+homologar este `adbd` Android-x86.
+
 ## Contrato do runtime
 
 O arquivo [`config/runtime.json`](../config/runtime.json) usa:
