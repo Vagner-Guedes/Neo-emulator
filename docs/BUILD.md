@@ -76,6 +76,12 @@ controlado via QMP.
 Cada probe invalida seu relatorio no inicio com `status=not-validated`; uma
 falha de pre-voo nao deixa um relatorio anterior recente ser reutilizado.
 
+Os scripts operacionais legados aceitam `-ConfigPath` apontando para
+`config/runtime.json` dentro de uma publicacao. A partir desse arquivo,
+ADB, lock, logs e relatorios relativos sao resolvidos dentro da mesma pasta
+da distribuicao; isso permite executar os auxiliares sem depender do
+diretorio atual ou de caminhos do repositorio-fonte.
+
 Antes do checklist, execute `Test-RuntimeStability.ps1` com os relatórios
 `nativebridge.json`, `webview-content.json`, `tts-synthesis.json` e
 `guest-network-media.json` no diretório `reports/` da mesma publicação. Esse

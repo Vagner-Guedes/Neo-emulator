@@ -15,6 +15,8 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
+$runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 if (-not $TaskName) {
     $TaskName = [string]$config.startup.taskName
 }
@@ -22,12 +24,19 @@ if (-not $TaskName) {
     $TaskName = 'NeoNews Runtime Supervisor'
 }
 
-$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
-    $ExecutablePath = Join-Path $repositoryRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe'
+    $candidates = @(
+        (Join-Path $runtimeRoot 'NeoNewsRuntime.exe'),
+        (Join-Path $runtimeRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe'),
+        (Join-Path $runtimeRoot 'dist\NeoNewsRuntime-current\NeoNewsRuntime.exe'),
+        (Join-Path $scriptRepositoryRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe')
+    )
+    $ExecutablePath = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($ExecutablePath)) { $ExecutablePath = $candidates[0] }
 }
 $ExecutablePath = [System.IO.Path]::GetFullPath($ExecutablePath)
-if (-not (Test-Path -LiteralPath $ExecutablePath)) {
+if (-not $Unregister -and -not (Test-Path -LiteralPath $ExecutablePath)) {
     throw "NeoNewsRuntime.exe não encontrado: $ExecutablePath"
 }
 $workingDirectory = Split-Path -Parent $ExecutablePath

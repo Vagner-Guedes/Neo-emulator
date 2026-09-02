@@ -68,6 +68,11 @@ $requiredPaths = @(
     'scripts/validation/Test-QemuPersistence.ps1',
     'scripts/validation/Test-LauncherSmoke.ps1',
     'scripts/validation/Test-HomologationChecklist.ps1',
+    'scripts/startup/Register-NeoNewsStartup.ps1',
+    'scripts/runtime/Start-NeoNews.ps1',
+    'scripts/runtime/Ensure-NeoNewsRuntime.ps1',
+    'scripts/runtime/Watch-NeoNews.ps1',
+    'scripts/runtime/Apply-KioskSettings.ps1',
     'scripts/diagnostics/Collect-Diagnostics.ps1',
     'tools/media-probe/AndroidManifest.xml',
     'tools/media-probe/MainActivity.java',
@@ -117,6 +122,16 @@ $validationEvidenceCommonPath = Join-Path $RepositoryRoot 'scripts\validation\Va
 $validationEvidenceCommonSource = if (Test-Path -LiteralPath $validationEvidenceCommonPath) { Get-Content -LiteralPath $validationEvidenceCommonPath -Raw -Encoding utf8 } else { '' }
 $launcherSmokePath = Join-Path $RepositoryRoot 'scripts\validation\Test-LauncherSmoke.ps1'
 $launcherSmokeSource = if (Test-Path -LiteralPath $launcherSmokePath) { Get-Content -LiteralPath $launcherSmokePath -Raw -Encoding utf8 } else { '' }
+$startupScriptPath = Join-Path $RepositoryRoot 'scripts\startup\Register-NeoNewsStartup.ps1'
+$startupScriptSource = if (Test-Path -LiteralPath $startupScriptPath) { Get-Content -LiteralPath $startupScriptPath -Raw -Encoding utf8 } else { '' }
+$startNeoNewsPath = Join-Path $RepositoryRoot 'scripts\runtime\Start-NeoNews.ps1'
+$startNeoNewsSource = if (Test-Path -LiteralPath $startNeoNewsPath) { Get-Content -LiteralPath $startNeoNewsPath -Raw -Encoding utf8 } else { '' }
+$ensureNeoNewsPath = Join-Path $RepositoryRoot 'scripts\runtime\Ensure-NeoNewsRuntime.ps1'
+$ensureNeoNewsSource = if (Test-Path -LiteralPath $ensureNeoNewsPath) { Get-Content -LiteralPath $ensureNeoNewsPath -Raw -Encoding utf8 } else { '' }
+$watchNeoNewsPath = Join-Path $RepositoryRoot 'scripts\runtime\Watch-NeoNews.ps1'
+$watchNeoNewsSource = if (Test-Path -LiteralPath $watchNeoNewsPath) { Get-Content -LiteralPath $watchNeoNewsPath -Raw -Encoding utf8 } else { '' }
+$kioskScriptPath = Join-Path $RepositoryRoot 'scripts\runtime\Apply-KioskSettings.ps1'
+$kioskScriptSource = if (Test-Path -LiteralPath $kioskScriptPath) { Get-Content -LiteralPath $kioskScriptPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -208,6 +223,12 @@ $contractChecks['webViewProviderHasChecklistReportDefault'] = $webViewProviderSo
 $contractChecks['ttsProviderHasChecklistReportDefault'] = $ttsProviderSource.Contains("[string]`$ReportPath = 'reports/tts-provider.json'") -and $checklistSource.Contains("Read-Report 'tts-provider.json'")
 $contractChecks['qemuBaselineHasReportDefault'] = $measureSource.Contains("[string]`$ReportPath") -and $measureSource.Contains("qemu-baseline.json")
 $contractChecks['qemuBaselineDefaultsToPublishedRuntime'] = $measureSource.Contains("Join-Path `$repositoryRoot 'reports\qemu-baseline.json'")
+$contractChecks['startupDefaultsToPublishedRuntime'] = $startupScriptSource -match '\$runtimeRoot' -and $startupScriptSource -match 'Join-Path \$runtimeRoot .*NeoNewsRuntime\.exe' -and $startupScriptSource -match '\$Unregister'
+$contractChecks['operationalScriptsUsePublishedRuntimeRoot'] =
+    $startNeoNewsSource -match '\$configPathFull' -and $startNeoNewsSource -match 'Join-Path \$runtimeRoot' -and
+    $ensureNeoNewsSource -match '\$configPathFull' -and $ensureNeoNewsSource -match 'Join-Path \$runtimeRoot' -and
+    $watchNeoNewsSource -match '\$configPathFull' -and $watchNeoNewsSource -match 'Join-Path \$runtimeRoot' -and
+    $kioskScriptSource -match '\$configPathFull' -and $kioskScriptSource -match 'Join-Path \$runtimeRoot'
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }

@@ -55,9 +55,13 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
+$runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+if (-not [string]::IsNullOrWhiteSpace($ReportPath) -and -not [System.IO.Path]::IsPathRooted($ReportPath)) {
+    $ReportPath = Join-Path $runtimeRoot ($ReportPath -replace '/', '\')
+}
 $sdkRoot = Resolve-SdkRoot
-$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
+$adbPath = Join-Path $runtimeRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
 $allowEnvironmentFallback = [bool]$config.android.tooling.allowEnvironmentFallback
 if (-not (Test-Path -LiteralPath $adbPath) -and $allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
 $emulatorPath = Join-Path $sdkRoot 'emulator\emulator.exe'
@@ -76,7 +80,7 @@ if (-not $MaxAttempts) { $MaxAttempts = 3 }
 if (-not $RetryDelaySeconds) { $RetryDelaySeconds = [int]$config.resilience.retryDelaySeconds }
 if (-not $RetryDelaySeconds) { $RetryDelaySeconds = 5 }
 
-$lockPath = Join-Path (Join-Path $PSScriptRoot '..\..') $config.resilience.lockPath
+$lockPath = Join-Path $runtimeRoot ($config.resilience.lockPath -replace '/', '\')
 $lockDirectory = Split-Path -Parent $lockPath
 if (-not (Test-Path -LiteralPath $lockDirectory)) {
     New-Item -ItemType Directory -Path $lockDirectory -Force | Out-Null

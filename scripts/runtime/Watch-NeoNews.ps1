@@ -61,9 +61,10 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
+$runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 $sdkRoot = Resolve-SdkRoot
-$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
+$adbPath = Join-Path $runtimeRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
 if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
 if (-not (Test-Path -LiteralPath $adbPath)) {
     throw "ADB não encontrado: $adbPath"
@@ -80,7 +81,15 @@ if ($activityName -match '/') {
 }
 
 if (-not $LogPath) {
-    $LogPath = Join-Path (Join-Path $PSScriptRoot '..\..\logs') 'supervisor.log'
+    $configuredLogPath = [string]$config.supervisor.logPath
+    if ([string]::IsNullOrWhiteSpace($configuredLogPath)) { $configuredLogPath = 'logs/supervisor.log' }
+    $LogPath = if ([System.IO.Path]::IsPathRooted($configuredLogPath)) {
+        $configuredLogPath
+    } else {
+        Join-Path $runtimeRoot ($configuredLogPath -replace '/', '\')
+    }
+} elseif (-not [System.IO.Path]::IsPathRooted($LogPath)) {
+    $LogPath = Join-Path $runtimeRoot ($LogPath -replace '/', '\')
 }
 
 if (-not $Serial) {
