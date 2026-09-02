@@ -182,6 +182,7 @@ $contractChecks = [ordered]@{
     diagnosticsIncludesFirstRunState = $launcherSourceText -match 'packageManagerReady = provisioningState\.PackageManagerReady' -and $launcherSourceText -match 'localeValidated = provisioningState\.LocaleValidated' -and $launcherSourceText -match 'lastError = provisioningState\.LastError'
     diagnosticsIncludesAdbTransportDetail = $launcherSourceText -match 'LastTransportDetail' -and $launcherSourceText -match 'lastTransportDetail'
     adbOfflineReconnectIsBounded = $launcherSourceText -match 'ReconnectOfflineAsync' -and $launcherSourceText -match 'reconnect", "offline' -and $launcherSourceText -match 'AdbRetrySeconds' -and $launcherSourceText -match 'WaitForBootAsync'
+    managedProcessDrainsExitedStreams = $launcherSourceText -match 'QMP can make QEMU exit' -and $launcherSourceText -match 'Task\.WhenAll\(_standardOutputTask, _standardErrorTask\)'
     runtimeConfigHasVoiceProtection = $configObject.android.optimization.voiceProtection.enabled -eq $true -and $configObject.android.optimization.voiceProtection.engine -match '(?i)^rhvoice$' -and $configObject.android.optimization.voiceProtection.locale -eq 'pt-BR' -and $configObject.android.optimization.voiceProtection.rollbackOnFailure -eq $true
     portableRuntimePaths = [string]$configObject.android.qemu.executable -match '(?i)^runtime[\\/]' -and [string]$configObject.android.qemu.disk -match '(?i)^runtime[\\/]'
     qemuEnvironmentFallbackDisabled = -not [bool]$configObject.android.tooling.allowEnvironmentFallback

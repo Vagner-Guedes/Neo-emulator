@@ -26,15 +26,21 @@ public sealed class ManagedProcess : IAsyncDisposable
 
     public async Task StopAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
-        if (_process.HasExited) return;
-        try { _process.CloseMainWindow(); } catch { }
-
-        var waitTask = _process.WaitForExitAsync(cancellationToken);
-        if (await Task.WhenAny(waitTask, Task.Delay(timeout, cancellationToken)) != waitTask)
+        if (!_process.HasExited)
         {
-            try { _process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
-            await _process.WaitForExitAsync(CancellationToken.None);
+            try { _process.CloseMainWindow(); } catch { }
+
+            var waitTask = _process.WaitForExitAsync(cancellationToken);
+            if (await Task.WhenAny(waitTask, Task.Delay(timeout, cancellationToken)) != waitTask)
+            {
+                try { _process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                await _process.WaitForExitAsync(CancellationToken.None);
+            }
         }
+
+        // QMP can make QEMU exit before StopAsync is called. Even in that
+        // case, wait for both redirected streams before disposing Process so
+        // no reader task or native pipe remains attached to the runtime.
         await Task.WhenAll(_standardOutputTask, _standardErrorTask);
     }
 
