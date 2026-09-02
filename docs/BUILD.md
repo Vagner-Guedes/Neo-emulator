@@ -88,7 +88,16 @@ real NeoNews content and playback in the same published executable.
 .\scripts\validation\Test-LauncherSmoke.ps1 `
   -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `
   -PathWithSpaces
-.\scripts\validation\Test-HomologationChecklist.ps1
+```
+
+Quando `-ReportPath` não é informado, o smoke grava em
+`reports/launcher-smoke.json` ao lado do executável publicado. Execute o
+checklist apontando para a mesma distribuição, para que a configuração e os
+relatórios não sejam misturados com outra cópia:
+
+```powershell
+.\scripts\validation\Test-HomologationChecklist.ps1 `
+  -RepositoryRoot .\dist\NeoNewsRuntime
 ```
 
 Os switches `-NoConsoleObserved`, `-QemuNoConsoleObserved`, `-TrayObserved`,

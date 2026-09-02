@@ -8,9 +8,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
+$scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = $scriptRepositoryRoot }
 $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
-. (Join-Path $RepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+. (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
 $fullReportPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $RepositoryRoot -ReportPath $ReportPath) -Validator 'Test-HomologationChecklist'
 if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
 if ($MinimumStabilitySeconds -lt 600) { throw 'MinimumStabilitySeconds precisa ser pelo menos 600 segundos para a homologação final.' }
@@ -71,6 +72,38 @@ function Test-ReportTransport {
         (Has-PropertyValue $Report 'serial' $expectedSerial)
 }
 
+function Get-ReportPublicationDirectory {
+    param([object]$Report)
+    if ($null -eq $Report) { return $null }
+    $candidates = @()
+    if ($Report.tools -and $Report.tools.runtimeDirectory) { $candidates += [string]$Report.tools.runtimeDirectory }
+    if ($Report.runtimeDirectory) { $candidates += [string]$Report.runtimeDirectory }
+    if ($Report.workingDirectory) { $candidates += [string]$Report.workingDirectory }
+    if ($Report.executable) {
+        try { $candidates += [System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath([string]$Report.executable)) } catch { }
+    }
+    foreach ($candidate in $candidates) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        try {
+            return ([System.IO.Path]::GetFullPath($candidate)).TrimEnd([char[]]@('\', '/'))
+        }
+        catch { }
+    }
+    return $null
+}
+
+function Test-ReportPublicationIdentity {
+    param([object]$Diagnostics, [object]$LauncherSmoke, [object]$IntegratedStability)
+    $directories = @(
+        (Get-ReportPublicationDirectory $Diagnostics),
+        (Get-ReportPublicationDirectory $LauncherSmoke)
+    )
+    if ($null -ne $IntegratedStability) { $directories += Get-ReportPublicationDirectory $IntegratedStability }
+    if (@($directories | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) { return $false }
+    $expected = [string]$directories[0]
+    return @($directories | Where-Object { -not $_.Equals($expected, [StringComparison]::OrdinalIgnoreCase) }).Count -eq 0
+}
+
 function Test-QemuReportIdentity {
     param([object]$Report)
     return (Has-PropertyValue $Report 'backend' 'qemu-android-x86') -and
@@ -112,6 +145,17 @@ $persistence = Read-Report 'qemu-persistence.json'
 $benchmark = Read-Report 'qemu-benchmark.json'
 $launcherSmoke = Read-Report 'launcher-smoke.json'
 $integratedStability = Read-Report 'runtime-stability.json'
+$diagnosticsPublicationDirectory = Get-ReportPublicationDirectory $diagnostics
+$launcherPublicationDirectory = Get-ReportPublicationDirectory $launcherSmoke
+$stabilityPublicationDirectory = Get-ReportPublicationDirectory $integratedStability
+$publicationIdentityMatches = Test-ReportPublicationIdentity $diagnostics $launcherSmoke $integratedStability
+$publicationIdentity = [ordered]@{
+    diagnostics = $diagnosticsPublicationDirectory
+    launcherSmoke = $launcherPublicationDirectory
+    runtimeStability = $stabilityPublicationDirectory
+    matches = $publicationIdentityMatches
+    rule = 'Quando diagnóstico e smoke existem, ambos devem apontar para a mesma publicação; runtime-stability, quando presente, deve usar essa mesma pasta.'
+}
 $reportFreshness = [ordered]@{
     diagnostics = Get-ReportFreshness $diagnostics
     nativeBridge = Get-ReportFreshness $native
@@ -149,9 +193,9 @@ $configNoAndroidStudio = -not [bool]$config.android.tooling.allowEnvironmentFall
     [string]$config.android.qemu.executable -match '(?i)^runtime[\\/]' -and
     [string]$config.android.qemu.disk -match '(?i)^runtime[\\/]'
 
-Add-ChecklistItem $items 'backend-qemu-whpx' 'QEMU x86_64 com WHPX configurado' 'config/runtime.json + diagnostics.json + launcher-smoke.json' ($configBackend -and $configWhpx -and $configNoAndroidStudio -and (Test-ReportFresh $diagnostics) -and (Test-ReportFresh $launcherSmoke) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'tools.whpx.available' $true) -and (Has-PropertyValue $diagnostics 'tools.backendProcess' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.qemuNoConsoleObserved' $true)) 'Configuração, WHPX, processo QEMU vivo, serial e observação live precisam coincidir.' ($null -ne $diagnostics -or $null -ne $launcherSmoke)
+Add-ChecklistItem $items 'backend-qemu-whpx' 'QEMU x86_64 com WHPX configurado' 'config/runtime.json + diagnostics.json + launcher-smoke.json' ($configBackend -and $configWhpx -and $configNoAndroidStudio -and (Test-ReportFresh $diagnostics) -and (Test-ReportFresh $launcherSmoke) -and (Test-DiagnosticsIdentity $diagnostics) -and $publicationIdentityMatches -and (Has-PropertyValue $diagnostics 'tools.whpx.available' $true) -and (Has-PropertyValue $diagnostics 'tools.backendProcess' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.qemuNoConsoleObserved' $true)) 'Configuração, WHPX, processo QEMU vivo, serial, publicação e observação live precisam coincidir.' ($null -ne $diagnostics -or $null -ne $launcherSmoke)
 Add-ChecklistItem $items 'guest-identity' 'Android-x86 7.1.2/API 25 confirmado' 'diagnostics.json ou nativebridge.json' ($configIdentity -and (((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'android.identityMatches' $true)) -or ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'guestIdentityMatches' $true)))) 'Release, API, backend/serial e sys.boot_completed precisam ser confirmados no guest.' ($null -ne $diagnostics -or $null -ne $native)
-Add-ChecklistItem $items 'persistent-disk' 'qcow2 persistente configurado e reutilizado' 'config/runtime.json + qemu-persistence.json + launcher-smoke.json' ($configDisk -and (Test-ReportFresh $persistence) -and (Test-QemuReportIdentity $persistence) -and (Test-ReportFresh $launcherSmoke) -and (Has-PropertyValue $persistence 'status' 'validated') -and (Has-PropertyValue $launcherSmoke 'manualEvidence.windowsRestartObserved' $true)) 'O marcador deve sobreviver a processos QEMU; backend, serial e reinício do Windows precisam ser observados.' ($null -ne $persistence -or $null -ne $launcherSmoke)
+Add-ChecklistItem $items 'persistent-disk' 'qcow2 persistente configurado e reutilizado' 'config/runtime.json + qemu-persistence.json + launcher-smoke.json' ($configDisk -and (Test-ReportFresh $persistence) -and (Test-QemuReportIdentity $persistence) -and (Test-ReportFresh $launcherSmoke) -and $publicationIdentityMatches -and (Has-PropertyValue $persistence 'status' 'validated') -and (Has-PropertyValue $launcherSmoke 'manualEvidence.windowsRestartObserved' $true)) 'O marcador deve sobreviver a processos QEMU; backend, serial, publicação e reinício do Windows precisam ser observados.' ($null -ne $persistence -or $null -ne $launcherSmoke)
 Add-ChecklistItem $items 'adb-tcp' $adbRequirement 'config/runtime.json + diagnostics.json' ($configAdb -and (Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'android.adb.online' $true)) 'O serial, o encaminhamento e uma sessão ADB online precisam ser observados no runtime.' ($null -ne $diagnostics)
 Add-ChecklistItem $items 'qmp-shutdown' 'Desligamento QEMU via QMP sem adb emu kill' 'qemu-benchmark.json ou qemu-persistence.json' (((Test-ReportFresh $benchmark) -and (Test-QemuReportIdentity $benchmark) -and (Has-PropertyValue $benchmark 'runs.0.stopped' $true)) -or ((Test-ReportFresh $persistence) -and (Test-QemuReportIdentity $persistence) -and (Has-PropertyValue $persistence 'firstShutdownSucceeded' $true))) 'O relatório live deve registrar encerramento controlado no backend e serial configurados.' ($null -ne $benchmark -or $null -ne $persistence)
 Add-ChecklistItem $items 'native-bridge-property' 'Native Bridge ARM declarado e operacional' 'nativebridge.json ou diagnostics.json' ($configNative -and (((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'runtimeStable' $true)) -or ((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'abiCompatibility.runtimeStable' $true)))) 'Property isolada não basta; o relatório precisa provar instalação, launch, atividade em primeiro plano, estabilidade e logcat sem falhas.' ($null -ne $native -or $null -ne $diagnostics)
@@ -165,9 +209,9 @@ Add-ChecklistItem $items 'initial-stability' 'NeoNews permaneceu estável após 
 Add-ChecklistItem $items 'restart-stability' 'NeoNews sobreviveu a reinício do guest' 'nativebridge.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'restartCount' { param($v) [int]$v -ge 1 }) -and (Has-PropertyValue $native 'restartResults' { param($v) @($v).Count -ge 1 -and @($v | Where-Object { $_.stable -ne $true }).Count -eq 0 })) 'Cada reinício deve voltar a boot, launch e estabilidade.' ($null -ne $native)
 Add-ChecklistItem $items 'kiosk-display' 'Kiosk aplicou display, density e rotação configurados' 'config/runtime.json + diagnostics.json + launcher-smoke.json' $configKiosk 'A configuração é necessária; diagnóstico live e observação visual devem conter os valores do guest.' ($null -ne $config)
 Add-ChecklistItem $items 'hotkey' 'Hotkey de saída do kiosk está configurado' 'config/runtime.json + launcher-smoke.json' $configHotkey 'A configuração precisa conter a combinação operacional documentada.' ($null -ne $config)
-Add-ChecklistItem $items 'watchdog' 'Watchdog reabre activity e recupera QEMU' 'diagnostics.json + launcher-smoke.json' ((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Test-ReportFresh $launcherSmoke) -and (Has-PropertyValue $diagnostics 'watchdog.active' $true) -and [bool]$config.supervisor.restartOnActivityLoss -and (Has-PropertyValue $launcherSmoke 'manualEvidence.watchdogActivityObserved' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.watchdogQemuObserved' $true)) 'A política e as duas recuperações precisam ser observadas; Native Bridge indisponível não pode iniciar loop de reinstalação.' ($null -ne $diagnostics -or $null -ne $launcherSmoke)
+Add-ChecklistItem $items 'watchdog' 'Watchdog reabre activity e recupera QEMU' 'diagnostics.json + launcher-smoke.json' ((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Test-ReportFresh $launcherSmoke) -and $publicationIdentityMatches -and (Has-PropertyValue $diagnostics 'watchdog.active' $true) -and [bool]$config.supervisor.restartOnActivityLoss -and (Has-PropertyValue $launcherSmoke 'manualEvidence.watchdogActivityObserved' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.watchdogQemuObserved' $true)) 'A política, a mesma publicação e as duas recuperações precisam ser observadas; Native Bridge indisponível não pode iniciar loop de reinstalação.' ($null -ne $diagnostics -or $null -ne $launcherSmoke)
 Add-ChecklistItem $items 'startup-exe' 'Startup usa diretamente NeoNewsRuntime.exe --autostart' 'diagnostics.json + config/runtime.json' ((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'startup.valid' $true) -and [string]$config.startup.script -match 'NeoNewsRuntime\.exe\s+--autostart') 'Nenhum PowerShell/cmd deve compor o caminho de startup; o diagnóstico deve ser do serial configurado.' ($null -ne $diagnostics)
-Add-ChecklistItem $items 'launcher-cli-single-instance' 'Launcher, CLI, tray e instância única funcionam' 'launcher-smoke.json' ((Test-ReportFresh $launcherSmoke) -and (Has-PropertyValue $launcherSmoke 'status' 'validated') -and (Has-PropertyValue $launcherSmoke 'manualEvidence.noConsoleObserved' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.trayObserved' $true) -and (Has-PropertyValue $launcherSmoke 'singleInstance.passed' $true) -and (Has-PropertyValue $launcherSmoke 'outsideProject' $true) -and (Has-PropertyValue $launcherSmoke 'pathWithSpaces.passed' $true)) 'O smoke deve confirmar janela responsiva, segunda invocação, --exit sem residual, ausência de console, tray, execução fora do projeto e caminho com espaços.' ($null -ne $launcherSmoke)
+Add-ChecklistItem $items 'launcher-cli-single-instance' 'Launcher, CLI, tray e instância única funcionam' 'launcher-smoke.json' ((Test-ReportFresh $launcherSmoke) -and (Has-PropertyValue $launcherSmoke 'status' 'validated') -and (Has-PropertyValue $launcherSmoke 'manualEvidence.noConsoleObserved' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.trayObserved' $true) -and (Has-PropertyValue $launcherSmoke 'singleInstance.passed' $true) -and (Has-PropertyValue $launcherSmoke 'outsideProject' $true) -and (Has-PropertyValue $launcherSmoke 'pathWithSpaces.passed' $true) -and ($null -eq $diagnostics -or $publicationIdentityMatches)) 'O smoke deve confirmar janela responsiva, segunda invocação, --exit sem residual, ausência de console, tray, caminho com espaços e, quando houver diagnóstico, a mesma publicação.' ($null -ne $launcherSmoke)
 Add-ChecklistItem $items 'webview-package' 'Pacote WebView esperado está instalado' 'webview-provider.json' ((Test-ReportFresh $webViewProvider) -and (Test-ReportTransport $webViewProvider) -and (Has-PropertyValue $webViewProvider 'provider.packagePresent' $true)) 'Provider ausente ou relatório de outro guest não pode ser tratado como pronto.' ($null -ne $webViewProvider)
 Add-ChecklistItem $items 'webview-active' 'Provider WebView esperado está ativo' 'webview-provider.json' ((Test-ReportFresh $webViewProvider) -and (Test-ReportTransport $webViewProvider) -and (Has-PropertyValue $webViewProvider 'provider.providerActive' $true)) 'A linha Current WebView package deve apontar ao provider esperado no serial configurado.' ($null -ne $webViewProvider)
 Add-ChecklistItem $items 'webview-version' 'WebView ativo é 119.0.6045.193' 'webview-provider.json ou webview-content.json' ($configWebView -and (((Test-ReportFresh $webViewProvider) -and (Test-ReportTransport $webViewProvider) -and (Has-PropertyValue $webViewProvider 'provider.versionMatches' $true)) -or ((Test-ReportFresh $webViewContent) -and (Test-ReportTransport $webViewContent) -and (Has-PropertyValue $webViewContent 'provider.versionMatches' $true)))) 'A versão instalada deve coincidir exatamente com a configuração e o serial observado.' ($null -ne $webViewProvider -or $null -ne $webViewContent)
@@ -232,6 +276,7 @@ $result = [ordered]@{
     evidenceMaxAgeHours = $EvidenceMaxAgeHours
     minimumStabilitySeconds = $MinimumStabilitySeconds
     reportFreshness = $reportFreshness
+    publicationIdentity = $publicationIdentity
     items = $items.ToArray()
     status = if ($items.Count -eq 30 -and $failed.Count -eq 0 -and $pending.Count -eq 0) { 'validated' } else { 'not-approved' }
 }

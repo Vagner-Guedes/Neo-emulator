@@ -2,7 +2,7 @@
 param(
     [string]$ExecutablePath,
     [int]$StartupTimeoutSeconds = 20,
-    [string]$ReportPath = 'reports/launcher-smoke.json',
+    [string]$ReportPath,
     [switch]$PathWithSpaces,
     [switch]$NoConsoleObserved,
     [switch]$TrayObserved,
@@ -20,7 +20,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
-$reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-LauncherSmoke'
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
     $candidates = @(
         (Join-Path $repositoryRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe'),
@@ -33,6 +32,12 @@ if ([string]::IsNullOrWhiteSpace($ExecutablePath) -or -not (Test-Path -LiteralPa
 }
 $ExecutablePath = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $workingDirectory = Split-Path -Parent $ExecutablePath
+$reportPathToUse = if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    Join-Path $workingDirectory 'reports\launcher-smoke.json'
+} else {
+    Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath
+}
+$reportFullPath = Initialize-ValidationReport -ReportPath $reportPathToUse -Validator 'Test-LauncherSmoke'
 
 $first = $null
 $second = $null

@@ -11,17 +11,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
-. (Join-Path ((Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path) 'scripts\validation\ValidationEvidence.Common.ps1')
-$earlyRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$null = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $earlyRepositoryRoot -ReportPath $ReportPath) -Validator 'Run-QemuNeoNewsBenchmark'
 if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuration not found: $ConfigPath" }
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
-. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+. (Join-Path $scriptRepositoryRoot 'scripts\benchmark\QemuBenchmark.Common.ps1')
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Run-QemuNeoNewsBenchmark'
 if ($Iterations -lt 1) { throw 'Iterations must be at least 1.' }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
-. (Join-Path $PSScriptRoot 'QemuBenchmark.Common.ps1')
 $paths = Resolve-QemuBenchmarkPaths -RepositoryRoot $repositoryRoot -Config $config
 if (-not (Test-QemuBenchmarkNonEmptyFile $paths.Adb) -and $config.android.tooling.allowEnvironmentFallback) { $paths.Adb = Join-Path $env:LOCALAPPDATA 'Android\Sdk\platform-tools\adb.exe' }
 Assert-QemuBenchmarkProvisionedRuntime -Config $config -Paths $paths

@@ -21,7 +21,8 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não enco
 
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
-. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-GuestNetworkMedia'
 if (-not $BuildOnly -and [string]::IsNullOrWhiteSpace($HlsUrl)) { throw 'Forneça -HlsUrl para validar uma playlist HLS real.' }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
@@ -138,7 +139,7 @@ if (-not $Serial) {
 }
 $script:Serial = $Serial
 
-$probeRoot = Resolve-ConfiguredPath 'tools/media-probe'
+$probeRoot = Join-Path $scriptRepositoryRoot 'tools\media-probe'
 $buildRoot = Join-Path $probeRoot 'build'
 $classesRoot = Join-Path $buildRoot 'classes'
 $unsignedApk = Join-Path $buildRoot 'media-probe-unsigned.apk'

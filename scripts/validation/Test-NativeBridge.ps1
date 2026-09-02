@@ -12,11 +12,15 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
-. (Join-Path $RepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
 $fullReportPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $RepositoryRoot -ReportPath $ReportPath) -Validator 'Test-NativeBridge'
 if ($StabilitySeconds -lt 1) { throw 'StabilitySeconds precisa ser pelo menos 1 segundo.' }
 $config = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config\runtime.json') -Raw -Encoding utf8 | ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace($ApkPath)) { $ApkPath = Join-Path $RepositoryRoot 'app.apk' }
+if ([string]::IsNullOrWhiteSpace($ApkPath)) {
+    $ApkPath = Join-Path $RepositoryRoot ($config.neonews.apkPath -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $ApkPath)) { $ApkPath = Join-Path $RepositoryRoot 'app.apk' }
+}
 if (-not [System.IO.Path]::IsPathRooted($ApkPath)) { $ApkPath = Join-Path $RepositoryRoot $ApkPath }
 if (-not (Test-Path -LiteralPath $ApkPath)) { throw "APK oficial não encontrado: $ApkPath" }
 $adbPath = Join-Path $RepositoryRoot ($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath)

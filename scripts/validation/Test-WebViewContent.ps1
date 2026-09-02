@@ -18,7 +18,8 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não enco
 
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
-. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-WebViewContent'
 if ($ContentUrl -notmatch '^https://') { throw "ContentUrl precisa usar HTTPS: $ContentUrl" }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
@@ -96,7 +97,7 @@ $script:adbPath = $adbPath
 if (-not $Serial) { $Serial = if ($config.android.adb.transport -eq 'tcp') { "$($config.android.adb.host):$($config.android.adb.hostPort)" } elseif ($config.android.adb.emulatorSerial) { $config.android.adb.emulatorSerial } else { "emulator-$($config.android.emulator.validationPort)" } }
 $script:Serial = $Serial
 
-$probeRoot = Resolve-ConfiguredPath 'tools/webview-probe'
+$probeRoot = Join-Path $scriptRepositoryRoot 'tools\webview-probe'
 $buildRoot = Join-Path $probeRoot 'build'
 $classesRoot = Join-Path $buildRoot 'classes'
 $unsignedApk = Join-Path $buildRoot 'webview-probe-unsigned.apk'

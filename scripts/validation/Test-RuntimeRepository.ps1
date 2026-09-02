@@ -200,10 +200,13 @@ $contractChecks = [ordered]@{
 $contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'ShouldLog\(ref _lastAdbOfflineLog\)' -and $launcherSourceText -match 'cooldownSeconds = Math\.Max\(15'
 $contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'
 $contractChecks['checklistReportInvalidatesAtStart'] = $checklistSource -match 'Initialize-ValidationReport' -and $checklistSource -match 'Test-ReportFresh'
+$contractChecks['checklistBindsPublishedEvidence'] = $checklistSource -match 'function Get-ReportPublicationDirectory' -and $checklistSource -match 'function Test-ReportPublicationIdentity' -and $checklistSource -match 'publicationIdentityMatches'
 $contractChecks['autostartHonorsKioskWhenNeoNewsDisabled'] = $launcherSourceText -match 'StartAutostartAsync' -and $launcherSourceText -match 'Startup\.StartNeoNews' -and $launcherSourceText -match 'Startup\.AutoKiosk' -and $launcherSourceText -match 'StartSupervisorIfEnabledAsync'
+$contractChecks['launcherSmokeDefaultsToItsPublishedRuntime'] = $launcherSmokeSource -match '\[string\]\$ReportPath' -and $launcherSmokeSource.Contains("Join-Path `$workingDirectory 'reports\launcher-smoke.json'")
 $contractChecks['webViewProviderHasChecklistReportDefault'] = $webViewProviderSource.Contains("[string]`$ReportPath = 'reports/webview-provider.json'") -and $checklistSource.Contains("Read-Report 'webview-provider.json'")
 $contractChecks['ttsProviderHasChecklistReportDefault'] = $ttsProviderSource.Contains("[string]`$ReportPath = 'reports/tts-provider.json'") -and $checklistSource.Contains("Read-Report 'tts-provider.json'")
 $contractChecks['qemuBaselineHasReportDefault'] = $measureSource.Contains("[string]`$ReportPath") -and $measureSource.Contains("qemu-baseline.json")
+$contractChecks['qemuBaselineDefaultsToPublishedRuntime'] = $measureSource.Contains("Join-Path `$repositoryRoot 'reports\qemu-baseline.json'")
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }
