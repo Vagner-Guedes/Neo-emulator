@@ -108,6 +108,9 @@ $contractChecks = [ordered]@{
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
     staleEvidenceCannotApprove = $checklistSource -match 'EvidenceMaxAgeHours' -and $checklistSource -match 'Test-ReportFresh' -and $checklistSource -match 'reportFreshness'
+    reportIdentityGate = $checklistSource -match 'function Test-ReportTransport' -and $checklistSource -match 'function Test-DiagnosticsIdentity' -and $checklistSource -match 'Test-QemuReportIdentity'
+    persistenceReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
+    benchmarkReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
 }
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }

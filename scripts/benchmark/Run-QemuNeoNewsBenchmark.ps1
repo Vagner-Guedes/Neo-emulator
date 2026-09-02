@@ -86,6 +86,7 @@ $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     backend = 'qemu-android-x86'
     acceleration = 'whpx'
+    transport = $config.android.adb.transport
     serial = $serial
     persistentDisk = $paths.Disk
     iterations = $Iterations
