@@ -161,6 +161,13 @@ $server = Invoke-Adb @('start-server')
 if ($server.ExitCode -ne 0) { throw "Não foi possível iniciar o ADB: $($server.Text)" }
 if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $Serial) }
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos." }
+$guestReleaseResult = Invoke-Adb @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
+$guestApiResult = Invoke-Adb @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
+$guestRelease = $guestReleaseResult.Text
+$guestApi = $guestApiResult.Text
+if ($guestReleaseResult.ExitCode -ne 0 -or $guestApiResult.ExitCode -ne 0 -or $guestRelease -ne [string]$config.android.release -or $guestApi -ne [string]$config.android.apiLevel) {
+    throw "O guest conectado não corresponde ao runtime configurado: release=$guestRelease (esperada $($config.android.release)); api=$guestApi (esperada $($config.android.apiLevel)); nenhum componente será instalado."
+}
 
 $components = New-Object System.Collections.Generic.List[object]
 if ($InstallNativeBridge) { $components.Add((Install-Component 'Native Bridge' (Resolve-ConfiguredPath $config.android.provisioning.nativeBridgePackagePath) $NativeBridgeOrigin)) }
@@ -231,7 +238,7 @@ $state = [ordered]@{
     diskFingerprint = if ($existingState) { [string]$existingState.diskFingerprint } else { '' }
     files = @($existingFiles + @($components))
     provenance = $provenance
-    guest = [ordered]@{ serial = $Serial; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
+    guest = [ordered]@{ serial = $Serial; release = $guestRelease; apiLevel = $guestApi; identityMatches = $true; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
 }
 $stateJson = $state | ConvertTo-Json -Depth 10
 $temporaryStatePath = "$statePath.tmp"
