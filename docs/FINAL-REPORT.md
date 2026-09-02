@@ -31,7 +31,7 @@ falhar.
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
 | Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
-| Regressão | `Test-RuntimeRepository.ps1` | 29 scripts, JSON e ignore checks aprovados |
+| Regressão | `Test-RuntimeRepository.ps1` | 30 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |

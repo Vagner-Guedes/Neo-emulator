@@ -53,6 +53,8 @@ $canonicalReportPath = if ([System.IO.Path]::IsPathRooted($reportRelativePath)) 
 } else {
     Join-Path $launcherRoot ($reportRelativePath -replace '/', '\')
 }
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$null = Initialize-ValidationReport -ReportPath $canonicalReportPath -Validator 'Collect-Diagnostics'
 
 $before = if (Test-Path -LiteralPath $canonicalReportPath) {
     (Get-Item -LiteralPath $canonicalReportPath).LastWriteTimeUtc

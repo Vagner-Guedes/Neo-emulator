@@ -19,6 +19,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-LauncherSmoke'
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
     $candidates = @(
         (Join-Path $repositoryRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe'),
@@ -167,9 +169,6 @@ $result = [ordered]@{
     status = if ($responsive -and $firstRunningAfterStartup -and $secondExitCode -eq 0 -and $exitCommandCode -eq 0 -and $remaining.Count -eq 0) { 'validated' } else { 'not-validated' }
 }
 $json = $result | ConvertTo-Json -Depth 10
-$reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
-$reportDirectory = Split-Path -Parent $reportFullPath
-if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 $json
 if ($result.status -ne 'validated') { throw "Smoke test do launcher não validado: status=$($result.status). Consulte $reportFullPath." }

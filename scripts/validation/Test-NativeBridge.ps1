@@ -9,10 +9,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($StabilitySeconds -lt 1) { throw 'StabilitySeconds precisa ser pelo menos 1 segundo.' }
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
+. (Join-Path $RepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$fullReportPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $RepositoryRoot -ReportPath $ReportPath) -Validator 'Test-NativeBridge'
+if ($StabilitySeconds -lt 1) { throw 'StabilitySeconds precisa ser pelo menos 1 segundo.' }
 $config = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'config\runtime.json') -Raw -Encoding utf8 | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace($ApkPath)) { $ApkPath = Join-Path $RepositoryRoot 'app.apk' }
 if (-not [System.IO.Path]::IsPathRooted($ApkPath)) { $ApkPath = Join-Path $RepositoryRoot $ApkPath }
@@ -190,6 +192,7 @@ $runtimeStable = $runtimeStable -and $restartStable
 
 $report = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
+    status = if ($runtimeStable) { 'validated' } else { 'not-validated' }
     transport = 'tcp'
     serial = $serial
     androidRelease = $release
@@ -220,9 +223,6 @@ $report = [ordered]@{
     launchOutput = $launchOutput
     relevantLogcat = $relevantLogcat
 }
-$fullReportPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $RepositoryRoot $ReportPath }
-$reportDirectory = Split-Path -Parent $fullReportPath
-if (-not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $fullReportPath -Encoding utf8
 $report | ConvertTo-Json -Depth 8
 if (-not $runtimeStable) { throw "Native Bridge não foi homologado: runtimeStable=false. Consulte $fullReportPath." }

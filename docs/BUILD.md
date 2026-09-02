@@ -68,6 +68,9 @@ pendentes; relatórios inválidos ou com mais de 24 horas ficam em falha e não
 são contados como aprovação. O limite pode ser ajustado com
 `-EvidenceMaxAgeHours`.
 
+Cada probe invalida seu relatorio no inicio com `status=not-validated`; uma
+falha de pre-voo nao deixa um relatorio anterior recente ser reutilizado.
+
 Antes do checklist, execute `Test-RuntimeStability.ps1` com os relatórios
 `nativebridge.json`, `webview-content.json`, `tts-synthesis.json` e
 `guest-network-media.json` no diretório `reports/` da mesma publicação. Esse

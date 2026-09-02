@@ -14,10 +14,6 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($DurationSeconds -lt 600) { throw 'DurationSeconds precisa ser pelo menos 600 segundos.' }
-if ($PollSeconds -lt 1) { throw 'PollSeconds precisa ser pelo menos 1 segundo.' }
-if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
-
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
     $candidates = @(
@@ -43,6 +39,11 @@ $expectedSerial = if ($config.android.adb.transport -eq 'tcp') {
 }
 $diagnosticsPath = Join-Path $runtimeRoot ($config.diagnostics.defaultReport -replace '/', '\')
 $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $runtimeRoot ($ReportPath -replace '/', '\') }
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$reportFullPath = Initialize-ValidationReport -ReportPath $reportFullPath -Validator 'Test-RuntimeStability'
+if ($DurationSeconds -lt 600) { throw 'DurationSeconds precisa ser pelo menos 600 segundos.' }
+if ($PollSeconds -lt 1) { throw 'PollSeconds precisa ser pelo menos 1 segundo.' }
+if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
 
 function Resolve-EvidencePath {
     param([string]$Path)
@@ -60,6 +61,7 @@ function Read-JsonEvidence {
 function Test-ReportFresh {
     param([object]$Report)
     if ($null -eq $Report) { return $false }
+    if ([string]$Report.evidenceState -eq 'invalidated') { return $false }
     try { $timestamp = [DateTimeOffset]::Parse([string]$Report.timestamp) }
     catch { return $false }
     $now = [DateTimeOffset]::UtcNow

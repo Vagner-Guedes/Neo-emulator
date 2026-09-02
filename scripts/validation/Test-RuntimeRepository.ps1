@@ -56,6 +56,7 @@ $requiredPaths = @(
     'scripts/provision/Provision-QemuAndroidRuntime.ps1',
     'scripts/provision/Install-GuestComponents.ps1',
     'scripts/validation/Test-NativeBridge.ps1',
+    'scripts/validation/ValidationEvidence.Common.ps1',
     'scripts/validation/Test-RuntimeStability.ps1',
     'scripts/validation/Test-TtsSynthesis.ps1',
     'scripts/validation/Test-WebViewContent.ps1',
@@ -112,6 +113,10 @@ $checklistPath = Join-Path $RepositoryRoot 'scripts\validation\Test-Homologation
 $checklistSource = if (Test-Path -LiteralPath $checklistPath) { Get-Content -LiteralPath $checklistPath -Raw -Encoding utf8 } else { '' }
 $diagnosticsScriptPath = Join-Path $RepositoryRoot 'scripts\diagnostics\Collect-Diagnostics.ps1'
 $diagnosticsScriptSource = if (Test-Path -LiteralPath $diagnosticsScriptPath) { Get-Content -LiteralPath $diagnosticsScriptPath -Raw -Encoding utf8 } else { '' }
+$validationEvidenceCommonPath = Join-Path $RepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1'
+$validationEvidenceCommonSource = if (Test-Path -LiteralPath $validationEvidenceCommonPath) { Get-Content -LiteralPath $validationEvidenceCommonPath -Raw -Encoding utf8 } else { '' }
+$launcherSmokePath = Join-Path $RepositoryRoot 'scripts\validation\Test-LauncherSmoke.ps1'
+$launcherSmokeSource = if (Test-Path -LiteralPath $launcherSmokePath) { Get-Content -LiteralPath $launcherSmokePath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -167,6 +172,7 @@ $contractChecks = [ordered]@{
     provisioningRevalidatesAndroidImageHash = $launcherSourceText -match 'ComputeSha256Async\(image' -and $launcherSourceText -match 'Provenance\["installerImage"\]' -and $launcherSourceText -match 'registeredImageHash'
     provisioningRejectsEmptyBaseFiles = $launcherSourceText -match 'HasContent\(qemu\)' -and $qemuSource -match 'HasContent\(executable\)' -and $baseProvisioningSource -match 'Test-NonEmptyFile' -and $componentProvisioningSource -match 'Test-NonEmptyFile'
     qemuEvidenceRequiresProvisionedRuntime = $qemuBenchmarkCommonSource -match 'Assert-QemuBenchmarkProvisionedRuntime' -and $qemuBenchmarkCommonSource -match 'provenance\.\$name' -and $qemuBenchmarkCommonSource -match 'installerImage' -and $persistenceSource -match 'Assert-QemuBenchmarkProvisionedRuntime' -and $benchmarkSource -match 'Assert-QemuBenchmarkProvisionedRuntime' -and $measureSource -match 'Assert-QemuBenchmarkProvisionedRuntime'
+    validationReportsInvalidateBeforeProbe = $validationEvidenceCommonSource -match "evidenceState = 'invalidated'" -and $validationEvidenceCommonSource -match "status = 'not-validated'" -and $nativeBridgeValidationSource -match 'Initialize-ValidationReport' -and $webViewProviderSource -match 'Initialize-ValidationReport' -and $webViewContentSource -match 'Initialize-ValidationReport' -and $ttsProviderSource -match 'Initialize-ValidationReport' -and $ttsSynthesisSource -match 'Initialize-ValidationReport' -and $networkMediaSource -match 'Initialize-ValidationReport' -and $launcherSmokeSource -match 'Initialize-ValidationReport' -and $persistenceSource -match 'Initialize-ValidationReport' -and $benchmarkSource -match 'Initialize-ValidationReport' -and $measureSource -match 'Initialize-ValidationReport' -and $integratedStabilitySource -match 'Initialize-ValidationReport' -and $diagnosticsScriptSource -match 'Initialize-ValidationReport'
     componentProvisioningMergesState = $componentProvisioningSource -match 'existingState\.provenance' -and $componentProvisioningSource -match 'existingState\.imageHash'
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'installerImage' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"
@@ -175,7 +181,7 @@ $contractChecks = [ordered]@{
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
     publishPreservesPersistentDisk = $publishSource -match 'persistentDiskTargetPath' -and $publishSource -match 'Preservando disco persistente existente' -and $publishSource -match 'OrdinalIgnoreCase'
     guestNetworkQmpNegotiatesCapabilities = $networkMediaSource -match 'qmp_capabilities' -and $networkMediaSource -match 'set_link'
-    staleEvidenceCannotApprove = $checklistSource -match 'EvidenceMaxAgeHours' -and $checklistSource -match 'Test-ReportFresh' -and $checklistSource -match 'reportFreshness'
+    staleEvidenceCannotApprove = $checklistSource -match 'EvidenceMaxAgeHours' -and $checklistSource -match 'Test-ReportFresh' -and $checklistSource -match 'reportFreshness' -and $checklistSource -match "evidenceState.*invalidated"
     reportIdentityGate = $checklistSource -match 'function Test-ReportTransport' -and $checklistSource -match 'function Test-DiagnosticsIdentity' -and $checklistSource -match 'Test-QemuReportIdentity'
     persistenceReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
     benchmarkReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
@@ -191,6 +197,7 @@ $contractChecks = [ordered]@{
 }
 $contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'ShouldLog\(ref _lastAdbOfflineLog\)' -and $launcherSourceText -match 'cooldownSeconds = Math\.Max\(15'
 $contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'
+$contractChecks['checklistReportInvalidatesAtStart'] = $checklistSource -match 'Initialize-ValidationReport' -and $checklistSource -match 'Test-ReportFresh'
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }

@@ -11,10 +11,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
-if ($Iterations -lt 1) { throw 'Iterations must be at least 1.' }
+. (Join-Path ((Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path) 'scripts\validation\ValidationEvidence.Common.ps1')
+$earlyRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$null = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $earlyRepositoryRoot -ReportPath $ReportPath) -Validator 'Run-QemuNeoNewsBenchmark'
 if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuration not found: $ConfigPath" }
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Run-QemuNeoNewsBenchmark'
+if ($Iterations -lt 1) { throw 'Iterations must be at least 1.' }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 . (Join-Path $PSScriptRoot 'QemuBenchmark.Common.ps1')
 $paths = Resolve-QemuBenchmarkPaths -RepositoryRoot $repositoryRoot -Config $config
@@ -99,9 +104,6 @@ $result = [ordered]@{
     status = if ($successful.Count -eq $Iterations) { 'qemu-runtime-stable' } else { 'incomplete' }
 }
 $json = $result | ConvertTo-Json -Depth 14
-$reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
-$reportDirectory = Split-Path -Parent $reportFullPath
-if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 $json
 if ($result.status -ne 'qemu-runtime-stable') { throw "QEMU benchmark incomplete: status=$($result.status)." }

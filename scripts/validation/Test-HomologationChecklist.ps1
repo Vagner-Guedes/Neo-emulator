@@ -8,10 +8,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
-if ($MinimumStabilitySeconds -lt 600) { throw 'MinimumStabilitySeconds precisa ser pelo menos 600 segundos para a homologação final.' }
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
+. (Join-Path $RepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$fullReportPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $RepositoryRoot -ReportPath $ReportPath) -Validator 'Test-HomologationChecklist'
+if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
+if ($MinimumStabilitySeconds -lt 600) { throw 'MinimumStabilitySeconds precisa ser pelo menos 600 segundos para a homologação final.' }
 $configPath = Join-Path $RepositoryRoot 'config\runtime.json'
 $config = Get-Content -LiteralPath $configPath -Raw -Encoding utf8 | ConvertFrom-Json
 $reportRoot = if ([System.IO.Path]::IsPathRooted($ReportDirectory)) { $ReportDirectory } else { Join-Path $RepositoryRoot $ReportDirectory }
@@ -28,6 +30,7 @@ function Get-ReportFreshness {
     param([object]$Report)
     if ($null -eq $Report) { return 'missing' }
     if ([string]$Report.status -eq 'invalid-report') { return 'invalid' }
+    if ([string]$Report.evidenceState -eq 'invalidated') { return 'invalidated' }
     try { $timestamp = [DateTimeOffset]::Parse([string]$Report.timestamp) }
     catch { return 'missing-timestamp' }
     $now = [DateTimeOffset]::UtcNow
@@ -233,9 +236,6 @@ $result = [ordered]@{
     status = if ($items.Count -eq 30 -and $failed.Count -eq 0 -and $pending.Count -eq 0) { 'validated' } else { 'not-approved' }
 }
 $json = $result | ConvertTo-Json -Depth 12
-$fullReportPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $RepositoryRoot $ReportPath }
-$reportParent = Split-Path -Parent $fullReportPath
-if ($reportParent -and -not (Test-Path -LiteralPath $reportParent)) { New-Item -ItemType Directory -Path $reportParent -Force | Out-Null }
 Set-Content -LiteralPath $fullReportPath -Value $json -Encoding utf8
 $json
 if ($result.status -ne 'validated') { exit 2 }

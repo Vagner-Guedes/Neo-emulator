@@ -18,10 +18,12 @@ param(
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
 if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não encontrada: $ConfigPath" }
-if (-not $BuildOnly -and [string]::IsNullOrWhiteSpace($HlsUrl)) { throw 'Forneça -HlsUrl para validar uma playlist HLS real.' }
 
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-GuestNetworkMedia'
+if (-not $BuildOnly -and [string]::IsNullOrWhiteSpace($HlsUrl)) { throw 'Forneça -HlsUrl para validar uma playlist HLS real.' }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 $probePackage = 'com.neonews.runtime.mediaprobe'
 
@@ -207,9 +209,6 @@ $result = [ordered]@{
     status = if ($onlineValidated -and $offlineValidated) { 'validated' } else { 'not-validated' }
 }
 $json = $result | ConvertTo-Json -Depth 10
-$reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
-$reportDirectory = Split-Path -Parent $reportFullPath
-if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 # Probe cleanup changes guest state. Require an explicit operator switch;
 # -KeepProbe remains accepted for compatibility.

@@ -13,6 +13,8 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScri
 if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuration not found: $ConfigPath" }
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Measure-QemuAndroidRuntime'
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 . (Join-Path $PSScriptRoot 'QemuBenchmark.Common.ps1')
 $paths = Resolve-QemuBenchmarkPaths -RepositoryRoot $repositoryRoot -Config $config
@@ -66,9 +68,6 @@ $result = [ordered]@{
 }
 $json = $result | ConvertTo-Json -Depth 12
 if ($ReportPath) {
-    $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
-    $reportDirectory = Split-Path -Parent $reportFullPath
-    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
     Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 }
 $json

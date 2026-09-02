@@ -17,6 +17,8 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não enco
 
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+. (Join-Path $repositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+$reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-TtsSynthesis'
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 $probePackage = 'com.neonews.runtime.ttsprobe'
 
@@ -159,9 +161,6 @@ $result = [ordered]@{
     status = if ($synthesisSucceeded) { 'validated' } else { 'synthesis-failed' }
 }
 $json = $result | ConvertTo-Json -Depth 10
-$reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
-$reportDirectory = Split-Path -Parent $reportFullPath
-if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 # Probe cleanup changes guest state. Require an explicit operator switch;
 # -KeepProbe remains accepted for compatibility.
