@@ -74,6 +74,7 @@ public sealed class DiagnosticsService
         var ttsLocaleCheck = adbOnline ? await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken) : string.Empty;
         var nativeBridge = adbOnline ? await SafeNativeBridgeAsync(cancellationToken) : null;
         var apkAbis = ReadApkAbis();
+        var apkMetadata = ReadApkMetadata();
         var apkSignature = ReadApkSignature();
         var webViewPrimaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken) : null;
         var validatedAbi = _getAbiCompatibility?.Invoke();
@@ -176,6 +177,15 @@ public sealed class DiagnosticsService
                 }
             },
             neoNews = neoNewsReport,
+            apk = new
+            {
+                path = _context.ResolveApkPath(),
+                packageName = apkMetadata?.PackageName,
+                versionName = apkMetadata?.VersionName,
+                versionCode = apkMetadata?.VersionCode,
+                abis = apkAbis,
+                signature = apkSignature
+            },
             abiCompatibility = new
             {
                 guestAbi = validatedAbi?.GuestAbi ?? nativeBridge?.GuestAbi,
@@ -332,6 +342,14 @@ public sealed class DiagnosticsService
         if (!File.Exists(path)) return [];
         try { return NativeBridgeValidationService.ReadApkAbis(path); }
         catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial de ABIs do APK: {exception.Message}"); return []; }
+    }
+
+    private ApkManifestMetadata? ReadApkMetadata()
+    {
+        var path = _context.ResolveApkPath();
+        if (!File.Exists(path)) return null;
+        try { return ApkManifestService.Read(path); }
+        catch (Exception exception) { _logs.Warning("launcher", $"DiagnÃ³stico parcial da identidade do APK: {exception.Message}"); return null; }
     }
 
     private ApkSignatureValidationResult? ReadApkSignature()

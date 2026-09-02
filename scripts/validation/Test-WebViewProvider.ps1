@@ -27,6 +27,12 @@ function Invoke-AdbCommand {
     return (($output | Out-String).Trim())
 }
 
+function Invoke-AdbResult {
+    param([string[]]$Arguments)
+    $output = & $script:adbPath @Arguments 2>&1
+    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+}
+
 function Wait-ForBoot {
     param([int]$TimeoutSeconds)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -69,16 +75,23 @@ if (-not $Serial) {
 }
 $script:Serial = $Serial
 
-$null = Invoke-AdbCommand @('start-server')
+$server = Invoke-AdbResult @('start-server')
+if ($server.ExitCode -ne 0) { throw "ADB start-server falhou: $($server.Text)" }
 if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-AdbCommand @('connect', $Serial) }
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) {
     throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos."
 }
 
 $packageName = [string]$config.webView.provider
-$webViewDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'webviewupdate')
-$packageList = Invoke-AdbCommand @('-s', $Serial, 'shell', 'pm', 'list', 'packages', $packageName)
-$packageDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'package', $packageName)
+$webViewDumpResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'dumpsys', 'webviewupdate')
+$packageListResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'pm', 'list', 'packages', $packageName)
+$packageDumpResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'dumpsys', 'package', $packageName)
+if ($webViewDumpResult.ExitCode -ne 0 -or $packageListResult.ExitCode -ne 0 -or $packageDumpResult.ExitCode -ne 0) {
+    throw "A consulta do provider WebView falhou: webviewupdate=$($webViewDumpResult.ExitCode); packages=$($packageListResult.ExitCode); package=$($packageDumpResult.ExitCode)."
+}
+$webViewDump = $webViewDumpResult.Text
+$packageList = $packageListResult.Text
+$packageDump = $packageDumpResult.Text
 $release = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
 $api = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
 $abi = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.product.cpu.abi')
@@ -96,16 +109,20 @@ $nativeAbiMatches = -not [bool]$config.webView.requireNativeGuestAbi -or $native
 
 $contentTest = $null
 if (-not [string]::IsNullOrWhiteSpace($ContentUrl)) {
-    $launchOutput = Invoke-AdbCommand @('-s', $Serial, 'shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', $ContentUrl)
+    $launchResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', $ContentUrl)
+    $launchOutput = $launchResult.Text
     Start-Sleep -Seconds 4
-    $activityDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'activity', 'activities')
+    $activityResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'dumpsys', 'activity', 'activities')
+    $activityDump = $activityResult.Text
     $contentLogcat = Invoke-AdbCommand @('-s', $Serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '160')
     $contentErrors = @($contentLogcat -split "`r?`n" | Where-Object { $_ -match '(?i)WebView|chromium|AndroidRuntime|FATAL|SIGSEGV|net::ERR_' -and $_ -match '(?i)error|exception|fatal|crash|ERR_' })
-    $contentSucceeded = $launchOutput -notmatch '(?i)Error:|Exception|does not exist' -and $activityDump.Length -gt 0 -and $contentErrors.Count -eq 0
+    $contentSucceeded = $launchResult.ExitCode -eq 0 -and $launchOutput -notmatch '(?i)Error:|Exception|does not exist' -and $activityResult.ExitCode -eq 0 -and $activityDump.Length -gt 0 -and $contentErrors.Count -eq 0
     $contentTest = [ordered]@{
         url = $ContentUrl
-        launchSucceeded = $launchOutput -notmatch '(?i)Error:|Exception|does not exist'
-        activityObserved = $activityDump.Length -gt 0
+        launchSucceeded = $launchResult.ExitCode -eq 0 -and $launchOutput -notmatch '(?i)Error:|Exception|does not exist'
+        launchExitCode = $launchResult.ExitCode
+        activityObserved = $activityResult.ExitCode -eq 0 -and $activityDump.Length -gt 0
+        activityDumpExitCode = $activityResult.ExitCode
         relevantErrors = $contentErrors
         succeeded = $contentSucceeded
         launchOutput = $launchOutput

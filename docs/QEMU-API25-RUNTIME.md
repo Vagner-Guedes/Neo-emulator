@@ -22,6 +22,10 @@ O disco não é recriado durante o boot nem durante a atualização do launcher.
 
 ## Provisionamento
 
+Ao instalar Native Bridge, WebView ou RHVoice, informe uma origem/licenca
+verificavel nos tres parametros `*Origin`; o script rejeita componentes sem
+essa proveniencia registrada e nunca baixa binarios.
+
 Execute:
 
 ```powershell
@@ -35,7 +39,10 @@ operação separada e explícita:
 
 ```powershell
 .\scripts\provision\Install-GuestComponents.ps1 `
-  -InstallNativeBridge -InstallWebView -InstallTts -SetRhVoiceDefault
+  -InstallNativeBridge -InstallWebView -InstallTts -SetRhVoiceDefault `
+  -NativeBridgeOrigin "<origem aprovada/licenca do Native Bridge>" `
+  -WebViewOrigin "<origem aprovada/licenca do WebView>" `
+  -TtsOrigin "<origem aprovada/licenca do RHVoice>"
 ```
 
 O comando usa somente os arquivos configurados, `adb install -r` e registra

@@ -40,6 +40,21 @@ if ($existingImageHash -notmatch '^[0-9a-fA-F]{64}$' -or $existingProvenance.Cou
     throw "O estado base de provisionamento é incompleto ou não possui SHA-256/proveniência fortes: $statePath. Reexecute Provision-QemuAndroidRuntime.ps1."
 }
 
+$requestedOrigins = [ordered]@{
+    nativeBridge = $NativeBridgeOrigin
+    webView = $WebViewOrigin
+    tts = $TtsOrigin
+}
+foreach ($requestedComponent in @(
+    if ($InstallNativeBridge) { 'nativeBridge' }
+    if ($InstallWebView) { 'webView' }
+    if ($InstallTts) { 'tts' }
+)) {
+    if ([string]::IsNullOrWhiteSpace([string]$requestedOrigins[$requestedComponent])) {
+        throw "Informe -$requestedComponent`Origin ao instalar esse componente. A origem/licença precisa ser registrada antes do provisionamento."
+    }
+}
+
 $basePaths = [ordered]@{
     qemu = Resolve-ConfiguredPath $config.android.qemu.executable
     adb = Resolve-ConfiguredPath (Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath)

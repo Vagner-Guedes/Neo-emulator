@@ -122,14 +122,21 @@ if ($BuildOnly) { [ordered]@{ status = 'probe-built'; apk = $probeApk; package =
 $null = Invoke-Adb @('start-server')
 if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $Serial) }
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial." }
-$webViewDump = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'webviewupdate')).Text
-$packageDump = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'package', [string]$config.webView.provider)).Text
+$webViewDumpResult = Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'webviewupdate')
+$packageDumpResult = Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'package', [string]$config.webView.provider)
+if ($webViewDumpResult.ExitCode -ne 0 -or $packageDumpResult.ExitCode -ne 0) {
+    throw "A consulta do provider WebView falhou: webviewupdate=$($webViewDumpResult.ExitCode); package=$($packageDumpResult.ExitCode)."
+}
+$webViewDump = $webViewDumpResult.Text
+$packageDump = $packageDumpResult.Text
 $versionMatch = [regex]::Match($packageDump, 'versionName=([^\s]+)')
 $installedVersion = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { '' }
 $primaryCpuAbiMatch = [regex]::Match($packageDump, 'primaryCpuAbi=([^\s]+)')
 $primaryCpuAbi = if ($primaryCpuAbiMatch.Success) { $primaryCpuAbiMatch.Groups[1].Value } else { $null }
 $providerActive = Test-ActiveWebViewProvider -Dump $webViewDump -Provider ([string]$config.webView.provider)
-$guestApi = (Invoke-Adb @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')).Text
+$guestApiResult = Invoke-Adb @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
+if ($guestApiResult.ExitCode -ne 0) { throw "Não foi possível ler a API do guest: $($guestApiResult.Text)" }
+$guestApi = $guestApiResult.Text
 $apiMatches = $guestApi -eq [string]$config.android.apiLevel
 $versionMatches = $installedVersion -eq [string]$config.webView.homologatedVersion
 $nativeGuestAbi = $primaryCpuAbi -in @('x86', 'x86_64')

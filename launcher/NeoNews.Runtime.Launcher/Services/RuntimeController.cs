@@ -315,8 +315,8 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.StartingNeoNews);
             await _neoNews.StartAsync(progress, cancellationToken);
             _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), _neoNews.LastInstallSucceeded, cancellationToken);
-            await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !_lastAbiCompatibility.RuntimeStable) throw new RuntimeOperationException("O NeoNews não permaneceu estável com a ABI ARM.", $"primaryCpuAbi={_lastAbiCompatibility.PrimaryCpuAbi}; selectedApkAbi={_lastAbiCompatibility.SelectedApkAbi}; runtimeStable=false");
+            await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
             if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _kiosk.EnterAsync(progress, cancellationToken); }
             await _supervisor.StartAsync();
             _state.Set(RuntimeState.Running);

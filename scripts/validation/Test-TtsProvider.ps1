@@ -26,6 +26,12 @@ function Invoke-AdbCommand {
     return (($output | Out-String).Trim())
 }
 
+function Invoke-AdbResult {
+    param([string[]]$Arguments)
+    $output = & $script:adbPath @Arguments 2>&1
+    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+}
+
 function Wait-ForBoot {
     param([int]$TimeoutSeconds)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -59,28 +65,41 @@ if (-not $Serial) {
     }
 }
 $script:Serial = $Serial
-$null = Invoke-AdbCommand @('start-server')
+$server = Invoke-AdbResult @('start-server')
+if ($server.ExitCode -ne 0) { throw "ADB start-server falhou: $($server.Text)" }
 if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-AdbCommand @('connect', $Serial) }
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos." }
 
-$allPackages = Invoke-AdbCommand @('-s', $Serial, 'shell', 'pm', 'list', 'packages')
+$allPackagesResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'pm', 'list', 'packages')
+if ($allPackagesResult.ExitCode -ne 0) { throw "Não foi possível listar os pacotes TTS: $($allPackagesResult.Text)" }
+$allPackages = $allPackagesResult.Text
 $candidatePackages = @($allPackages -split "`r?`n" | ForEach-Object { $_ -replace '^package:', '' } | Where-Object { $_ -match '(?i)(rhvoice|tts|svox|pico|speech)' })
 $enginePackages = New-Object System.Collections.Generic.List[string]
 foreach ($package in $candidatePackages) {
     if (-not $package) { continue }
-    $packageDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'package', $package)
-    if ($packageDump -match 'android\.intent\.action\.TTS_SERVICE') { $enginePackages.Add($package) }
+    $packageDumpResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'dumpsys', 'package', $package)
+    if ($packageDumpResult.ExitCode -eq 0 -and $packageDumpResult.Text -match 'android\.intent\.action\.TTS_SERVICE') { $enginePackages.Add($package) }
 }
 
-$defaultEngine = Invoke-AdbCommand @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
-$localeCheck = Invoke-AdbCommand @('-s', $Serial, 'shell', 'am', 'broadcast', '-a', 'android.speech.tts.engine.CHECK_TTS_DATA', '--es', 'language', 'por', '--es', 'country', 'BRA', '--es', 'variant', '')
-$serviceList = Invoke-AdbCommand @('-s', $Serial, 'shell', 'service', 'list')
+$defaultEngineResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
+$localeCheckResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'am', 'broadcast', '-a', 'android.speech.tts.engine.CHECK_TTS_DATA', '--es', 'language', 'por', '--es', 'country', 'BRA', '--es', 'variant', '')
+$serviceListResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'service', 'list')
+$apiResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
+$releaseResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
+$abiResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'getprop', 'ro.product.cpu.abi')
+$commandResults = @($defaultEngineResult, $localeCheckResult, $serviceListResult, $apiResult, $releaseResult, $abiResult)
+if ($defaultEngineResult.ExitCode -ne 0 -or $localeCheckResult.ExitCode -ne 0 -or $serviceListResult.ExitCode -ne 0 -or @($commandResults | Where-Object { $_.ExitCode -ne 0 }).Count -gt 0) {
+    throw 'Uma ou mais consultas do provider TTS retornaram exit code diferente de zero.'
+}
+$defaultEngine = $defaultEngineResult.Text
+$localeCheck = $localeCheckResult.Text
+$serviceList = $serviceListResult.Text
 $rhvoicePresent = (($enginePackages -join "`n") -match '(?i)rhvoice')
 $defaultMatches = $defaultEngine -match '(?i)rhvoice'
 $localeReady = $localeCheck -match '(?i)result=1|CHECK_(VOICE|TTS)_DATA_PASS'
-$api = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
-$release = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
-$abi = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.product.cpu.abi')
+$api = $apiResult.Text
+$release = $releaseResult.Text
+$abi = $abiResult.Text
 
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')

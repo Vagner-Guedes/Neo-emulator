@@ -43,6 +43,10 @@ public sealed class NeoNewsService
 
     public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
+        // Installation evidence belongs to this Start operation only. A
+        // previous install must never make a later offline launch look like
+        // it observed adb install -r again.
+        LastInstallSucceeded = false;
         var status = await GetStatusAsync(cancellationToken);
         var installedVersionCode = status.Installed
             ? await _adb.GetPackageVersionCodeAsync(PackageName, cancellationToken)
@@ -101,6 +105,39 @@ public sealed class NeoNewsService
 
     private void ValidateAuthorizedApk(string apkPath)
     {
+        ApkManifestMetadata metadata;
+        try
+        {
+            metadata = ApkManifestService.Read(apkPath);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException)
+        {
+            throw new RuntimeOperationException(
+                "O APK NeoNews não possui uma identidade válida.",
+                $"Não foi possível ler AndroidManifest.xml do APK {apkPath}: {exception.Message}",
+                exception);
+        }
+
+        if (!metadata.PackageName.Equals(PackageName, StringComparison.Ordinal))
+        {
+            throw new RuntimeOperationException(
+                "O pacote do APK NeoNews não corresponde ao esperado.",
+                $"Package encontrado={metadata.PackageName}; esperado={PackageName}; APK={apkPath}.");
+        }
+        if (!string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) &&
+            !string.Equals(metadata.VersionName, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "A versão do APK NeoNews não corresponde à autorizada.",
+                $"versionName encontrado={metadata.VersionName ?? "<ausente>"}; esperado={_context.Config.NeoNews.VersionName}; APK={apkPath}.");
+        }
+        if (_context.Config.NeoNews.VersionCode > 0 && metadata.VersionCode != _context.Config.NeoNews.VersionCode)
+        {
+            throw new RuntimeOperationException(
+                "O versionCode do APK NeoNews não corresponde ao autorizado.",
+                $"versionCode encontrado={metadata.VersionCode?.ToString() ?? "<ausente>"}; esperado={_context.Config.NeoNews.VersionCode}; APK={apkPath}.");
+        }
+
         var expected = _context.Config.NeoNews.SigningCertificateSha256;
         if (string.IsNullOrWhiteSpace(expected)) return;
         var result = ApkSignatureService.Validate(apkPath, expected);

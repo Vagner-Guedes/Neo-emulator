@@ -39,11 +39,13 @@ falhar.
 
 ## Verificacao local desta rodada
 
-A publicacao de verificacao `dist/NeoNewsRuntime-final-8` foi gerada depois do build Release e passou pelo smoke do executavel publicado. Foram observados janela WPF responsiva, single-instance, `--exit`, caminho com espacos e ausencia de processos residuais. A coleta `--diagnostics` tambem terminou sem erro e registrou o backend/serial configurados.
+A publicacao de verificacao `dist/NeoNewsRuntime-final-9` foi gerada depois do build Release e passou pelo smoke do executavel publicado. Foram observados janela WPF responsiva, single-instance, `--exit`, caminho com espacos e ausencia de processos residuais. A coleta fresca `--diagnostics` tambem terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponivel e os arquivos externos ausentes.
+
+O launcher le o AndroidManifest AXML do APK antes do `adb install -r` e rejeita package, versionName ou versionCode divergentes. O parser foi exercitado contra o `app.apk` local e encontrou `com.in9midia.neonews.player`, `9.0.3` e `522`.
 
 O pacote publicado contem zero arquivos em `packages/`; APK oficial, Native Bridge, WebView, RHVoice e demais dependencias externas continuam fora da distribuicao e do Git. Essa verificacao local nao substitui a execucao do guest.
 
-O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos e exit codes zero nos comandos de instalacao e launch. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
+O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
 
 ## Contrato do runtime
 
