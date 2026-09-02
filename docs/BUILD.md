@@ -74,6 +74,10 @@ runner observa por pelo menos 600 segundos o backend, ADB, NeoNews, watchdog,
 kiosk, WebView, RHVoice e logcat; ausência de qualquer evidência mantém o
 resultado como `not-validated`.
 
+The stability runner also requires the smoke report to contain the explicit
+manual field `manualEvidence.neoNewsContentObserved=true`; set it only after
+observing real NeoNews content in the same published executable.
+
 ```powershell
 .\scripts\validation\Test-LauncherSmoke.ps1 `
   -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `

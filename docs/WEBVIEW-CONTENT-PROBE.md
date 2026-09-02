@@ -10,8 +10,10 @@ The probe has two phases:
 2. load an HTTPS URL and confirm a non-empty document body.
 
 The report status is `validated` only when the provider version and both content
-phases pass. The APK is a temporary debug probe and is uninstalled by default;
-it does not alter the official NeoNews APK.
+phases pass. The APK is a temporary debug probe and is kept by default so the
+test does not perform a destructive guest operation. Use `-CleanupProbe` only
+when an operator explicitly wants to remove it; `-KeepProbe` remains accepted
+for compatibility. It does not alter the official NeoNews APK.
 
 ```powershell
 .\scripts\validation\Test-WebViewContent.ps1 `

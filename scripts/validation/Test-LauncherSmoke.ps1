@@ -12,7 +12,8 @@ param(
     [switch]$WatchdogActivityObserved,
     [switch]$WatchdogQemuObserved,
     [switch]$WindowsRestartObserved,
-    [switch]$UpdatePreservationObserved
+    [switch]$UpdatePreservationObserved,
+    [switch]$NeoNewsContentObserved
 )
 
 $ErrorActionPreference = 'Stop'
@@ -155,6 +156,7 @@ $result = [ordered]@{
         watchdogQemuObserved = [bool]$WatchdogQemuObserved
         windowsRestartObserved = [bool]$WindowsRestartObserved
         updatePreservationObserved = [bool]$UpdatePreservationObserved
+        neoNewsContentObserved = [bool]$NeoNewsContentObserved
     }
     outsideProject = -not $ExecutablePath.StartsWith($launcherRoot, [StringComparison]::OrdinalIgnoreCase)
     pathWithSpaces = [ordered]@{ requested = [bool]$PathWithSpaces; passed = $pathWithSpacesPassed; details = $spaceTest }

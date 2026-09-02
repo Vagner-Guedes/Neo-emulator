@@ -14,6 +14,10 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
     private int _started;
     private int _recoveryAttempts;
     private DateTimeOffset _cooldownUntil;
+    private DateTimeOffset _lastAdbOfflineLog = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastBootingLog = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastActivityLossLog = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastKioskLossLog = DateTimeOffset.MinValue;
     private bool _nativeBridgeStructuralError;
 
     public RuntimeSupervisorService(
@@ -78,13 +82,15 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
                 }
                 if (!await _adb.IsDeviceOnlineAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    _logs.Warning("watchdog", "Nível 2: ADB está offline; aguardando/reconectando sem reiniciar o guest.");
+                    if (ShouldLog(ref _lastAdbOfflineLog))
+                        _logs.Warning("watchdog", "Nível 2: ADB está offline; aguardando/reconectando sem reiniciar o guest.");
                     _ = await _adb.ConnectAsync(cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 if (await _adb.GetPropertyAsync("sys.boot_completed", cancellationToken).ConfigureAwait(false) != "1")
                 {
-                    _logs.Warning("watchdog", "Android ainda não confirmou boot completo.");
+                    if (ShouldLog(ref _lastBootingLog))
+                        _logs.Warning("watchdog", "Android ainda não confirmou boot completo.");
                     continue;
                 }
                 var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken).ConfigureAwait(false);
@@ -104,7 +110,16 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
                 var status = await _neoNews.GetStatusAsync(cancellationToken).ConfigureAwait(false);
                 if (status.Installed && !status.Running)
                 {
-                    _logs.Warning("watchdog", "Nível 1: NeoNews não está em primeiro plano; relançando somente a activity.");
+                    var recentLogcat = await _adb.GetLogcatAsync(160, cancellationToken).ConfigureAwait(false);
+                    if (ContainsStructuralRuntimeFailure(recentLogcat))
+                    {
+                        if (!_nativeBridgeStructuralError)
+                            _logs.Error("watchdog", "Falha estrutural detectada no logcat do NeoNews; nenhum relançamento automático será tentado.");
+                        _nativeBridgeStructuralError = true;
+                        continue;
+                    }
+                    if (ShouldLog(ref _lastActivityLossLog))
+                        _logs.Warning("watchdog", "Nível 1: NeoNews não está em primeiro plano; relançando somente a activity.");
                     await _neoNews.StartAsync(null, cancellationToken).ConfigureAwait(false);
                 }
                 else if (status.Running)
@@ -113,7 +128,8 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
                 }
                 if (_kiosk.IsActive && !await _kiosk.IsGuestConfigurationAppliedAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    _logs.Warning("watchdog", "Configuração kiosk perdida; reaplicando a política configurada.");
+                    if (ShouldLog(ref _lastKioskLossLog))
+                        _logs.Warning("watchdog", "Configuração kiosk perdida; reaplicando a política configurada.");
                     await _kiosk.EnterAsync(null, cancellationToken).ConfigureAwait(false);
                 }
             }
@@ -164,6 +180,29 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
             _logs.Error("watchdog", "Falha na recuperação do runtime Android.", exception);
             _cooldownUntil = DateTimeOffset.UtcNow.AddSeconds(Math.Max(5, _context.Config.Resilience.RetryDelaySeconds));
         }
+    }
+
+    private static bool ContainsStructuralRuntimeFailure(string logcat)
+    {
+        if (string.IsNullOrWhiteSpace(logcat)) return false;
+        var relevant = logcat
+            .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.Contains("com.in9midia.neonews.player", StringComparison.OrdinalIgnoreCase) ||
+                           line.Contains("native bridge", StringComparison.OrdinalIgnoreCase) ||
+                           System.Text.RegularExpressions.Regex.IsMatch(line, "UnsatisfiedLinkError|linker|SIGSEGV|FATAL EXCEPTION|dex2oat|zygote", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        return relevant.Any(line => System.Text.RegularExpressions.Regex.IsMatch(
+            line,
+            "UnsatisfiedLinkError|linker.*(error|fail)|SIGSEGV|FATAL EXCEPTION|dex2oat.*(error|fail)|zygote.*(error|fail)|native bridge.*(error|fail)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+    }
+
+    private bool ShouldLog(ref DateTimeOffset lastLog)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cooldownSeconds = Math.Max(15, _context.Config.Resilience.RetryDelaySeconds * 3);
+        if (now - lastLog < TimeSpan.FromSeconds(cooldownSeconds)) return false;
+        lastLog = now;
+        return true;
     }
 
     public async ValueTask DisposeAsync()

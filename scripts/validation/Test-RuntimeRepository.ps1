@@ -98,6 +98,8 @@ $webViewContentPath = Join-Path $RepositoryRoot 'scripts\validation\Test-WebView
 $webViewContentSource = if (Test-Path -LiteralPath $webViewContentPath) { Get-Content -LiteralPath $webViewContentPath -Raw -Encoding utf8 } else { '' }
 $ttsProviderPath = Join-Path $RepositoryRoot 'scripts\validation\Test-TtsProvider.ps1'
 $ttsProviderSource = if (Test-Path -LiteralPath $ttsProviderPath) { Get-Content -LiteralPath $ttsProviderPath -Raw -Encoding utf8 } else { '' }
+$ttsSynthesisPath = Join-Path $RepositoryRoot 'scripts\validation\Test-TtsSynthesis.ps1'
+$ttsSynthesisSource = if (Test-Path -LiteralPath $ttsSynthesisPath) { Get-Content -LiteralPath $ttsSynthesisPath -Raw -Encoding utf8 } else { '' }
 $checklistPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HomologationChecklist.ps1'
 $checklistSource = if (Test-Path -LiteralPath $checklistPath) { Get-Content -LiteralPath $checklistPath -Raw -Encoding utf8 } else { '' }
 $diagnosticsScriptPath = Join-Path $RepositoryRoot 'scripts\diagnostics\Collect-Diagnostics.ps1'
@@ -111,7 +113,7 @@ $contractChecks = [ordered]@{
     persistentQcow2 = [string]$configObject.android.qemu.disk -match '(?i)\.qcow2$' -and $qemuSource -match 'format=qcow2'
     noSilentTcg = -not [bool]$configObject.android.qemu.allowTcgForDiagnostics -and $qemuSource -match 'AllowTcgForDiagnostics'
     noQemuEmuKill = $launcherSourceText -notmatch '(?i)adb\s+emu\s+kill'
-    noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)'
+    noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)' -and $webViewContentSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $ttsSynthesisSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $networkMediaSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall'
     portableRuntimePaths = [string]$configObject.android.qemu.executable -match '(?i)^runtime[\\/]' -and [string]$configObject.android.qemu.disk -match '(?i)^runtime[\\/]'
     qemuEnvironmentFallbackDisabled = -not [bool]$configObject.android.tooling.allowEnvironmentFallback
     installEvidenceTracksAdbSuccess = $launcherSourceText -match 'LastInstallSucceeded' -and $launcherSourceText -match 'InstallApkAsync'
@@ -129,13 +131,20 @@ $contractChecks = [ordered]@{
     diagnosticsSupportsExplicitExecutable = $diagnosticsScriptSource -match '\[string\]\$ExecutablePath' -and $diagnosticsScriptSource -match 'GetFullPath\(\$ExecutablePath\)'
     prolongedStabilityEvidence = $nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
     integratedStabilityEvidence = $integratedStabilitySource -match 'DurationSeconds = 600' -and $integratedStabilitySource -match 'watchdog\.active' -and $integratedStabilitySource -match 'Test-KioskState' -and $integratedStabilitySource -match 'webView\.status' -and $integratedStabilitySource -match 'voice\.localeReady' -and $checklistSource -match 'runtime-stability.json'
+    integratedStabilityRequiresNeoNewsContent = $integratedStabilitySource -match 'LauncherSmokeEvidencePath' -and $integratedStabilitySource -match 'neoNewsContentObserved' -and $integratedStabilitySource -match 'Test-NeoNewsContentEvidence'
     checklistRequiresApkManifestIdentity = $checklistSource -match "apk\.packageName" -and $checklistSource -match "apk\.versionName" -and $checklistSource -match "apk\.versionCode"
     configurableAdbPorts = $checklistSource -match 'hostPort\s*-gt 0' -and $checklistSource -match 'guestPort\s*-gt 0' -and $checklistSource -match 'adbRequirement'
     nativeBridgeCommandsRequireExitCode = $nativeBridgeValidationSource -match 'Invoke-AdbResult' -and $nativeBridgeValidationSource -match 'propertyExitCodes' -and $nativeBridgeValidationSource -match 'packageDumpExitCode' -and $nativeBridgeValidationSource -match 'activityDumpExitCode' -and $nativeBridgeValidationSource -match 'logcatExitCode' -and $nativeBridgeValidationSource -match 'installExitCode -eq 0' -and $nativeBridgeValidationSource -match 'launchExitCode -eq 0'
+    nativeBridgeGateRequiresRuntimeEvidence = $checklistSource -match 'native-bridge-property' -and $checklistSource -match 'abiCompatibility\.runtimeStable' -and $checklistSource -match 'Has-PropertyValue \$native ''runtimeStable'' \$true'
+    backendGateRequiresLiveProcess = $checklistSource -match 'backend-qemu-whpx' -and $checklistSource -match 'tools\.backendProcess'' \$true'
+    adbGateRequiresOnlineGuest = $checklistSource -match 'adb-tcp' -and $checklistSource -match 'android\.adb\.online'' \$true'
     webViewProviderQueriesRequireExitCode = $webViewProviderSource -match 'Invoke-AdbResult' -and $webViewProviderSource -match 'webViewDumpResult\.ExitCode' -and $webViewProviderSource -match 'packageDumpResult\.ExitCode'
     webViewContentQueriesRequireExitCode = $webViewContentSource -match 'webViewDumpResult\.ExitCode' -and $webViewContentSource -match 'packageDumpResult\.ExitCode' -and $webViewContentSource -match 'guestApiResult\.ExitCode'
     ttsProviderQueriesRequireExitCode = $ttsProviderSource -match 'Invoke-AdbResult' -and $ttsProviderSource -match 'allPackagesResult\.ExitCode' -and $ttsProviderSource -match 'defaultEngineResult\.ExitCode'
+    probeCleanupRequiresExplicitSwitch = $webViewContentSource -match '\[switch\]\$CleanupProbe' -and $webViewContentSource -match '\$CleanupProbe\s+-and\s+-not\s+\$KeepProbe' -and $ttsSynthesisSource -match '\[switch\]\$CleanupProbe' -and $ttsSynthesisSource -match '\$CleanupProbe\s+-and\s+-not\s+\$KeepProbe' -and $networkMediaSource -match '\[switch\]\$CleanupProbe' -and $networkMediaSource -match '\$CleanupProbe\s+-and\s+-not\s+\$KeepProbe'
     arm32NativeBridgeAbiIsRequired = $launcherSourceText -match 'PreferredAbi' -and $launcherSourceText -match 'primary\.Equals\(preferredAbi'
+    uiNativeBridgeStateRequiresRuntimeEvidence = $runtimeControllerSource -match '_lastAbiCompatibility\?\.RuntimeStable == true' -and $runtimeControllerSource -match 'NativeBridgeState\.Unknown'
+    watchdogStopsOnStructuralRuntimeFailure = $launcherSourceText -match 'ContainsStructuralRuntimeFailure' -and $launcherSourceText -match 'GetLogcatAsync\(160' -and $launcherSourceText -match '_nativeBridgeStructuralError = true'
     kioskRestoresGuestStateOnFailedEntry = $launcherSourceText -match 'capturedHere' -and $launcherSourceText -match 'RestoreGuestStateAsync'
     kioskValidatesWindowGeometry = $launcherSourceText -match 'IsKioskWindowApplied' -and $launcherSourceText -match 'GetWindowRect'
     kioskRetriesBackendWindowDiscovery = $launcherSourceText -match 'CaptureAndMaximizeEmulatorWindowAsync' -and $launcherSourceText -match 'const int attempts = 12' -and $launcherSourceText -match 'backend PID/title pair'
@@ -158,6 +167,8 @@ $contractChecks = [ordered]@{
     persistenceReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
     benchmarkReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
 }
+$contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'ShouldLog\(ref _lastAdbOfflineLog\)' -and $launcherSourceText -match 'cooldownSeconds = Math\.Max\(15'
+$contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }

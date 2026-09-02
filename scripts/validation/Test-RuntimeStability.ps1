@@ -5,6 +5,7 @@ param(
     [int]$PollSeconds = 5,
     [int]$DiagnosticTimeoutSeconds = 30,
     [int]$EvidenceMaxAgeHours = 24,
+    [string]$LauncherSmokeEvidencePath = 'reports/launcher-smoke.json',
     [string]$NativeBridgeEvidencePath = 'reports/nativebridge.json',
     [string]$WebViewContentEvidencePath = 'reports/webview-content.json',
     [string]$TtsEvidencePath = 'reports/tts-synthesis.json',
@@ -74,6 +75,19 @@ function Test-ReportTransport {
 function Test-RequiredEvidence {
     param([object]$Report, [string]$Status)
     return (Test-ReportFresh $Report) -and (Test-ReportTransport $Report) -and [string]$Report.status -eq $Status
+}
+
+function Test-NeoNewsContentEvidence {
+    param([object]$Report)
+    if (-not (Test-ReportFresh $Report)) { return $false }
+    if ([string]$Report.status -ne 'validated') { return $false }
+    try {
+        $reportExecutable = [System.IO.Path]::GetFullPath([string]$Report.executable)
+        $selectedExecutable = [System.IO.Path]::GetFullPath($ExecutablePath)
+        return $reportExecutable.Equals($selectedExecutable, [StringComparison]::OrdinalIgnoreCase) -and
+            [bool]$Report.manualEvidence.neoNewsContentObserved
+    }
+    catch { return $false }
 }
 
 function Send-LauncherCommand {
@@ -161,6 +175,15 @@ function Convert-DiagnosticsSample {
 }
 
 $evidence = [ordered]@{}
+$launcherSmokePath = Resolve-EvidencePath $LauncherSmokeEvidencePath
+$launcherSmoke = Read-JsonEvidence $launcherSmokePath
+$evidence.neoNewsContent = [ordered]@{
+    path = $launcherSmokePath
+    fresh = Test-ReportFresh $launcherSmoke
+    executableMatches = if ($null -ne $launcherSmoke) { try { [System.IO.Path]::GetFullPath([string]$launcherSmoke.executable).Equals([System.IO.Path]::GetFullPath($ExecutablePath), [StringComparison]::OrdinalIgnoreCase) } catch { $false } } else { $false }
+    observed = if ($null -ne $launcherSmoke) { [bool]$launcherSmoke.manualEvidence.neoNewsContentObserved } else { $false }
+    ready = Test-NeoNewsContentEvidence $launcherSmoke
+}
 foreach ($entry in @(
     [ordered]@{ name = 'nativeBridge'; path = $NativeBridgeEvidencePath; status = 'runtimeStable' },
     [ordered]@{ name = 'webViewContent'; path = $WebViewContentEvidencePath; status = 'validated' },
@@ -206,6 +229,7 @@ try {
     if ($main.HasExited) { throw 'O launcher encerrou antes do teste de estabilidade iniciar.' }
 
     $startCommandExitCode = Send-LauncherCommand '--start'
+    if ($startCommandExitCode -ne 0) { throw "O comando --start falhou com exit code $startCommandExitCode." }
     $startedAt = [DateTimeOffset]::UtcNow
     $deadline = (Get-Date).ToUniversalTime().AddSeconds($DurationSeconds)
     do {

@@ -60,5 +60,7 @@ Com o guest provisionado e o SDK Android de desenvolvimento disponível, execute
 
 O script compila localmente um probe temporário, chama `TextToSpeech.speak` e
 `synthesizeToFile` com a frase de teste, confirma um WAV não vazio e remove o
-probe ao final, salvo se `-KeepProbe` for usado. `-BuildOnly` valida apenas a
-construção do probe.
+probe fica instalado por padrão para evitar uma remoção destrutiva do guest;
+use `-CleanupProbe` somente com intenção explícita de removê-lo. `-KeepProbe`
+continua aceito por compatibilidade. `-BuildOnly` valida apenas a construção
+do probe.

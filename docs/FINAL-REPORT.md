@@ -36,7 +36,7 @@ falhar.
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |
 | Checklist | `Test-HomologationChecklist.ps1` | 30 gates agregados; pendências nunca viram aprovação |
-| Estabilidade integrada | `Test-RuntimeStability.ps1` | runner de 600 s para backend, ADB, NeoNews, watchdog, kiosk, WebView, TTS e logcat; pendente sem guest |
+| Estabilidade integrada | `Test-RuntimeStability.ps1` | runner de 600 s para backend, ADB, NeoNews, watchdog, kiosk, WebView, TTS, conteudo real e logcat; pendente sem guest |
 
 ## Verificacao local desta rodada
 
@@ -51,7 +51,7 @@ imagem Android quando solicitada; o boot rejeita estado sem essa proveniencia
 ou sem SHA-256 forte. A instalacao opt-in de Native Bridge, WebView e RHVoice
 continua exigindo origem/licenca por componente.
 
-O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
+O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
 
 ## Contrato do runtime
 

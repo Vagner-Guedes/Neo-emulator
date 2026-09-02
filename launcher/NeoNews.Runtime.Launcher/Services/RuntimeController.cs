@@ -75,7 +75,9 @@ public sealed class RuntimeController : IAsyncDisposable
             var bridge = await SafeNativeBridgeAsync(cancellationToken);
             if (bridge is not null) nativeBridgeState = _supervisor.HasNativeBridgeStructuralError
                 ? NativeBridgeState.Error
-                : bridge.Ready ? NativeBridgeState.Ready : NativeBridgeState.Unavailable;
+                : !bridge.Ready ? NativeBridgeState.Unavailable
+                : _lastAbiCompatibility?.RuntimeStable == true ? NativeBridgeState.Ready
+                : NativeBridgeState.Unknown;
             var neoStatus = await SafeNeoNewsAsync(cancellationToken);
             if (neoStatus is not null)
             {

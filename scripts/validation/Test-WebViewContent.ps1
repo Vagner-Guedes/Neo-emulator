@@ -8,6 +8,7 @@ param(
     [int]$ContentTimeoutSeconds = 90,
     [string]$ReportPath = 'reports/webview-content.json',
     [switch]$KeepProbe,
+    [switch]$CleanupProbe,
     [switch]$BuildOnly
 )
 
@@ -169,6 +170,11 @@ $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath
 $reportDirectory = Split-Path -Parent $reportFullPath
 if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
-if (-not $KeepProbe) { $null = Invoke-Adb @('-s', $Serial, 'uninstall', $probePackage) }
+# Probe cleanup changes guest state. Require an explicit operator switch;
+# -KeepProbe remains accepted for compatibility.
+if ($CleanupProbe -and -not $KeepProbe) {
+    $cleanup = Invoke-Adb @('-s', $Serial, 'uninstall', $probePackage)
+    if ($cleanup.ExitCode -ne 0) { throw "Falha ao remover explicitamente o probe WebView: $($cleanup.Text)" }
+}
 $json
 if ($result.status -ne 'validated') { throw "WebView não foi homologado: status=$($result.status)." }
