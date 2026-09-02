@@ -79,9 +79,12 @@ function Invoke-Qmp {
         $stream.ReadTimeout = 2000
         $greeting = New-Object byte[] 2048
         try { $null = $stream.Read($greeting, 0, $greeting.Length) } catch { }
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes("$Payload`r`n")
-        $stream.Write($bytes, 0, $bytes.Length)
-        $stream.Flush()
+        foreach ($command in @('{"execute":"qmp_capabilities"}', $Payload)) {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes("$command`r`n")
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush()
+            Start-Sleep -Milliseconds 100
+        }
         Start-Sleep -Milliseconds 250
         $stream.Dispose()
     }

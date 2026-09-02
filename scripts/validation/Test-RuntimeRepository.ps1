@@ -81,6 +81,8 @@ $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRun
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
 $componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1'
 $componentProvisioningSource = if (Test-Path -LiteralPath $componentProvisioningPath) { Get-Content -LiteralPath $componentProvisioningPath -Raw -Encoding utf8 } else { '' }
+$networkMediaPath = Join-Path $RepositoryRoot 'scripts\validation\Test-GuestNetworkMedia.ps1'
+$networkMediaSource = if (Test-Path -LiteralPath $networkMediaPath) { Get-Content -LiteralPath $networkMediaPath -Raw -Encoding utf8 } else { '' }
 $checklistPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HomologationChecklist.ps1'
 $checklistSource = if (Test-Path -LiteralPath $checklistPath) { Get-Content -LiteralPath $checklistPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
@@ -109,6 +111,7 @@ $contractChecks = [ordered]@{
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
     publishPreservesPersistentDisk = $publishSource -match 'persistentDiskTargetPath' -and $publishSource -match 'Preservando disco persistente existente' -and $publishSource -match 'OrdinalIgnoreCase'
+    guestNetworkQmpNegotiatesCapabilities = $networkMediaSource -match 'qmp_capabilities' -and $networkMediaSource -match 'set_link'
     staleEvidenceCannotApprove = $checklistSource -match 'EvidenceMaxAgeHours' -and $checklistSource -match 'Test-ReportFresh' -and $checklistSource -match 'reportFreshness'
     reportIdentityGate = $checklistSource -match 'function Test-ReportTransport' -and $checklistSource -match 'function Test-DiagnosticsIdentity' -and $checklistSource -match 'Test-QemuReportIdentity'
     persistenceReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
