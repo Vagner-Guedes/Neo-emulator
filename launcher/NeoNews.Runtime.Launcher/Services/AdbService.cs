@@ -88,7 +88,11 @@ public sealed class AdbService
     {
         if (!Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)) return true;
 
+        var wasOffline = _state == AdbRuntimeState.Offline;
         SetState(AdbRuntimeState.Connecting);
+        if (wasOffline)
+            _ = await ReconnectOfflineAsync(cancellationToken);
+
         var result = await ExecuteHostAsync(["connect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
         RecordTransportResult($"connect {Serial}", result);
         var connected = result.Succeeded &&
@@ -97,6 +101,22 @@ public sealed class AdbService
                        !result.StandardError.Contains("unable", StringComparison.OrdinalIgnoreCase);
         if (!connected) SetState(AdbRuntimeState.Disconnected);
         return connected;
+    }
+
+    /// <summary>
+    /// Recreates transports that the ADB server has retained as offline.
+    /// `adb connect` alone is intentionally not enough here: when a stale
+    /// endpoint is already registered it can answer "already connected"
+    /// without restarting the transport. This method is only called by the
+    /// bounded boot/reconnect loop, never in a tight background loop.
+    /// </summary>
+    public async Task<bool> ReconnectOfflineAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)) return true;
+
+        var result = await ExecuteHostAsync(["reconnect", "offline"], TimeSpan.FromSeconds(10), cancellationToken);
+        RecordTransportResult($"reconnect offline {Serial}", result);
+        return result.Succeeded;
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)

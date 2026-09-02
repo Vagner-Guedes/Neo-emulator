@@ -99,6 +99,12 @@ manual fields `manualEvidence.neoNewsContentObserved=true` and
 `manualEvidence.neoNewsPlaybackObserved=true`; set them only after observing
 real NeoNews content and playback in the same published executable.
 
+No transporte TCP, uma tentativa que encontre o endpoint em `offline` usa
+`adb reconnect offline` antes do próximo `adb connect`. A recuperação continua
+limitada pelo intervalo `adbRetrySeconds` e deixa o resultado do transporte
+mais recente disponível no diagnóstico; ela não reinicia o guest nem altera o
+disco persistente.
+
 ```powershell
 .\scripts\validation\Test-LauncherSmoke.ps1 `
   -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `
