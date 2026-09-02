@@ -86,4 +86,9 @@ foreach ($runtimeDirectory in @("qemu", "android", "adb")) {
         }
     }
 }
+$sourceStateDirectory = Join-Path $repositoryRoot "runtime\state"
+$targetStateDirectory = Join-Path $outputPath "runtime\state"
+if (Test-Path -LiteralPath $sourceStateDirectory) {
+    Copy-Item -Path (Join-Path $sourceStateDirectory '*') -Destination $targetStateDirectory -Recurse -Force
+}
 Write-Host "NeoNewsRuntime publicado em $outputPath"

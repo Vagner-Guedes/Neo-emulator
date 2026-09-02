@@ -1,11 +1,13 @@
 # QEMU Android-x86 API 25
 
-O backend comercial do NeoNews Runtime é `QemuAndroidRuntimeBackend`. Ele inicia o guest x86_64 com `-accel whpx`, usa a máquina compatível `pc`, um disco IDE qcow2 persistente, a NIC `e1000` compatível com o Android-x86 API 25 e encaminha ADB do host para o guest:
+O backend comercial do NeoNews Runtime é `QemuAndroidRuntimeBackend`. Ele inicia o guest x86_64 com `-accel whpx`, usa a máquina compatível `pc`, um disco IDE qcow2 persistente, a NIC `e1000` compatível com o Android-x86 API 25 e encaminha ADB do host para o endereço explícito do guest:
 
 ```text
-127.0.0.1:<hostPort>  ->  guest:<guestPort>
-127.0.0.1:5556        ->  guest:5555
+127.0.0.1:<hostPort>  ->  10.0.2.15:<guestPort>
+127.0.0.1:5556        ->  10.0.2.15:5555
 ```
+
+O `user` network é configurado como `10.0.2.0/24`, com `dhcpstart=10.0.2.15`, e o `hostfwd` aponta para `10.0.2.15:5555`. Assim, o transporte não depende do destino implícito escolhido pelo QEMU; isso ainda não substitui a prova live de que o Android obteve o endereço e que o `adbd` está online.
 
 ## Layout portátil
 

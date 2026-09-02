@@ -126,6 +126,16 @@ public sealed class DiagnosticsService
                 backendWindowHandle = _backend.WindowHandle.ToInt64(),
                 qemu = _context.ResolveQemuPath(),
                 qemuVersion,
+                qemuNetwork = new
+                {
+                    id = _context.Config.Android.Qemu.NetworkId,
+                    cidr = _context.Config.Android.Qemu.NetworkCidr,
+                    guestAddress = _context.Config.Android.Qemu.GuestAddress,
+                    nicModel = _context.Config.Android.Qemu.NicModel,
+                    hostAddress = _context.Config.Android.Adb.Host,
+                    hostPort = _context.Config.Android.Adb.HostPort,
+                    guestPort = _context.Config.Android.Adb.GuestPort
+                },
                 androidDisk = _context.ResolveAndroidDiskPath(),
                 runtimeDirectory = _context.RootDirectory,
                 requiredFiles = integrity,

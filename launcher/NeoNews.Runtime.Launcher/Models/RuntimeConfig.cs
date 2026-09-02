@@ -119,6 +119,10 @@ public sealed class QemuConfig
     public int QmpPort { get; set; } = 4445;
     public bool ShowWindow { get; set; } = true;
     public bool AllowTcgForDiagnostics { get; set; }
+    public string NetworkId { get; set; } = "neonewsnet";
+    public string NetworkCidr { get; set; } = "10.0.2.0/24";
+    public string GuestAddress { get; set; } = "10.0.2.15";
+    public string NicModel { get; set; } = "e1000";
 }
 
 public sealed class AdbConfig

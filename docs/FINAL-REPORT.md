@@ -87,11 +87,13 @@ A verificacao mais recente foi publicada em `dist/NeoNewsRuntime-live-check`
 com o SDK local .NET 8.0.424: build, publish, diagnostico e smoke terminaram
 sem erros. O smoke contra esse executavel passou com o timeout padrao de 90
 segundos, janela WPF responsiva, single-instance, `--exit` e zero processos
-residuais. O diagnostico confirmou WHPX e os artefatos externos provisionados,
-mas registrou o guest ADB como `Disconnected`, sem APKs proprietarios ou
-componentes Android fornecidos para a prova live. O checklist contra a mesma
-pasta produziu 31 itens, 0 aprovados, 14 falhas e 17 pendencias, mantendo o
-status `not-approved`.
+residuais. O diagnostico confirmou WHPX, os artefatos externos provisionados,
+o contrato `qemuNetwork` (`10.0.2.0/24`, guest `10.0.2.15`, NIC `e1000`) e o
+`runtime/state/provisioning.json` copiado para a publicacao; registrou o guest
+ADB como `Disconnected`, sem APKs proprietarios ou componentes Android
+fornecidos para a prova live. O checklist fresco contra a mesma pasta produziu
+31 itens, 0 aprovados, 0 falhas e 17 pendencias, mantendo o status
+`not-approved`.
 
 ## Contrato do runtime
 
@@ -102,7 +104,7 @@ O arquivo [`config/runtime.json`](../config/runtime.json) usa:
 - ABI ARM preferencial `armeabi-v7a`;
 - QEMU em `runtime/qemu/qemu-system-x86_64.exe`;
 - disco persistente em `runtime/android/neonews-api25.qcow2`;
-- ADB host `127.0.0.1:5556` encaminhado para guest `5555`;
+- rede QEMU `10.0.2.0/24`, guest `10.0.2.15`, NIC `e1000` e ADB host `127.0.0.1:5556` encaminhado para guest `10.0.2.15:5555`;
 - Native Bridge obrigatório;
 - WebView `119.0.6045.193` e RHVoice `pt-BR` obrigatórios no fluxo comercial.
 

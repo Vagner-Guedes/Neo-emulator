@@ -3,6 +3,11 @@
 Data: **2026-09-01**
 Script: [`scripts/diagnostics/Collect-Diagnostics.ps1`](../scripts/diagnostics/Collect-Diagnostics.ps1)
 
+O objeto `tools.qemuNetwork` registra o contrato configurado do forwarding
+ADB (`cidr`, `guestAddress`, `nicModel`, host/portas e porta do guest). Esses
+campos descrevem a configuracao; nao sao evidencia de que o Android obteve o
+endereco ou de que o `adbd` ficou online.
+
 O script PowerShell atua como wrapper de compatibilidade e delega a coleta ao `NeoNewsRuntime.exe --diagnostics`; ele recusa um relatório sem o schema canônico de identidade do runtime.
 
 O coletor principal do runtime também está disponível por `NeoNewsRuntime.exe --diagnostics`.

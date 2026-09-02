@@ -217,9 +217,23 @@ function New-QemuBenchmarkArguments {
     $arguments.Add('-boot')
     $arguments.Add('order=c')
     $arguments.Add('-netdev')
-    $arguments.Add("user,id=neonewsnet,hostfwd=tcp:$($adb.host):$($adb.hostPort)-:$($adb.guestPort)")
+    $networkId = if ($qemu.networkId) { [string]$qemu.networkId } else { 'neonewsnet' }
+    $networkCidr = if ($qemu.networkCidr) { [string]$qemu.networkCidr } else { '10.0.2.0/24' }
+    $guestAddress = if ($qemu.guestAddress) { [string]$qemu.guestAddress } else { '10.0.2.15' }
+    $nicModel = if ($qemu.nicModel) { [string]$qemu.nicModel } else { 'e1000' }
+    if ($networkId -match '[\s,]' -or $networkCidr -match '[\s,]' -or $nicModel -match '[\s,]') {
+        throw 'A configuração de rede do QEMU contém um token inválido.'
+    }
+    if ($networkCidr -notmatch '^\d{1,3}(?:\.\d{1,3}){3}/(?:[0-9]|[12]\d|3[0-2])$') {
+        throw "O CIDR networkCidr do QEMU precisa ser IPv4: $networkCidr"
+    }
+    $guestIp = $null
+    if (-not [System.Net.IPAddress]::TryParse($guestAddress, [ref]$guestIp) -or $guestIp.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+        throw "O endereço guestAddress do QEMU precisa ser IPv4: $guestAddress"
+    }
+    $arguments.Add("user,id=$networkId,net=$networkCidr,dhcpstart=$guestAddress,hostfwd=tcp:$($adb.host):$($adb.hostPort)-${guestAddress}:$($adb.guestPort)")
     $arguments.Add('-device')
-    $arguments.Add('e1000,netdev=neonewsnet,id=neonewsnic')
+    $arguments.Add("$nicModel,netdev=$networkId,id=neonewsnic")
     $arguments.Add('-qmp')
     $arguments.Add("tcp:127.0.0.1:$($qemu.qmpPort),server=on,wait=off")
     $arguments.Add('-monitor')

@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
@@ -96,6 +97,10 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             var host = _context.Config.Android.Adb.Host;
             var hostPort = _context.Config.Android.Adb.HostPort;
             var guestPort = _context.Config.Android.Adb.GuestPort;
+            var networkId = RequireQemuToken(qemu.NetworkId, "NetworkId");
+            var networkCidr = RequireIpv4Cidr(qemu.NetworkCidr, "NetworkCidr");
+            var guestAddress = RequireIpv4Address(qemu.GuestAddress, "GuestAddress");
+            var nicModel = RequireQemuToken(qemu.NicModel, "NicModel");
             var qmpPort = qemu.QmpPort;
             var requestedMemoryMb = Math.Max(512, qemu.MemoryMb);
             var availableMemoryMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024L * 1024L);
@@ -113,8 +118,8 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 "-smp", Math.Max(1, Math.Min(qemu.CpuCores, Environment.ProcessorCount)).ToString(),
                 "-drive", $"file={disk},if=ide,format=qcow2",
                 "-boot", "order=c",
-                "-netdev", $"user,id=neonewsnet,hostfwd=tcp:{host}:{hostPort}-:{guestPort}",
-                "-device", "e1000,netdev=neonewsnet,id=neonewsnic",
+                "-netdev", $"user,id={networkId},net={networkCidr},dhcpstart={guestAddress},hostfwd=tcp:{host}:{hostPort}-{guestAddress}:{guestPort}",
+                "-device", $"{nicModel},netdev={networkId},id=neonewsnic",
                 "-qmp", $"tcp:127.0.0.1:{qmpPort},server=on,wait=off",
                 "-monitor", "none",
                 "-serial", "none",
@@ -297,6 +302,32 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
         try { return File.Exists(path) && new FileInfo(path).Length > 0; }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static string RequireQemuToken(string value, string name)
+    {
+        var trimmed = value?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(trimmed) || trimmed.Any(char.IsWhiteSpace) || trimmed.Contains(',', StringComparison.Ordinal))
+            throw new RuntimeOperationException("A configuração de rede do QEMU é inválida.", $"{name} precisa ser um token QEMU sem espaços ou vírgulas.");
+        return trimmed;
+    }
+
+    private static string RequireIpv4Address(string value, string name)
+    {
+        var trimmed = RequireQemuToken(value, name);
+        if (!IPAddress.TryParse(trimmed, out var address) || address.AddressFamily != AddressFamily.InterNetwork)
+            throw new RuntimeOperationException("A configuração de rede do QEMU é inválida.", $"{name} precisa ser um endereço IPv4: '{value}'.");
+        return trimmed;
+    }
+
+    private static string RequireIpv4Cidr(string value, string name)
+    {
+        var trimmed = RequireQemuToken(value, name);
+        var parts = trimmed.Split('/', 2, StringSplitOptions.None);
+        if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var address) || address.AddressFamily != AddressFamily.InterNetwork ||
+            !int.TryParse(parts[1], out var prefixLength) || prefixLength is < 0 or > 32)
+            throw new RuntimeOperationException("A configuração de rede do QEMU é inválida.", $"{name} precisa ser um CIDR IPv4, por exemplo 10.0.2.0/24: '{value}'.");
+        return trimmed;
     }
 
     [DllImport("WinHvPlatform.dll", ExactSpelling = true)]
