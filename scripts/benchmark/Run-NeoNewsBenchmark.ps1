@@ -47,11 +47,9 @@ function Wait-ForBoot {
 }
 
 function Stop-EmulatorIfRunning {
-    param([string]$AdbPath, [string]$Serial)
-    try {
-        & $AdbPath -s $Serial emu kill 2>$null | Out-Null
-    } catch {
-        # Um serial ausente já está parado; não deve invalidar o próximo ensaio.
+    param([System.Diagnostics.Process]$Process)
+    if ($Process -and -not $Process.HasExited) {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -72,7 +70,6 @@ $serial = "emulator-$Port"
 $runs = @()
 
 for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
-    Stop-EmulatorIfRunning -AdbPath $adbPath -Serial $serial
     Start-Sleep -Seconds 2
     $startAt = Get-Date
     $process = Start-Process -FilePath $emulatorPath -ArgumentList @('-avd', $AvdName, '-no-window', '-gpu', 'swiftshader', '-no-boot-anim', '-no-snapshot', '-accel', 'auto', '-timezone', $config.runtime.timezone, '-port', $Port) -WindowStyle Hidden -PassThru
@@ -95,7 +92,7 @@ for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
         packageInstalled = $packageInstalled
         processId = $process.Id
     }
-    Stop-EmulatorIfRunning -AdbPath $adbPath -Serial $serial
+    Stop-EmulatorIfRunning -Process $process
     Start-Sleep -Seconds 2
 }
 

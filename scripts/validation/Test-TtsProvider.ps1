@@ -1,165 +1,112 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [string]$AvdName,
-    [int]$Port = 5556,
+    [string]$Serial,
     [int]$BootTimeoutSeconds = 180,
-    [switch]$StartEmulator,
-    [switch]$StopEmulator,
     [string]$ReportPath
 )
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
+if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não encontrada: $ConfigPath" }
 
-function Resolve-SdkRoot {
-    if ($env:ANDROID_SDK_ROOT) {
-        return $env:ANDROID_SDK_ROOT
-    }
+$configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
+$repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+$config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 
-    if ($env:ANDROID_HOME) {
-        return $env:ANDROID_HOME
-    }
-
-    return (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
+function Resolve-ConfiguredPath {
+    param([string]$ConfiguredPath)
+    if ([System.IO.Path]::IsPathRooted($ConfiguredPath)) { return $ConfiguredPath }
+    return [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot ($ConfiguredPath -replace '/', '\')))
 }
 
 function Invoke-AdbCommand {
-    param(
-        [string]$AdbPath,
-        [string]$Serial,
-        [string[]]$Arguments
-    )
-
-    $output = & $AdbPath -s $Serial @Arguments 2>&1
+    param([string[]]$Arguments)
+    $output = & $script:adbPath @Arguments 2>&1
     return (($output | Out-String).Trim())
 }
 
 function Wait-ForBoot {
-    param(
-        [string]$AdbPath,
-        [string]$Serial,
-        [int]$TimeoutSeconds
-    )
-
+    param([int]$TimeoutSeconds)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
-        $state = (& $AdbPath -s $Serial get-state 2>$null | Out-String).Trim()
+        $state = Invoke-AdbCommand @('-s', $script:Serial, 'get-state')
         if ($state -eq 'device') {
-            $bootCompleted = Invoke-AdbCommand -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'getprop', 'sys.boot_completed')
-            if ($bootCompleted -match '(?m)^1$') {
-                return $true
-            }
+            $bootCompleted = Invoke-AdbCommand @('-s', $script:Serial, 'shell', 'getprop', 'sys.boot_completed')
+            if ($bootCompleted -match '(?m)^1$') { return $true }
         }
-
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
-
     return $false
 }
 
-if (-not (Test-Path -LiteralPath $ConfigPath)) {
-    throw "Configuração não encontrada: $ConfigPath"
+$adbRelativePath = Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath
+$adbPath = Resolve-ConfiguredPath $adbRelativePath
+if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) {
+    $fallbackRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } elseif ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+    $adbPath = Join-Path $fallbackRoot 'platform-tools\adb.exe'
 }
+if (-not (Test-Path -LiteralPath $adbPath)) { throw "ADB não encontrado em $adbPath. O teste não usa PATH nem baixa ferramentas." }
+$script:adbPath = $adbPath
 
-$config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
-$sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
-$emulatorPath = Join-Path $sdkRoot 'emulator\emulator.exe'
-
-if (-not (Test-Path -LiteralPath $adbPath)) {
-    throw "ADB não encontrado: $adbPath"
-}
-
-if (-not $AvdName) {
-    $AvdName = $config.android.preferredAvd
-}
-
-$serial = "emulator-$Port"
-$startedProcess = $null
-if ($StartEmulator) {
-    if (-not (Test-Path -LiteralPath $emulatorPath)) {
-        throw "Emulator não encontrado: $emulatorPath"
+if (-not $Serial) {
+    $Serial = if ($config.android.adb.transport -eq 'tcp') {
+        "$($config.android.adb.host):$($config.android.adb.hostPort)"
+    } elseif ($config.android.adb.emulatorSerial) {
+        $config.android.adb.emulatorSerial
+    } else {
+        "emulator-$($config.android.emulator.validationPort)"
     }
-
-    $env:ANDROID_HOME = $sdkRoot
-    $env:ANDROID_SDK_ROOT = $sdkRoot
-    $arguments = @(
-        '-avd', $AvdName,
-        '-no-window',
-        '-gpu', 'swiftshader',
-        '-no-boot-anim',
-        '-no-snapshot',
-        '-accel', 'auto',
-        '-timezone', $config.runtime.timezone,
-        '-port', $Port
-    )
-    $startedProcess = Start-Process -FilePath $emulatorPath -ArgumentList $arguments -WindowStyle Hidden -PassThru
 }
+$script:Serial = $Serial
+$null = Invoke-AdbCommand @('start-server')
+if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-AdbCommand @('connect', $Serial) }
+if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos." }
 
-$booted = Wait-ForBoot -AdbPath $adbPath -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
-if (-not $booted) {
-    throw "O AVD $AvdName não concluiu o boot no serial $serial em $BootTimeoutSeconds segundos."
-}
-
-$allPackages = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'list', 'packages')
-$candidatePackages = @(
-    $allPackages -split "`r?`n" |
-        ForEach-Object { $_ -replace '^package:', '' } |
-        Where-Object { $_ -match '(?i)(rhvoice|tts|svox|pico|speech)' }
-)
-
+$allPackages = Invoke-AdbCommand @('-s', $Serial, 'shell', 'pm', 'list', 'packages')
+$candidatePackages = @($allPackages -split "`r?`n" | ForEach-Object { $_ -replace '^package:', '' } | Where-Object { $_ -match '(?i)(rhvoice|tts|svox|pico|speech)' })
 $enginePackages = New-Object System.Collections.Generic.List[string]
 foreach ($package in $candidatePackages) {
-    if (-not $package) {
-        continue
-    }
-
-    $packageDump = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'dumpsys', 'package', $package)
-    if ($packageDump -match 'android\.intent\.action\.TTS_SERVICE') {
-        $enginePackages.Add($package)
-    }
+    if (-not $package) { continue }
+    $packageDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'package', $package)
+    if ($packageDump -match 'android\.intent\.action\.TTS_SERVICE') { $enginePackages.Add($package) }
 }
 
-$defaultEngine = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'get', 'secure', 'tts_default_synth')
-$serviceList = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'service', 'list')
+$defaultEngine = Invoke-AdbCommand @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
+$localeCheck = Invoke-AdbCommand @('-s', $Serial, 'shell', 'am', 'broadcast', '-a', 'android.speech.tts.engine.CHECK_TTS_DATA', '--es', 'language', 'por', '--es', 'country', 'BRA', '--es', 'variant', '')
+$serviceList = Invoke-AdbCommand @('-s', $Serial, 'shell', 'service', 'list')
 $rhvoicePresent = (($enginePackages -join "`n") -match '(?i)rhvoice')
-$locale = [string]$config.tts.locale
-$engineName = [string]$config.tts.engine
+$defaultMatches = $defaultEngine -match '(?i)rhvoice'
+$localeReady = $localeCheck -match '(?i)result=1|CHECK_(VOICE|TTS)_DATA_PASS'
+$api = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
+$release = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
+$abi = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.product.cpu.abi')
 
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
-    avd = $AvdName
-    serial = $serial
-    android = [ordered]@{
-        release = (Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'ro.build.version.release'))
-        apiLevel = (Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'ro.build.version.sdk'))
-        abi = (Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'ro.product.cpu.abi'))
-    }
-    requested = [ordered]@{
-        engine = $engineName
-        locale = $locale
-    }
+    transport = $config.android.adb.transport
+    serial = $Serial
+    android = [ordered]@{ release = $release; apiLevel = $api; abi = $abi }
+    requested = [ordered]@{ engine = [string]$config.tts.engine; locale = [string]$config.tts.locale }
     detected = [ordered]@{
         rhvoicePresent = $rhvoicePresent
         enginePackages = @($enginePackages)
         defaultEngine = $defaultEngine
+        defaultMatches = $defaultMatches
+        localeCheck = $localeCheck
+        localeReady = $localeReady
         textToSpeechService = ($serviceList -match '(?i)texttospeech|tts')
+        synthesis = [ordered]@{ status = 'not-executed'; reason = 'A síntese exige uma chamada TextToSpeech real em um probe Android; presença do provider não é tratada como prova de áudio.' }
     }
-    status = if ($rhvoicePresent) { 'engine-present-locale-pending' } else { 'missing-engine' }
+    status = if ($rhvoicePresent -and $defaultMatches -and $localeReady) { 'provider-and-locale-validated-synthesis-pending' } elseif (-not $rhvoicePresent) { 'missing-engine' } else { 'engine-or-locale-mismatch' }
 }
 
-$json = $result | ConvertTo-Json -Depth 8
+$json = $result | ConvertTo-Json -Depth 10
 if ($ReportPath) {
-    $reportDirectory = Split-Path -Parent $ReportPath
-    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) {
-        New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
-    }
-    Set-Content -LiteralPath $ReportPath -Value $json -Encoding utf8
+    $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
+    $reportDirectory = Split-Path -Parent $reportFullPath
+    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
+    Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 }
-
 $json
-
-if ($StopEmulator -and $startedProcess) {
-    if (-not $startedProcess.HasExited) { Stop-Process -Id $startedProcess.Id -Force -ErrorAction SilentlyContinue }
-}
+if ($result.status -notlike 'provider-and-locale-validated*') { throw "RHVoice não foi validado: status=$($result.status)." }

@@ -3,6 +3,12 @@
 Data: **2026-09-01**
 Script: [`scripts/diagnostics/Collect-Diagnostics.ps1`](../scripts/diagnostics/Collect-Diagnostics.ps1)
 
+O coletor principal do runtime também está disponível por `NeoNewsRuntime.exe --diagnostics`.
+Ele acrescenta integridade SHA-256 dos componentes locais, preflight WHPX,
+PID/título do backend, compatibilidade ABI, rede/DNS, armazenamento `/data`,
+políticas kiosk e memória/gráficos/logcat filtrados. O resultado permanece
+específico da máquina e não é versionado.
+
 ## Conteúdo
 
 O coletor gera um JSON com:

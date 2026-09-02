@@ -1,151 +1,132 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [string]$AvdName,
-    [int]$Port = 5556,
+    [string]$Serial,
     [int]$BootTimeoutSeconds = 180,
-    [switch]$StartEmulator,
-    [switch]$StopEmulator,
+    [string]$ContentUrl,
     [string]$ReportPath
 )
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
+if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não encontrada: $ConfigPath" }
 
-function Resolve-SdkRoot {
-    if ($env:ANDROID_SDK_ROOT) {
-        return $env:ANDROID_SDK_ROOT
-    }
+$configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
+$repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
+$config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
 
-    if ($env:ANDROID_HOME) {
-        return $env:ANDROID_HOME
-    }
-
-    return (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
+function Resolve-ConfiguredPath {
+    param([string]$ConfiguredPath)
+    if ([System.IO.Path]::IsPathRooted($ConfiguredPath)) { return $ConfiguredPath }
+    return [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot ($ConfiguredPath -replace '/', '\')))
 }
 
 function Invoke-AdbCommand {
-    param(
-        [string]$AdbPath,
-        [string]$Serial,
-        [string[]]$Arguments
-    )
-
-    $output = & $AdbPath -s $Serial @Arguments 2>&1
+    param([string[]]$Arguments)
+    $output = & $script:adbPath @Arguments 2>&1
     return (($output | Out-String).Trim())
 }
 
 function Wait-ForBoot {
-    param(
-        [string]$AdbPath,
-        [string]$Serial,
-        [int]$TimeoutSeconds
-    )
-
+    param([int]$TimeoutSeconds)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
-        $state = (& $AdbPath -s $Serial get-state 2>$null | Out-String).Trim()
+        $state = Invoke-AdbCommand @('-s', $script:Serial, 'get-state')
         if ($state -eq 'device') {
-            $bootCompleted = Invoke-AdbCommand -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'getprop', 'sys.boot_completed')
-            if ($bootCompleted -match '(?m)^1$') {
-                return $true
-            }
+            $bootCompleted = Invoke-AdbCommand @('-s', $script:Serial, 'shell', 'getprop', 'sys.boot_completed')
+            if ($bootCompleted -match '(?m)^1$') { return $true }
         }
-
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
-
     return $false
 }
 
-if (-not (Test-Path -LiteralPath $ConfigPath)) {
-    throw "Configuração não encontrada: $ConfigPath"
+$adbRelativePath = Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath
+$adbPath = Resolve-ConfiguredPath $adbRelativePath
+if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) {
+    $fallbackRoot = if ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } elseif ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { Join-Path $env:LOCALAPPDATA 'Android\Sdk' }
+    $adbPath = Join-Path $fallbackRoot 'platform-tools\adb.exe'
 }
+if (-not (Test-Path -LiteralPath $adbPath)) { throw "ADB não encontrado em $adbPath. O teste não usa PATH nem baixa ferramentas." }
+$script:adbPath = $adbPath
 
-$config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
-$sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
-$emulatorPath = Join-Path $sdkRoot 'emulator\emulator.exe'
-
-if (-not (Test-Path -LiteralPath $adbPath)) {
-    throw "ADB não encontrado: $adbPath"
-}
-
-if (-not $AvdName) {
-    $AvdName = $config.android.preferredAvd
-}
-
-$serial = "emulator-$Port"
-$startedProcess = $null
-if ($StartEmulator) {
-    if (-not (Test-Path -LiteralPath $emulatorPath)) {
-        throw "Emulator não encontrado: $emulatorPath"
+if (-not $Serial) {
+    $Serial = if ($config.android.adb.transport -eq 'tcp') {
+        "$($config.android.adb.host):$($config.android.adb.hostPort)"
+    } elseif ($config.android.adb.emulatorSerial) {
+        $config.android.adb.emulatorSerial
+    } else {
+        "emulator-$($config.android.emulator.validationPort)"
     }
+}
+$script:Serial = $Serial
 
-    $env:ANDROID_HOME = $sdkRoot
-    $env:ANDROID_SDK_ROOT = $sdkRoot
-    $arguments = @(
-        '-avd', $AvdName,
-        '-no-window',
-        '-gpu', 'swiftshader',
-        '-no-boot-anim',
-        '-no-snapshot',
-        '-accel', 'auto',
-        '-timezone', $config.runtime.timezone,
-        '-port', $Port
-    )
-    $startedProcess = Start-Process -FilePath $emulatorPath -ArgumentList $arguments -WindowStyle Hidden -PassThru
+$null = Invoke-AdbCommand @('start-server')
+if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-AdbCommand @('connect', $Serial) }
+if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) {
+    throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos."
 }
 
-$booted = Wait-ForBoot -AdbPath $adbPath -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
-if (-not $booted) {
-    throw "O AVD $AvdName não concluiu o boot no serial $serial em $BootTimeoutSeconds segundos."
-}
-
-$webViewDump = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'dumpsys', 'webviewupdate')
-$webViewPackages = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'list', 'packages', 'com.google.android.webview')
-$packageDump = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'dumpsys', 'package', 'com.google.android.webview')
-$abi = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'ro.product.cpu.abi')
-$release = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'ro.build.version.release')
-$api = Invoke-AdbCommand -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'ro.build.version.sdk')
-
+$packageName = [string]$config.webView.provider
+$webViewDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'webviewupdate')
+$packageList = Invoke-AdbCommand @('-s', $Serial, 'shell', 'pm', 'list', 'packages', $packageName)
+$packageDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'package', $packageName)
+$release = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
+$api = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
+$abi = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.product.cpu.abi')
 $versionMatch = [regex]::Match($packageDump, 'versionName=([^\s]+)')
 $installedVersion = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { $null }
 $expectedVersion = [string]$config.webView.homologatedVersion
-$providerPresent = $webViewPackages -match 'package:com\.google\.android\.webview'
+$providerPresent = $packageList -match [regex]::Escape("package:$packageName")
+$providerActive = $webViewDump -match [regex]::Escape($packageName)
 $versionMatches = $installedVersion -eq $expectedVersion
+$apiMatches = $api -eq [string]$config.android.apiLevel
 
+$contentTest = $null
+if (-not [string]::IsNullOrWhiteSpace($ContentUrl)) {
+    $launchOutput = Invoke-AdbCommand @('-s', $Serial, 'shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', $ContentUrl)
+    Start-Sleep -Seconds 4
+    $activityDump = Invoke-AdbCommand @('-s', $Serial, 'shell', 'dumpsys', 'activity', 'activities')
+    $contentLogcat = Invoke-AdbCommand @('-s', $Serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '160')
+    $contentErrors = @($contentLogcat -split "`r?`n" | Where-Object { $_ -match '(?i)WebView|chromium|AndroidRuntime|FATAL|SIGSEGV|net::ERR_' -and $_ -match '(?i)error|exception|fatal|crash|ERR_' })
+    $contentSucceeded = $launchOutput -notmatch '(?i)Error:|Exception|does not exist' -and $activityDump.Length -gt 0 -and $contentErrors.Count -eq 0
+    $contentTest = [ordered]@{
+        url = $ContentUrl
+        launchSucceeded = $launchOutput -notmatch '(?i)Error:|Exception|does not exist'
+        activityObserved = $activityDump.Length -gt 0
+        relevantErrors = $contentErrors
+        succeeded = $contentSucceeded
+        launchOutput = $launchOutput
+    }
+}
+
+$providerValidated = $providerPresent -and $providerActive -and $versionMatches -and $apiMatches
+$status = if ($providerValidated -and ($null -eq $contentTest -or $contentTest.succeeded)) { 'validated' } elseif (-not $providerPresent) { 'missing-provider' } elseif (-not $versionMatches) { 'version-mismatch' } elseif (-not $apiMatches) { 'api-mismatch' } elseif ($null -ne $contentTest) { 'content-test-failed' } else { 'provider-inactive' }
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
-    avd = $AvdName
-    serial = $serial
-    android = [ordered]@{
-        release = $release
-        apiLevel = $api
-        abi = $abi
-    }
+    transport = $config.android.adb.transport
+    serial = $Serial
+    android = [ordered]@{ release = $release; apiLevel = $api; abi = $abi; expectedApiLevel = [string]$config.android.apiLevel }
     provider = [ordered]@{
-        packageName = 'com.google.android.webview'
+        packageName = $packageName
         expectedVersion = $expectedVersion
         installedVersion = $installedVersion
         packagePresent = $providerPresent
+        providerActive = $providerActive
         versionMatches = $versionMatches
+        status = if ($providerValidated) { 'validated' } else { 'not-validated' }
     }
-    status = if ($providerPresent -and $versionMatches) { 'validated' } elseif (-not $providerPresent) { 'missing-provider' } else { 'version-mismatch' }
+    contentTest = $contentTest
     rawWebViewUpdate = $webViewDump
+    status = $status
 }
 
-$json = $result | ConvertTo-Json -Depth 8
+$json = $result | ConvertTo-Json -Depth 10
 if ($ReportPath) {
-    $reportDirectory = Split-Path -Parent $ReportPath
-    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) {
-        New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
-    }
-    Set-Content -LiteralPath $ReportPath -Value $json -Encoding utf8
+    $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
+    $reportDirectory = Split-Path -Parent $reportFullPath
+    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
+    Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 }
-
 $json
-
-if ($StopEmulator -and $startedProcess) {
-    if (-not $startedProcess.HasExited) { Stop-Process -Id $startedProcess.Id -Force -ErrorAction SilentlyContinue }
-}
+if ($status -ne 'validated') { throw "WebView não foi homologado: status=$status." }

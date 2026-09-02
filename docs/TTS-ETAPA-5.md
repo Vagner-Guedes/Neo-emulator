@@ -21,10 +21,12 @@ Comando executado:
 
 ```powershell
 .\scripts\validation\Test-TtsProvider.ps1 `
-  -StartEmulator `
-  -ReportPath .\reports\tts-etapa-5.json `
-  -StopEmulator
+  -ReportPath .\reports\tts-etapa-5.json
 ```
+
+O teste usa o ADB portátil e o endpoint TCP configurados no runtime. A etapa
+de síntese permanece explicitamente pendente: presença do pacote, engine
+padrão e `CHECK_TTS_DATA` não são tratados como prova de áudio reproduzido.
 
 Saída resumida:
 
@@ -45,4 +47,3 @@ Saída resumida:
 **Etapa 5 concluída como diagnóstico, com TTS offline bloqueado.** A homologação exige um pacote RHVoice compatível com API 25, sua instalação no guest, seleção como engine padrão e teste real de síntese em `pt-BR`.
 
 O pacote não foi baixado de fonte não verificada e nenhuma engine proprietária foi incluída no repositório.
-

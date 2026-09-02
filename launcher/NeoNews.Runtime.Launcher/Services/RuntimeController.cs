@@ -38,7 +38,7 @@ public sealed class RuntimeController : IAsyncDisposable
         _kiosk = new KioskService(context, _adb, _backend);
         _startup = new StartupService(context, _runner);
         _supervisor = new WatchdogService(context, _neoNews, _adb, _backend, _logs);
-        _diagnostics = new DiagnosticsService(context, _adb, _backend, _neoNews, _supervisor, _startup, _logs, () => _lastAbiCompatibility);
+        _diagnostics = new DiagnosticsService(context, _adb, _backend, _runner, _neoNews, _supervisor, _startup, _logs, () => _lastAbiCompatibility);
         _state.Changed += (_, state) => StateChanged?.Invoke(this, state);
         Snapshot = new RuntimeSnapshot(RuntimeState.Stopped, "Offline", "Não verificado", "Pendente", "Não instalado", "Inativo", "Não verificado", "Offline", false, false, false);
     }
@@ -283,6 +283,7 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.StartingNeoNews);
             await _neoNews.StartAsync(progress, cancellationToken);
             _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), true, cancellationToken);
+            await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !_lastAbiCompatibility.RuntimeStable) throw new RuntimeOperationException("O NeoNews não permaneceu estável com a ABI ARM.", $"primaryCpuAbi={_lastAbiCompatibility.PrimaryCpuAbi}; selectedApkAbi={_lastAbiCompatibility.SelectedApkAbi}; runtimeStable=false");
             if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _kiosk.EnterAsync(progress, cancellationToken); }
             await _supervisor.StartAsync();
@@ -350,7 +351,7 @@ public sealed class RuntimeController : IAsyncDisposable
         catch (Exception exception) { _logs.Warning("launcher", $"Não foi possível extrair ABIs do APK local: {exception.Message}"); return _context.Config.NeoNews.SupportedApkAbis; }
     }
 
-    private async Task<(bool Ready, string Label, string Detail)> ReadWebViewAsync(CancellationToken cancellationToken)
+    private async Task<(bool Ready, string Label, string Detail, string Version)> ReadWebViewAsync(CancellationToken cancellationToken)
     {
         var providerDump = await SafeAsync(() => _adb.GetWebViewDumpAsync(cancellationToken), cancellationToken);
         var packageDump = await SafeAsync(() => _adb.GetPackageDumpAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken);
@@ -359,16 +360,32 @@ public sealed class RuntimeController : IAsyncDisposable
         var providerReady = providerDump.Contains(_context.Config.WebView.Provider, StringComparison.OrdinalIgnoreCase);
         var ready = providerReady && version.Equals(_context.Config.WebView.HomologatedVersion, StringComparison.OrdinalIgnoreCase);
         var label = string.IsNullOrWhiteSpace(version) ? "Não encontrado" : ready ? "Validado" : $"Divergente ({version})";
-        return (ready, label, $"providerAtivo={providerReady}; provider={_context.Config.WebView.Provider}; versão={version}; esperada={_context.Config.WebView.HomologatedVersion}");
+        return (ready, label, $"providerAtivo={providerReady}; provider={_context.Config.WebView.Provider}; versão={version}; esperada={_context.Config.WebView.HomologatedVersion}", version);
     }
 
-    private async Task<(bool Ready, string Detail)> ValidateTtsAsync(CancellationToken cancellationToken)
+    private async Task<(bool Ready, string Detail, string DefaultEngine)> ValidateTtsAsync(CancellationToken cancellationToken)
     {
         var packages = await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken);
         var defaultEngine = await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken);
         var packageReady = packages.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
         var selected = defaultEngine.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
-        return (packageReady && selected, $"engineEsperada={_context.Config.Tts.Engine}; default={defaultEngine}; locale={_context.Config.Tts.Locale}; pacoteRhvoice={packageReady}; engineSelecionada={selected}");
+        return (packageReady && selected, $"engineEsperada={_context.Config.Tts.Engine}; default={defaultEngine}; locale={_context.Config.Tts.Locale}; pacoteRhvoice={packageReady}; engineSelecionada={selected}", defaultEngine);
+    }
+
+    private async Task PersistProvisioningStatusAsync(
+        NativeBridgeValidationResult bridge,
+        (bool Ready, string Label, string Detail, string Version) webView,
+        (bool Ready, string Detail, string DefaultEngine) tts,
+        string? neoNewsVersion,
+        CancellationToken cancellationToken)
+    {
+        var state = await _provisioning.LoadAsync(cancellationToken) ?? new ProvisioningState();
+        state.NativeBridgeStatus = bridge.Ready ? "ready" : "unavailable";
+        state.WebViewVersion = webView.Version;
+        state.TtsStatus = tts.Ready ? $"ready:{tts.DefaultEngine}" : "missing-or-not-selected";
+        state.NeoNewsVersion = neoNewsVersion ?? string.Empty;
+        state.LastValidation = DateTimeOffset.UtcNow;
+        await _provisioning.SaveAsync(state, cancellationToken);
     }
 
     private async Task<NativeBridgeValidationResult?> SafeNativeBridgeAsync(CancellationToken cancellationToken)

@@ -22,9 +22,13 @@ Comando executado:
 
 ```powershell
 .\scripts\validation\Test-WebViewProvider.ps1 `
-  -ReportPath .\reports\webview-etapa-4.json `
-  -StopEmulator
+  -ReportPath .\reports\webview-etapa-4.json
 ```
+
+O teste usa o ADB configurado em `runtime/adb/adb.exe` e o endpoint TCP
+`127.0.0.1:5556`. Para exercitar conteúdo real, acrescente
+`-ContentUrl https://example.com`; sem esse parâmetro o resultado cobre apenas
+provider, versão, API e ABI.
 
 Saída resumida:
 
@@ -47,4 +51,3 @@ Saída resumida:
 **Etapa 4 concluída como validação do estado atual, com homologação bloqueada.** O runtime não deve declarar suporte ao WebView 119 até que seja fornecido um pacote `com.google.android.webview` compatível com API 25, instalado no AVD e validado por versão, assinatura e execução de uma página de teste.
 
 O teste do WebView foi separado do APK NeoNews porque o APK continua sem caminho executável neste host por ser ARM-only. Portanto, este resultado mede somente a imagem Android base.
-
