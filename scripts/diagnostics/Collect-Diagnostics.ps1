@@ -3,6 +3,7 @@ param(
     [string]$ConfigPath,
     [string]$Serial,
     [int]$MaxLogLines = 120,
+    [string]$ExecutablePath,
     [string]$ReportPath
 )
 
@@ -24,15 +25,23 @@ if (-not [string]::IsNullOrWhiteSpace($Serial) -and $Serial -ne $expectedSerial)
     throw "O diagnóstico do launcher usa o serial configurado '$expectedSerial'; não é seguro substituir a identidade por '$Serial'."
 }
 
-$launcherCandidates = @(
-    (Join-Path $runtimeRoot 'NeoNewsRuntime.exe'),
-    (Join-Path $runtimeRoot 'launcher\NeoNews.Runtime.Launcher\bin\Release\net8.0-windows\NeoNewsRuntime.exe'),
-    (Join-Path $runtimeRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe')
-)
-$launcherCandidates += @(Get-ChildItem -LiteralPath (Join-Path $runtimeRoot 'dist') -Filter 'NeoNewsRuntime.exe' -File -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTimeUtc -Descending |
-    Select-Object -ExpandProperty FullName)
-$launcherPath = $launcherCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not [string]::IsNullOrWhiteSpace($ExecutablePath)) {
+    $launcherPath = [System.IO.Path]::GetFullPath($ExecutablePath)
+    if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
+        throw "NeoNewsRuntime.exe não encontrado no caminho explícito: $launcherPath"
+    }
+}
+else {
+    $launcherCandidates = @(
+        (Join-Path $runtimeRoot 'NeoNewsRuntime.exe'),
+        (Join-Path $runtimeRoot 'launcher\NeoNews.Runtime.Launcher\bin\Release\net8.0-windows\NeoNewsRuntime.exe'),
+        (Join-Path $runtimeRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe')
+    )
+    $launcherCandidates += @(Get-ChildItem -LiteralPath (Join-Path $runtimeRoot 'dist') -Filter 'NeoNewsRuntime.exe' -File -Recurse -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -ExpandProperty FullName)
+    $launcherPath = $launcherCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
 if ([string]::IsNullOrWhiteSpace($launcherPath)) {
     throw 'NeoNewsRuntime.exe não encontrado. Publique o launcher antes de coletar o diagnóstico.'
 }

@@ -121,6 +121,7 @@ $contractChecks = [ordered]@{
     diagnosticsIncludesProvisioningState = $launcherSourceText -match 'SafeProvisioningStateAsync' -and $launcherSourceText -match 'imageHash = provisioningState\.ImageHash' -and $launcherSourceText -match 'diskFingerprint = provisioningState\.DiskFingerprint'
     diagnosticsCliExitsAfterCollection = $launcherSourceText -match 'exitAfterDiagnostics' -and $launcherSourceText -match 'RequestExit\(\)'
     diagnosticsScriptUsesCanonicalLauncher = $diagnosticsScriptSource -match "ArgumentList '--diagnostics'" -and $diagnosticsScriptSource -match 'schema.*identidade'
+    diagnosticsSupportsExplicitExecutable = $diagnosticsScriptSource -match '\[string\]\$ExecutablePath' -and $diagnosticsScriptSource -match 'GetFullPath\(\$ExecutablePath\)'
     prolongedStabilityEvidence = $nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
     checklistRequiresApkManifestIdentity = $checklistSource -match "apk\.packageName" -and $checklistSource -match "apk\.versionName" -and $checklistSource -match "apk\.versionCode"
     configurableAdbPorts = $checklistSource -match 'hostPort\s*-gt 0' -and $checklistSource -match 'guestPort\s*-gt 0' -and $checklistSource -match 'adbRequirement'
