@@ -49,6 +49,9 @@ $requiredPaths = @(
     'scripts/provision/Provision-QemuAndroidRuntime.ps1',
     'scripts/provision/Install-GuestComponents.ps1',
     'scripts/validation/Test-NativeBridge.ps1',
+    'scripts/validation/Test-TtsSynthesis.ps1',
+    'tools/tts-probe/AndroidManifest.xml',
+    'tools/tts-probe/MainActivity.java',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })

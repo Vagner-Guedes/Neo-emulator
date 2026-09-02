@@ -16,6 +16,7 @@
 *.bak
 
 # Artefatos de build e arquivos locais do .NET/WPF.
+/tools/tts-probe/build/
 [Bb]in/
 [Oo]bj/
 /dist/

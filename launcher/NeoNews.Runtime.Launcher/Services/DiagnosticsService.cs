@@ -113,6 +113,8 @@ public sealed class DiagnosticsService
                 bootCompleted = guest.BootCompleted,
                 ip = guest.Ip,
                 dns = guest.Dns,
+                route = guest.Route,
+                internet = guest.Route.Contains("default", StringComparison.OrdinalIgnoreCase) ? "Online" : "Offline",
                 storage = guest.Storage,
                 displaySize = guest.DisplaySize,
                 displayDensity = guest.DisplayDensity,
@@ -183,6 +185,7 @@ public sealed class DiagnosticsService
             await SafeAsync(() => _adb.GetPropertyAsync(_context.Config.Android.NativeBridge.Property, cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.GetPropertyAsync("sys.boot_completed", cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.ShellAsync(["ip", "addr", "show", "eth0"], cancellationToken: cancellationToken), cancellationToken),
+            await SafeAsync(() => _adb.ShellAsync(["ip", "route"], cancellationToken: cancellationToken), cancellationToken),
             string.Join(", ", new[]
             {
                 await SafeAsync(() => _adb.GetPropertyAsync("net.dns1", cancellationToken), cancellationToken),
@@ -313,6 +316,7 @@ public sealed class DiagnosticsService
         string NativeBridge,
         string BootCompleted,
         string Ip,
+        string Route,
         string Dns,
         string Storage,
         string DisplaySize,
@@ -322,6 +326,6 @@ public sealed class DiagnosticsService
         string StayAwake,
         string UserRotation)
     {
-        public static GuestDiagnostics Empty { get; } = new("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "");
+        public static GuestDiagnostics Empty { get; } = new("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "");
     }
 }

@@ -47,3 +47,18 @@ Saída resumida:
 **Etapa 5 concluída como diagnóstico, com TTS offline bloqueado.** A homologação exige um pacote RHVoice compatível com API 25, sua instalação no guest, seleção como engine padrão e teste real de síntese em `pt-BR`.
 
 O pacote não foi baixado de fonte não verificada e nenhuma engine proprietária foi incluída no repositório.
+
+## Probe de síntese real
+
+Com o guest provisionado e o SDK Android de desenvolvimento disponível, execute:
+
+```powershell
+.\scripts\validation\Test-TtsSynthesis.ps1 `
+  -SdkRoot C:\Android\Sdk `
+  -ReportPath .\reports\tts-synthesis.json
+```
+
+O script compila localmente um probe temporário, chama `TextToSpeech.speak` e
+`synthesizeToFile` com a frase de teste, confirma um WAV não vazio e remove o
+probe ao final, salvo se `-KeepProbe` for usado. `-BuildOnly` valida apenas a
+construção do probe.
