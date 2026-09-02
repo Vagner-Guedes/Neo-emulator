@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 using NeoNews.Runtime.Launcher.Models;
 
@@ -8,6 +9,8 @@ public sealed class AdbService
     private readonly RuntimeContext _context;
     private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
+    private AdbRuntimeState _state = AdbRuntimeState.Disconnected;
+    private AdbRuntimeState _lastLoggedState = AdbRuntimeState.Disconnected;
 
     public AdbService(RuntimeContext context, ProcessRunnerService runner, LogService logs)
     {
@@ -16,63 +19,160 @@ public sealed class AdbService
         _logs = logs;
     }
 
-    public string Serial => $"emulator-{_context.Config.Android.Emulator.ValidationPort}";
-    public string AdbPath => _context.ResolveAdbPath();
+    public string Transport => _context.Config.Android.Adb.Transport;
 
-    public Task<ProcessResult> ExecuteAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default, bool logOutput = true)
+    public string Serial
+    {
+        get
+        {
+            if (Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase))
+                return $"{_context.Config.Android.Adb.Host}:{_context.Config.Android.Adb.HostPort}";
+
+            if (!string.IsNullOrWhiteSpace(_context.Config.Android.Adb.EmulatorSerial))
+                return _context.Config.Android.Adb.EmulatorSerial;
+
+            return $"emulator-{_context.Config.Android.Emulator.ValidationPort}";
+        }
+    }
+
+    public string AdbPath => _context.ResolveAdbPath();
+    public AdbRuntimeState State => _state;
+
+    public Task<ProcessResult> ExecuteAsync(
+        IEnumerable<string> arguments,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default,
+        bool logOutput = true)
     {
         var fullArguments = new[] { "-s", Serial }.Concat(arguments);
-        return _runner.RunAsync(AdbPath, fullArguments, _context.RootDirectory, "adb", timeout ?? TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)), cancellationToken, logOutput);
+        return _runner.RunAsync(
+            AdbPath,
+            fullArguments,
+            _context.RootDirectory,
+            "adb",
+            timeout ?? TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)),
+            cancellationToken,
+            logOutput);
+    }
+
+    public Task<ProcessResult> ExecuteHostAsync(
+        IEnumerable<string> arguments,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default,
+        bool logOutput = false) =>
+        _runner.RunAsync(
+            AdbPath,
+            arguments,
+            _context.RootDirectory,
+            "adb",
+            timeout ?? TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)),
+            cancellationToken,
+            logOutput);
+
+    public async Task StartServerAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await ExecuteHostAsync(["start-server"], TimeSpan.FromSeconds(20), cancellationToken);
+        if (!result.Succeeded)
+        {
+            SetState(AdbRuntimeState.Disconnected);
+            throw new RuntimeOperationException("Não foi possível iniciar o ADB.", $"ADB: {AdbPath}\n{result.StandardError}\n{result.StandardOutput}");
+        }
+    }
+
+    public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)) return true;
+
+        SetState(AdbRuntimeState.Connecting);
+        var result = await ExecuteHostAsync(["connect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+        var connected = result.Succeeded &&
+                       !result.StandardOutput.Contains("unable", StringComparison.OrdinalIgnoreCase) &&
+                       !result.StandardOutput.Contains("failed", StringComparison.OrdinalIgnoreCase) &&
+                       !result.StandardError.Contains("unable", StringComparison.OrdinalIgnoreCase);
+        if (!connected) SetState(AdbRuntimeState.Disconnected);
+        return connected;
+    }
+
+    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase))
+            _ = await ExecuteHostAsync(["disconnect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+        SetState(AdbRuntimeState.Disconnected);
     }
 
     public async Task<string> GetStateAsync(CancellationToken cancellationToken = default)
     {
         var result = await ExecuteAsync(["get-state"], TimeSpan.FromSeconds(8), cancellationToken, logOutput: false);
-        return result.Succeeded ? result.StandardOutput.Trim() : string.Empty;
+        var state = result.Succeeded ? result.StandardOutput.Trim() : string.Empty;
+        SetState(state.ToLowerInvariant() switch
+        {
+            "device" => AdbRuntimeState.Device,
+            "offline" => AdbRuntimeState.Offline,
+            "unauthorized" => AdbRuntimeState.Unauthorized,
+            _ => AdbRuntimeState.Disconnected
+        });
+        return state;
     }
 
     public async Task<bool> IsDeviceOnlineAsync(CancellationToken cancellationToken = default) =>
         string.Equals(await GetStateAsync(cancellationToken), "device", StringComparison.OrdinalIgnoreCase);
 
-    public async Task<string> ShellAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    public Task<string> ShellAsync(IEnumerable<string> arguments, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        return ExecuteShellAsync(arguments, timeout, cancellationToken);
+    }
+
+    private async Task<string> ExecuteShellAsync(IEnumerable<string> arguments, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         var result = await ExecuteAsync(new[] { "shell" }.Concat(arguments), timeout, cancellationToken, logOutput: false);
         return result.StandardOutput.Trim();
     }
 
-    public async Task<string> GetPropertyAsync(string property, CancellationToken cancellationToken = default) =>
-        await ShellAsync(["getprop", property], TimeSpan.FromSeconds(10), cancellationToken);
+    public Task<string> GetPropertyAsync(string property, CancellationToken cancellationToken = default) =>
+        ShellAsync(["getprop", property], TimeSpan.FromSeconds(10), cancellationToken);
 
-    public async Task<string> GetSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
-        await ShellAsync(["settings", "get", scope, name], TimeSpan.FromSeconds(15), cancellationToken);
+    public Task<string> GetSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
+        ShellAsync(["settings", "get", scope, name], TimeSpan.FromSeconds(15), cancellationToken);
 
     public async Task WaitForBootAsync(IProgress<RuntimeProgress>? progress, TimeSpan timeout, CancellationToken cancellationToken)
     {
+        await StartServerAsync(cancellationToken);
         var deadline = DateTimeOffset.UtcNow + timeout;
+        var nextConnect = DateTimeOffset.MinValue;
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var state = await GetStateAsync(cancellationToken);
-            if (state == "device")
+            if (Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase) && DateTimeOffset.UtcNow >= nextConnect)
             {
-                progress?.Report(new RuntimeProgress("Aguardando inicialização", "ADB respondeu; verificando Android...", 55));
+                _ = await ConnectAsync(cancellationToken);
+                nextConnect = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds));
+            }
+
+            var state = await GetStateAsync(cancellationToken);
+            if (state.Equals("device", StringComparison.OrdinalIgnoreCase))
+            {
                 var boot = await GetPropertyAsync("sys.boot_completed", cancellationToken);
                 if (boot == "1")
                 {
+                    SetState(AdbRuntimeState.Ready);
                     progress?.Report(new RuntimeProgress("Android pronto", "sys.boot_completed=1", 70));
                     return;
                 }
+
+                SetState(AdbRuntimeState.Booting);
+                ReportStateProgress(progress, "Aguardando inicialização", "ADB respondeu; verificando Android...", 55);
             }
             else
             {
-                progress?.Report(new RuntimeProgress("Aguardando ADB", "Conectando ao dispositivo Android...", null));
+                ReportStateProgress(progress, "Aguardando ADB", $"Estado ADB: {DescribeState(State)}; tentando reconectar...", null);
             }
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds)), cancellationToken);
         }
 
         throw new RuntimeOperationException(
             "Não foi possível conectar ao Android.",
-            $"ADB não confirmou o boot do serial {Serial} em {timeout.TotalSeconds:0} segundos.");
+            $"ADB não confirmou o boot do transporte {Serial} em {timeout.TotalSeconds:0} segundos. Último estado: {State}.");
     }
 
     public async Task<bool> IsPackageInstalledAsync(string packageName, CancellationToken cancellationToken = default)
@@ -84,22 +184,22 @@ public sealed class AdbService
     public Task<bool> WaitForDeviceAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
         WaitForStateAsync("device", timeout, cancellationToken);
 
-    public Task ForceStopAsync(string packageName, CancellationToken cancellationToken = default) =>
-        StopPackageAsync(packageName, cancellationToken);
-
     private async Task<bool> WaitForStateAsync(string expectedState, TimeSpan timeout, CancellationToken cancellationToken)
     {
+        await StartServerAsync(cancellationToken);
         var deadline = DateTimeOffset.UtcNow + timeout;
         while (DateTimeOffset.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)) _ = await ConnectAsync(cancellationToken);
             if (string.Equals(await GetStateAsync(cancellationToken), expectedState, StringComparison.OrdinalIgnoreCase)) return true;
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds)), cancellationToken);
         }
         return false;
     }
 
-    public async Task<string> GetPackageDumpAsync(string packageName, CancellationToken cancellationToken = default) =>
-        await ShellAsync(["dumpsys", "package", packageName], TimeSpan.FromSeconds(30), cancellationToken);
+    public Task<string> GetPackageDumpAsync(string packageName, CancellationToken cancellationToken = default) =>
+        ShellAsync(["dumpsys", "package", packageName], TimeSpan.FromSeconds(30), cancellationToken);
 
     public async Task<string?> GetPackageVersionAsync(string packageName, CancellationToken cancellationToken = default)
     {
@@ -108,13 +208,28 @@ public sealed class AdbService
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    public async Task<string> GetActivityDumpAsync(CancellationToken cancellationToken = default) =>
-        await ShellAsync(["dumpsys", "activity", "activities"], TimeSpan.FromSeconds(20), cancellationToken);
+    public async Task<string?> GetPrimaryCpuAbiAsync(string packageName, CancellationToken cancellationToken = default)
+    {
+        var dump = await GetPackageDumpAsync(packageName, cancellationToken);
+        var match = Regex.Match(dump, @"primaryCpuAbi=([^\s]+)");
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    public async Task<int?> GetPackageVersionCodeAsync(string packageName, CancellationToken cancellationToken = default)
+    {
+        var dump = await GetPackageDumpAsync(packageName, cancellationToken);
+        var match = Regex.Match(dump, @"versionCode=(\d+)");
+        return match.Success && int.TryParse(match.Groups[1].Value, out var versionCode) ? versionCode : null;
+    }
+
+    public Task<string> GetActivityDumpAsync(CancellationToken cancellationToken = default) =>
+        ShellAsync(["dumpsys", "activity", "activities"], TimeSpan.FromSeconds(20), cancellationToken);
 
     public async Task<bool> IsActivityRunningAsync(string packageName, string activityName, CancellationToken cancellationToken = default)
     {
         var dump = await GetActivityDumpAsync(cancellationToken);
-        return dump.Contains($"{packageName}/{activityName}", StringComparison.Ordinal);
+        return dump.Contains($"{packageName}/{activityName}", StringComparison.Ordinal) ||
+               dump.Contains($"{packageName}/.{activityName}", StringComparison.Ordinal);
     }
 
     public async Task StartActivityAsync(string packageName, string activityName, CancellationToken cancellationToken = default)
@@ -126,21 +241,28 @@ public sealed class AdbService
                 "Não foi possível abrir o NeoNews.",
                 $"Comando: adb -s {Serial} shell am start -W -n {packageName}/{activityName}\nExit code: {result.ExitCode}\nstderr: {result.StandardError}");
         }
+
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.NeoNewsStartSeconds));
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await IsActivityRunningAsync(packageName, activityName, cancellationToken)) return;
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
+        throw new RuntimeOperationException("O NeoNews não confirmou a atividade em execução.", $"Activity esperada: {packageName}/{activityName}");
     }
+
+    public Task ForceStopAsync(string packageName, CancellationToken cancellationToken = default) => StopPackageAsync(packageName, cancellationToken);
 
     public async Task StopPackageAsync(string packageName, CancellationToken cancellationToken = default) =>
         _ = await ExecuteAsync(["shell", "am", "force-stop", packageName], TimeSpan.FromSeconds(30), cancellationToken);
 
     public async Task InstallApkAsync(string apkPath, CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(apkPath))
-        {
-            throw new RuntimeOperationException("NeoNews.apk não encontrado.", $"Caminho esperado: {apkPath}");
-        }
-
+        ValidateApkFile(apkPath);
         _logs.Info("launcher", $"Instalação autorizada do APK: {apkPath}");
         var result = await ExecuteAsync(["install", "-r", apkPath], TimeSpan.FromSeconds(Math.Max(30, _context.Config.Timeouts.InstallSeconds)), cancellationToken);
-        if (!result.Succeeded)
+        if (!result.Succeeded || !result.StandardOutput.Contains("Success", StringComparison.OrdinalIgnoreCase))
         {
             throw new RuntimeOperationException(
                 "Não foi possível instalar o NeoNews.",
@@ -148,45 +270,80 @@ public sealed class AdbService
         }
     }
 
-    public Task InstallAuthorizedApkAsync(string apkPath, CancellationToken cancellationToken = default) =>
-        InstallApkAsync(apkPath, cancellationToken);
+    public Task InstallAuthorizedApkAsync(string apkPath, CancellationToken cancellationToken = default) => InstallApkAsync(apkPath, cancellationToken);
 
-    public async Task PutSettingAsync(string scope, string name, string value, CancellationToken cancellationToken = default) =>
-        _ = await ExecuteAsync(["shell", "settings", "put", scope, name, value], TimeSpan.FromSeconds(20), cancellationToken);
+    public Task PutSettingAsync(string scope, string name, string value, CancellationToken cancellationToken = default) =>
+        ExecuteAndIgnoreAsync(["shell", "settings", "put", scope, name, value], TimeSpan.FromSeconds(20), cancellationToken);
 
-    public async Task DeleteSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
-        _ = await ExecuteAsync(["shell", "settings", "delete", scope, name], TimeSpan.FromSeconds(20), cancellationToken);
+    public Task DeleteSettingAsync(string scope, string name, CancellationToken cancellationToken = default) =>
+        ExecuteAndIgnoreAsync(["shell", "settings", "delete", scope, name], TimeSpan.FromSeconds(20), cancellationToken);
 
     public async Task SetDisplayAsync(string size, int density, CancellationToken cancellationToken = default)
     {
-        _ = await ExecuteAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken);
-        _ = await ExecuteAsync(["shell", "wm", "density", density.ToString()], TimeSpan.FromSeconds(20), cancellationToken);
+        await ExecuteAndIgnoreAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken);
+        await ExecuteAndIgnoreAsync(["shell", "wm", "density", density.ToString()], TimeSpan.FromSeconds(20), cancellationToken);
     }
 
-    public Task<string> GetDisplaySizeAsync(CancellationToken cancellationToken = default) =>
-        ShellAsync(["wm", "size"], TimeSpan.FromSeconds(20), cancellationToken);
+    public Task<string> GetDisplaySizeAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "size"], TimeSpan.FromSeconds(20), cancellationToken);
+    public Task<string> GetDisplayDensityAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "density"], TimeSpan.FromSeconds(20), cancellationToken);
+    public Task<string> GetWebViewDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "webviewupdate"], TimeSpan.FromSeconds(20), cancellationToken);
+    public Task<string> GetTtsDefaultAsync(CancellationToken cancellationToken = default) => ShellAsync(["settings", "get", "secure", "tts_default_synth"], TimeSpan.FromSeconds(15), cancellationToken);
+    public Task<string> GetPackagesAsync(CancellationToken cancellationToken = default) => ShellAsync(["pm", "list", "packages"], TimeSpan.FromSeconds(30), cancellationToken);
+    public Task<string> GetMemoryDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "meminfo"], TimeSpan.FromSeconds(30), cancellationToken);
+    public Task<string> GetGraphicsDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "gfxinfo"], TimeSpan.FromSeconds(30), cancellationToken);
+    public Task<string> GetLogcatAsync(int lines, CancellationToken cancellationToken = default) => ShellAsync(["logcat", "-d", "-b", "all", "-t", lines.ToString()], TimeSpan.FromMinutes(2), cancellationToken);
 
-    public Task<string> GetDisplayDensityAsync(CancellationToken cancellationToken = default) =>
-        ShellAsync(["wm", "density"], TimeSpan.FromSeconds(20), cancellationToken);
+    private async Task ExecuteAndIgnoreAsync(IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        _ = await ExecuteAsync(arguments, timeout, cancellationToken);
+    }
 
-    public async Task<string> GetWebViewDumpAsync(CancellationToken cancellationToken = default) =>
-        await ShellAsync(["dumpsys", "webviewupdate"], TimeSpan.FromSeconds(20), cancellationToken);
+    private void ValidateApkFile(string apkPath)
+    {
+        if (!File.Exists(apkPath))
+            throw new RuntimeOperationException("NeoNews.apk não encontrado.", $"Caminho esperado: {apkPath}");
 
-    public async Task<string> GetTtsDefaultAsync(CancellationToken cancellationToken = default) =>
-        await ShellAsync(["settings", "get", "secure", "tts_default_synth"], TimeSpan.FromSeconds(15), cancellationToken);
+        try
+        {
+            using var archive = ZipFile.OpenRead(apkPath);
+            var abis = archive.Entries
+                .Select(entry => Regex.Match(entry.FullName, @"^lib/([^/]+)/"))
+                .Where(match => match.Success)
+                .Select(match => match.Groups[1].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var preferred = _context.Config.Android.PreferredApkAbi;
+            var supported = _context.Config.NeoNews.SupportedApkAbis;
+            if (abis.Length == 0 || (supported.Count > 0 && !abis.Intersect(supported, StringComparer.OrdinalIgnoreCase).Any()))
+                throw new RuntimeOperationException("O APK selecionado não é compatível com o NeoNews.", $"Nenhuma ABI esperada foi encontrada. ABIs do APK: {string.Join(", ", abis)}; esperadas: {string.Join(", ", supported)}.");
+            if (!string.IsNullOrWhiteSpace(preferred) && !abis.Contains(preferred, StringComparer.OrdinalIgnoreCase))
+                _logs.Warning("launcher", $"ABI preferencial {preferred} não está no APK; a instalação usará uma ABI compatível disponível.");
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new RuntimeOperationException("O arquivo APK é inválido.", $"Não foi possível ler o APK como ZIP: {exception.Message}", exception);
+        }
+    }
 
-    public async Task<string> GetPackagesAsync(CancellationToken cancellationToken = default) =>
-        await ShellAsync(["pm", "list", "packages"], TimeSpan.FromSeconds(30), cancellationToken);
+    private void SetState(AdbRuntimeState state)
+    {
+        _state = state;
+        if (state == _lastLoggedState) return;
+        _lastLoggedState = state;
+        _logs.Info("adb", $"Estado ADB: {DescribeState(state)} ({Serial}).");
+    }
 
-    public async Task<string> GetMemoryDumpAsync(CancellationToken cancellationToken = default) =>
-        await ShellAsync(["dumpsys", "meminfo"], TimeSpan.FromSeconds(30), cancellationToken);
+    private static string DescribeState(AdbRuntimeState state) => state switch
+    {
+        AdbRuntimeState.Device => "device",
+        AdbRuntimeState.Offline => "offline",
+        AdbRuntimeState.Unauthorized => "unauthorized",
+        AdbRuntimeState.Booting => "booting",
+        AdbRuntimeState.Ready => "ready",
+        AdbRuntimeState.Connecting => "connecting",
+        _ => "disconnected"
+    };
 
-    public async Task<string> GetGraphicsDumpAsync(CancellationToken cancellationToken = default) =>
-        await ShellAsync(["dumpsys", "gfxinfo"], TimeSpan.FromSeconds(30), cancellationToken);
-
-    public async Task<string> GetLogcatAsync(int lines, CancellationToken cancellationToken = default) =>
-        await ShellAsync(["logcat", "-d", "-b", "all", "-t", lines.ToString()], TimeSpan.FromMinutes(2), cancellationToken);
-
-    public async Task SendEmulatorCommandAsync(string command, CancellationToken cancellationToken = default) =>
-        _ = await ExecuteAsync(["emu", command], TimeSpan.FromSeconds(30), cancellationToken);
+    private static void ReportStateProgress(IProgress<RuntimeProgress>? progress, string phase, string detail, double? percent) =>
+        progress?.Report(new RuntimeProgress(phase, detail, percent));
 }

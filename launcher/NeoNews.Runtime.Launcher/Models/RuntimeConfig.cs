@@ -43,14 +43,19 @@ public sealed class RuntimeTimeoutConfig
     public int NeoNewsStartSeconds { get; set; } = 120;
     public int InstallSeconds { get; set; } = 600;
     public int EmulatorStopSeconds { get; set; } = 20;
+    public int QemuShutdownSeconds { get; set; } = 20;
+    public int AdbRetrySeconds { get; set; } = 2;
+    public int NativeBridgeStabilitySeconds { get; set; } = 10;
 }
 
 public sealed class AndroidConfig
 {
+    public string Backend { get; set; } = "qemu-android-x86";
     public int ApiLevel { get; set; } = 25;
-    public string Release { get; set; } = "7.1.1";
-    public string ImageVariant { get; set; } = "google_apis";
+    public string Release { get; set; } = "7.1.2";
+    public string ImageVariant { get; set; } = "android-x86-r5";
     public string PreferredAbi { get; set; } = "x86";
+    public string PreferredApkAbi { get; set; } = "armeabi-v7a";
     public string PreferredImage { get; set; } = string.Empty;
     public string PreferredAvd { get; set; } = "NeoNews_API25_x86";
     public List<string> FallbackAvds { get; set; } = [];
@@ -58,6 +63,10 @@ public sealed class AndroidConfig
     public AbiValidationConfig AbiValidation { get; set; } = new();
     public ToolingConfig Tooling { get; set; } = new();
     public EmulatorConfig Emulator { get; set; } = new();
+    public QemuConfig Qemu { get; set; } = new();
+    public AdbConfig Adb { get; set; } = new();
+    public NativeBridgeConfig NativeBridge { get; set; } = new();
+    public ProvisioningConfig Provisioning { get; set; } = new();
     public OptimizationConfig Optimization { get; set; } = new();
     public KioskConfig Kiosk { get; set; } = new();
 }
@@ -75,10 +84,10 @@ public sealed class AbiValidationConfig
 
 public sealed class ToolingConfig
 {
-    public string SdkRoot { get; set; } = "runtime/android-sdk";
-    public string AdbRelativePath { get; set; } = "platform-tools/adb.exe";
+    public string SdkRoot { get; set; } = "runtime";
+    public string AdbRelativePath { get; set; } = "adb/adb.exe";
     public string EmulatorRelativePath { get; set; } = "emulator/emulator.exe";
-    public bool AllowEnvironmentFallback { get; set; } = true;
+    public bool AllowEnvironmentFallback { get; set; }
 }
 
 public sealed class EmulatorConfig
@@ -89,6 +98,48 @@ public sealed class EmulatorConfig
     public string SnapshotPolicy { get; set; } = "quick-boot-with-cold-boot-fallback";
     public int ValidationPort { get; set; } = 5556;
     public bool ShowWindow { get; set; } = true;
+}
+
+public sealed class QemuConfig
+{
+    public string Executable { get; set; } = "runtime/qemu/qemu-system-x86_64.exe";
+    public string Disk { get; set; } = "runtime/android/neonews-api25.qcow2";
+    public string AndroidImage { get; set; } = "runtime/android/android-x86-7.1-r5.iso";
+    public string Acceleration { get; set; } = "whpx";
+    public string Machine { get; set; } = "q35";
+    public string WindowTitle { get; set; } = "NeoNews Android Runtime";
+    public int MemoryMb { get; set; } = 2048;
+    public int CpuCores { get; set; } = 4;
+    public int QmpPort { get; set; } = 4445;
+    public bool ShowWindow { get; set; } = true;
+    public bool AllowTcgForDiagnostics { get; set; }
+}
+
+public sealed class AdbConfig
+{
+    public string Transport { get; set; } = "tcp";
+    public string Host { get; set; } = "127.0.0.1";
+    public int HostPort { get; set; } = 5556;
+    public int GuestPort { get; set; } = 5555;
+    public string EmulatorSerial { get; set; } = string.Empty;
+}
+
+public sealed class NativeBridgeConfig
+{
+    public bool Required { get; set; } = true;
+    public string PreferredAbi { get; set; } = "armeabi-v7a";
+    public string Property { get; set; } = "ro.dalvik.vm.native.bridge";
+    public string Status { get; set; } = "unknown";
+}
+
+public sealed class ProvisioningConfig
+{
+    public string StatePath { get; set; } = "runtime/state/provisioning.json";
+    public string WebViewPackagePath { get; set; } = "packages/webview/webview.apk";
+    public string TtsPackagePath { get; set; } = "packages/tts/rhvoice.apk";
+    public string NativeBridgePackagePath { get; set; } = "packages/nativebridge/nativebridge.apk";
+    public bool RequireWebView { get; set; } = true;
+    public bool RequireTts { get; set; } = true;
 }
 
 public sealed class OptimizationConfig

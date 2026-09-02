@@ -2,7 +2,7 @@ using NeoNews.Runtime.Launcher.Models;
 
 namespace NeoNews.Runtime.Launcher.Services;
 
-public sealed class EmulatorService : IAsyncDisposable
+public sealed class EmulatorService : IAndroidRuntimeBackend
 {
     private readonly RuntimeContext _context;
     private readonly ProcessRunnerService _runner;
@@ -25,6 +25,18 @@ public sealed class EmulatorService : IAsyncDisposable
         {
             if (_process is { HasExited: false } process) return process.ProcessId;
             return System.Diagnostics.Process.GetProcessesByName("emulator").FirstOrDefault()?.Id;
+        }
+    }
+
+    public string Name => "Android SDK Emulator";
+
+    public IntPtr WindowHandle
+    {
+        get
+        {
+            if (ProcessId is not int processId) return IntPtr.Zero;
+            try { return System.Diagnostics.Process.GetProcessById(processId).MainWindowHandle; }
+            catch (ArgumentException) { return IntPtr.Zero; }
         }
     }
 
@@ -62,7 +74,7 @@ public sealed class EmulatorService : IAsyncDisposable
                 "-gpu", string.IsNullOrWhiteSpace(emulator.Gpu) ? "auto" : emulator.Gpu,
                 "-accel", string.IsNullOrWhiteSpace(emulator.Acceleration) ? "auto" : emulator.Acceleration,
                 "-timezone", _context.Config.Runtime.Timezone,
-                "-port", _adb.Serial.Replace("emulator-", string.Empty, StringComparison.Ordinal)
+                "-port", ResolveEmulatorPort()
             };
             if (emulator.NoBootAnimation) arguments.Add("-no-boot-anim");
             if (emulator.SnapshotPolicy.Contains("cold", StringComparison.OrdinalIgnoreCase)) arguments.Add("-no-snapshot");
@@ -91,10 +103,9 @@ public sealed class EmulatorService : IAsyncDisposable
                 return;
             }
 
-            if (await _adb.IsDeviceOnlineAsync(cancellationToken))
-            {
-                await _adb.SendEmulatorCommandAsync("kill", cancellationToken);
-            }
+            // The legacy backend can only stop processes it owns. The QEMU
+            // backend has its own QMP/process shutdown and never uses the
+            // Android Emulator console protocol.
         }
         finally
         {
@@ -113,5 +124,13 @@ public sealed class EmulatorService : IAsyncDisposable
     {
         try { await StopAsync(CancellationToken.None); } catch (Exception exception) { _logs.Warning("launcher", $"Falha ao encerrar Emulator: {exception.Message}"); }
         _gate.Dispose();
+    }
+
+    private string ResolveEmulatorPort()
+    {
+        var serial = _adb.Serial;
+        return serial.StartsWith("emulator-", StringComparison.OrdinalIgnoreCase)
+            ? serial["emulator-".Length..]
+            : _context.Config.Android.Emulator.ValidationPort.ToString();
     }
 }

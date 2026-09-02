@@ -23,6 +23,10 @@ public sealed class RuntimeContext
         var configPath = FindConfigPath(explicitConfigPath);
         var json = File.ReadAllText(configPath);
         var config = JsonSerializer.Deserialize<RuntimeConfig>(json, JsonOptions) ?? new RuntimeConfig();
+        if (config.SchemaVersion < 2)
+        {
+            MigrateLegacyConfig(configPath, config);
+        }
         var root = Directory.GetParent(configPath)?.Parent?.FullName ?? Directory.GetCurrentDirectory();
         return new RuntimeContext(root, configPath, config);
     }
@@ -43,6 +47,20 @@ public sealed class RuntimeContext
         if (File.Exists(configured)) return configured;
         return FindToolInRoots("adb.exe", Config.Android.Tooling.AdbRelativePath);
     }
+
+    public string ResolveQemuPath()
+    {
+        var configured = ResolvePath(Config.Android.Qemu.Executable);
+        return File.Exists(configured) ? configured : configured;
+    }
+
+    public string ResolveAndroidDiskPath() => ResolvePath(Config.Android.Qemu.Disk);
+
+    public string ResolveAndroidImagePath() => ResolvePath(Config.Android.Qemu.AndroidImage);
+
+    public string ResolveProvisioningPackagePath(string configuredPath) => ResolvePath(configuredPath);
+
+    public string ResolveProvisioningStatePath() => ResolvePath(Config.Android.Provisioning.StatePath);
 
     public string ResolveEmulatorPath()
     {
@@ -67,8 +85,31 @@ public sealed class RuntimeContext
     {
         var json = JsonSerializer.Serialize(Config, JsonOptions);
         var temporaryPath = ConfigPath + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         await File.WriteAllTextAsync(temporaryPath, json, cancellationToken);
         File.Move(temporaryPath, ConfigPath, true);
+    }
+
+    private static void MigrateLegacyConfig(string configPath, RuntimeConfig config)
+    {
+        var backupPath = configPath + ".bak";
+        if (!File.Exists(backupPath)) File.Copy(configPath, backupPath);
+
+        // Schema 1 was Android-Emulator-centric. Preserve its behavior while
+        // introducing the new transport/backend fields explicitly; users can
+        // opt into QEMU by changing only the backend in the migrated config.
+        config.SchemaVersion = 2;
+        if (string.IsNullOrWhiteSpace(config.Android.Backend) || config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase))
+            config.Android.Backend = "android-sdk-emulator";
+        config.Android.Adb.Transport = "emulatorSerial";
+        config.Android.Adb.EmulatorSerial = $"emulator-{config.Android.Emulator.ValidationPort}";
+        if (string.IsNullOrWhiteSpace(config.Android.PreferredApkAbi))
+            config.Android.PreferredApkAbi = config.Android.AbiValidation.ApkAbis.FirstOrDefault() ?? "armeabi-v7a";
+        if (string.IsNullOrWhiteSpace(config.Android.NativeBridge.PreferredAbi))
+            config.Android.NativeBridge.PreferredAbi = config.Android.PreferredApkAbi;
+
+        var migratedJson = JsonSerializer.Serialize(config, JsonOptions);
+        File.WriteAllText(configPath, migratedJson);
     }
 
     private string FindToolInRoots(string executableName, string relativePath)

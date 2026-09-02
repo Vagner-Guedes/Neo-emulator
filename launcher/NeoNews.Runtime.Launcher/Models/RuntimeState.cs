@@ -15,6 +15,55 @@ public enum RuntimeState
     Error
 }
 
+public enum AndroidGuestState
+{
+    Offline,
+    Booting,
+    Online,
+    Error
+}
+
+public enum AdbRuntimeState
+{
+    Disconnected,
+    Connecting,
+    Device,
+    Offline,
+    Unauthorized,
+    Booting,
+    Ready
+}
+
+public enum NativeBridgeState
+{
+    Unknown,
+    Unavailable,
+    Ready,
+    Error
+}
+
+public enum NeoNewsRuntimeState
+{
+    NotInstalled,
+    Installed,
+    Running,
+    Error
+}
+
+public enum WebViewRuntimeState
+{
+    Unknown,
+    Mismatch,
+    Ready
+}
+
+public enum TtsRuntimeState
+{
+    Unknown,
+    Missing,
+    Ready
+}
+
 public sealed record RuntimeProgress(string Phase, string Detail, double? Percent = null);
 
 public sealed record RuntimeSnapshot(
@@ -28,7 +77,18 @@ public sealed record RuntimeSnapshot(
     string Adb,
     bool EmulatorRunning,
     bool PackageInstalled,
-    bool NeoNewsRunning);
+    bool NeoNewsRunning)
+{
+    // The existing string labels remain part of the launcher contract. These
+    // typed states let services make decisions without parsing UI text.
+    public AndroidGuestState AndroidState { get; init; } = AndroidGuestState.Offline;
+    public AdbRuntimeState AdbState { get; init; } = AdbRuntimeState.Disconnected;
+    public NativeBridgeState NativeBridge { get; init; } = NativeBridgeState.Unknown;
+    public NeoNewsRuntimeState NeoNewsState { get; init; } = NeoNewsRuntimeState.NotInstalled;
+    public WebViewRuntimeState WebViewState { get; init; } = WebViewRuntimeState.Unknown;
+    public TtsRuntimeState TtsState { get; init; } = TtsRuntimeState.Unknown;
+    public bool KioskActive { get; init; }
+}
 
 public sealed class RuntimeOperationException : Exception
 {

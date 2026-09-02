@@ -9,38 +9,49 @@ public sealed class DiagnosticsService
 {
     private readonly RuntimeContext _context;
     private readonly AdbService _adb;
-    private readonly EmulatorService _emulator;
+    private readonly IAndroidRuntimeBackend _backend;
     private readonly NeoNewsService _neoNews;
     private readonly WatchdogService _supervisor;
     private readonly StartupService _startup;
     private readonly LogService _logs;
+    private readonly Func<AbiCompatibilityResult?>? _getAbiCompatibility;
 
     public DiagnosticsService(
         RuntimeContext context,
         AdbService adb,
-        EmulatorService emulator,
+        IAndroidRuntimeBackend backend,
         NeoNewsService neoNews,
         WatchdogService supervisor,
         StartupService startup,
-        LogService logs)
+        LogService logs,
+        Func<AbiCompatibilityResult?>? getAbiCompatibility = null)
     {
         _context = context;
         _adb = adb;
-        _emulator = emulator;
+        _backend = backend;
         _neoNews = neoNews;
         _supervisor = supervisor;
         _startup = startup;
         _logs = logs;
+        _getAbiCompatibility = getAbiCompatibility;
     }
 
     public async Task<string> CollectAsync(CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_context.ReportsDirectory);
         var drive = new DriveInfo(Path.GetPathRoot(_context.RootDirectory) ?? "C:\\");
-        var adbOnline = await _adb.IsDeviceOnlineAsync(cancellationToken);
+        var adbOnline = await SafeBoolAsync(() => _adb.IsDeviceOnlineAsync(cancellationToken), cancellationToken);
         var neoNews = adbOnline ? await _neoNews.GetStatusAsync(cancellationToken) : null;
         var webViewVersion = adbOnline ? await GetWebViewVersionAsync(cancellationToken) : null;
+        var webViewDump = adbOnline ? await SafeAsync(() => _adb.GetWebViewDumpAsync(cancellationToken), cancellationToken) : string.Empty;
         var packages = adbOnline ? await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken) : string.Empty;
+        var nativeBridge = adbOnline ? await SafeNativeBridgeAsync(cancellationToken) : null;
+        var apkAbis = ReadApkAbis();
+        var primaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_neoNews.PackageName, cancellationToken), cancellationToken) ?? string.Empty : string.Empty;
+        var validatedAbi = _getAbiCompatibility?.Invoke();
+        var selectedApkAbi = validatedAbi?.SelectedApkAbi ?? (!string.IsNullOrWhiteSpace(primaryCpuAbi) && apkAbis.Contains(primaryCpuAbi, StringComparer.OrdinalIgnoreCase)
+            ? primaryCpuAbi
+            : apkAbis.FirstOrDefault(abi => abi.Equals(_context.Config.Android.NativeBridge.PreferredAbi, StringComparison.OrdinalIgnoreCase)));
         var report = new
         {
             timestamp = DateTimeOffset.UtcNow,
@@ -57,8 +68,13 @@ public sealed class DiagnosticsService
             tools = new
             {
                 adb = _adb.AdbPath,
-                emulator = _context.ResolveEmulatorPath(),
-                emulatorProcess = await _emulator.IsRunningAsync(cancellationToken)
+                transport = _adb.Transport,
+                serial = _adb.Serial,
+                backend = _backend.Name,
+                qemu = _context.ResolveQemuPath(),
+                androidDisk = _context.ResolveAndroidDiskPath(),
+                whpx = QemuAndroidRuntimeBackend.CheckWhpx(),
+                backendProcess = await _backend.IsRunningAsync(cancellationToken)
             },
             android = new
             {
@@ -66,6 +82,9 @@ public sealed class DiagnosticsService
                 release = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync("ro.build.version.release", cancellationToken), cancellationToken) : null,
                 apiLevel = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync("ro.build.version.sdk", cancellationToken), cancellationToken) : null,
                 abi = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync("ro.product.cpu.abi", cancellationToken), cancellationToken) : null,
+                abiList = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync("ro.product.cpu.abilist", cancellationToken), cancellationToken) : null,
+                abi2 = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync("ro.product.cpu.abi2", cancellationToken), cancellationToken) : null,
+                nativeBridge = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync(_context.Config.Android.NativeBridge.Property, cancellationToken), cancellationToken) : null,
                 bootCompleted = adbOnline ? await SafeAsync(() => _adb.GetPropertyAsync("sys.boot_completed", cancellationToken), cancellationToken) : null,
                 displaySize = adbOnline ? await SafeAsync(() => _adb.ShellAsync(["wm", "size"], cancellationToken: cancellationToken), cancellationToken) : null,
                 displayDensity = adbOnline ? await SafeAsync(() => _adb.ShellAsync(["wm", "density"], cancellationToken: cancellationToken), cancellationToken) : null
@@ -75,7 +94,24 @@ public sealed class DiagnosticsService
             {
                 expected = _context.Config.WebView.HomologatedVersion,
                 installed = webViewVersion,
-                status = webViewVersion == _context.Config.WebView.HomologatedVersion ? "validated" : "version-mismatch"
+                provider = _context.Config.WebView.Provider,
+                providerActive = webViewDump.Contains(_context.Config.WebView.Provider, StringComparison.OrdinalIgnoreCase),
+                status = webViewVersion == _context.Config.WebView.HomologatedVersion && webViewDump.Contains(_context.Config.WebView.Provider, StringComparison.OrdinalIgnoreCase) ? "validated" : "version-mismatch"
+            },
+            abiCompatibility = new
+            {
+                guestAbi = nativeBridge?.GuestAbi,
+                guestAbiList = nativeBridge?.GuestAbiList,
+                nativeBridgeProperty = nativeBridge?.Property,
+                nativeBridgeReady = validatedAbi?.NativeBridgeReady ?? nativeBridge?.Ready ?? false,
+                apkAbis,
+                selectedApkAbi,
+                installSucceeded = validatedAbi?.InstallSucceeded ?? (neoNews?.Installed ?? false),
+                primaryCpuAbi = validatedAbi?.PrimaryCpuAbi ?? primaryCpuAbi,
+                launchSucceeded = validatedAbi?.LaunchSucceeded ?? (neoNews?.Running ?? false),
+                // A diagnostic snapshot never claims long-term stability. That
+                // field is set only by the full StartSystem validation flow.
+                runtimeStable = validatedAbi?.RuntimeStable ?? false
             },
             voice = new
             {
@@ -106,6 +142,32 @@ public sealed class DiagnosticsService
         return match.Success ? match.Groups[1].Value : null;
     }
 
+    private async Task<NativeBridgeValidationResult?> SafeNativeBridgeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await new NativeBridgeValidationService(_context, _adb).ValidateGuestAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logs.Warning("launcher", $"Diagnóstico parcial de Native Bridge: {exception.Message}");
+            return null;
+        }
+    }
+
+    private IReadOnlyList<string> ReadApkAbis()
+    {
+        var path = _context.ResolveApkPath();
+        if (!File.Exists(path)) return _context.Config.NeoNews.SupportedApkAbis;
+        try { return NativeBridgeValidationService.ReadApkAbis(path); }
+        catch (Exception exception)
+        {
+            _logs.Warning("launcher", $"Diagnóstico parcial de ABIs do APK: {exception.Message}");
+            return _context.Config.NeoNews.SupportedApkAbis;
+        }
+    }
+
     private async Task<string> SafeAsync(Func<Task<string>> operation, CancellationToken cancellationToken)
     {
         try { return await operation(); }
@@ -114,6 +176,28 @@ public sealed class DiagnosticsService
         {
             _logs.Warning("launcher", $"Diagnóstico parcial: {exception.Message}");
             return string.Empty;
+        }
+    }
+
+    private async Task<string?> SafeNullableAsync(Func<Task<string?>> operation, CancellationToken cancellationToken)
+    {
+        try { return await operation(); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logs.Warning("launcher", $"Diagnóstico parcial: {exception.Message}");
+            return null;
+        }
+    }
+
+    private async Task<bool> SafeBoolAsync(Func<Task<bool>> operation, CancellationToken cancellationToken)
+    {
+        try { return await operation(); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logs.Warning("launcher", $"Diagnóstico parcial: {exception.Message}");
+            return false;
         }
     }
 

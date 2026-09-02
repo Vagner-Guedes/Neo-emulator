@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "release": {
-    "status": "blocked-external-dependencies",
+    "status": "runtime-migration-in-progress",
     "finalReport": "docs/FINAL-REPORT.md"
   },
   "runtime": {
@@ -15,36 +15,38 @@
     "bootSeconds": 180,
     "neoNewsStartSeconds": 120,
     "installSeconds": 600,
-    "emulatorStopSeconds": 20
+    "emulatorStopSeconds": 20,
+    "qemuShutdownSeconds": 20,
+    "adbRetrySeconds": 2,
+    "nativeBridgeStabilitySeconds": 10
   },
   "android": {
+    "backend": "qemu-android-x86",
     "apiLevel": 25,
-    "release": "7.1.1",
-    "imageVariant": "google_apis",
+    "release": "7.1.2",
+    "imageVariant": "android-x86-r5",
     "preferredAbi": "x86",
-    "preferredImage": "system-images;android-25;google_apis;x86",
-    "preferredAvd": "NeoNews_API25_x86",
-    "fallbackAvds": [
-      "NeoNews_API25_arm32",
-      "NeoNews_API25_arm64"
-    ],
+    "preferredApkAbi": "armeabi-v7a",
+    "preferredImage": "runtime/android/android-x86-7.1-r5.iso",
+    "preferredAvd": "",
+    "fallbackAvds": [],
     "abiValidation": {
-      "status": "blocked-no-executable-path",
+      "status": "pending-native-bridge-validation",
       "apkAbis": [
         "arm64-v8a",
         "armeabi-v7a"
       ],
       "x86InstallResult": "INSTALL_FAILED_NO_MATCHING_ABIS",
-      "x86NativeBridge": "absent",
+      "x86NativeBridge": "not-yet-tested",
       "arm32LegacyInstallResult": "system_server_watchdog_during_dexopt",
       "validated": false,
       "report": "docs/ABI-ETAPA-3.md"
     },
     "tooling": {
-      "sdkRoot": "runtime/android-sdk",
-      "adbRelativePath": "platform-tools/adb.exe",
+      "sdkRoot": "runtime",
+      "adbRelativePath": "adb/adb.exe",
       "emulatorRelativePath": "emulator/emulator.exe",
-      "allowEnvironmentFallback": true
+      "allowEnvironmentFallback": false
     },
     "emulator": {
       "acceleration": "auto",
@@ -53,6 +55,40 @@
       "snapshotPolicy": "quick-boot-with-cold-boot-fallback",
       "validationPort": 5556,
       "showWindow": true
+    },
+    "qemu": {
+      "executable": "runtime/qemu/qemu-system-x86_64.exe",
+      "disk": "runtime/android/neonews-api25.qcow2",
+      "androidImage": "runtime/android/android-x86-7.1-r5.iso",
+      "acceleration": "whpx",
+      "machine": "q35",
+      "windowTitle": "NeoNews Android Runtime",
+      "memoryMb": 2048,
+      "cpuCores": 4,
+      "qmpPort": 4445,
+      "showWindow": true,
+      "allowTcgForDiagnostics": false
+    },
+    "adb": {
+      "transport": "tcp",
+      "host": "127.0.0.1",
+      "hostPort": 5556,
+      "guestPort": 5555,
+      "emulatorSerial": ""
+    },
+    "nativeBridge": {
+      "required": true,
+      "preferredAbi": "armeabi-v7a",
+      "property": "ro.dalvik.vm.native.bridge",
+      "status": "unknown"
+    },
+    "provisioning": {
+      "statePath": "runtime/state/provisioning.json",
+      "webViewPackagePath": "packages/webview/webview.apk",
+      "ttsPackagePath": "packages/tts/rhvoice.apk",
+      "nativeBridgePackagePath": "packages/nativebridge/nativebridge.apk",
+      "requireWebView": true,
+      "requireTts": true
     },
     "optimization": {
       "screen": {

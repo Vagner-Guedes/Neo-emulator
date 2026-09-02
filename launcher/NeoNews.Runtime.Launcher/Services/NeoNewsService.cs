@@ -43,7 +43,10 @@ public sealed class NeoNewsService
     public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
         var status = await GetStatusAsync(cancellationToken);
-        if (!status.Installed)
+        var versionMismatch = status.Installed &&
+                              !string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) &&
+                              !string.Equals(status.Version, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase);
+        if (!status.Installed || versionMismatch)
         {
             var apkPath = _context.ResolveApkPath();
             if (!File.Exists(apkPath))
@@ -63,6 +66,7 @@ public sealed class NeoNewsService
                     $"Pacote esperado: {PackageName}. APK: {apkPath}");
             }
         }
+        await ValidateInstalledVersionAsync(cancellationToken);
         progress?.Report(new RuntimeProgress("Abrindo NeoNews", $"{PackageName}/{ActivityName}", 82));
         await _adb.StartActivityAsync(PackageName, ActivityName, cancellationToken);
     }
@@ -75,8 +79,21 @@ public sealed class NeoNewsService
         await StartAsync(progress, cancellationToken);
     }
 
-    public Task InstallAsync(CancellationToken cancellationToken = default) =>
-        _adb.InstallApkAsync(_context.ResolveApkPath(), cancellationToken);
+    public async Task InstallAsync(CancellationToken cancellationToken = default)
+    {
+        await _adb.InstallApkAsync(_context.ResolveApkPath(), cancellationToken);
+        await ValidateInstalledVersionAsync(cancellationToken);
+    }
+
+    private async Task ValidateInstalledVersionAsync(CancellationToken cancellationToken)
+    {
+        var version = await _adb.GetPackageVersionAsync(PackageName, cancellationToken);
+        var versionCode = await _adb.GetPackageVersionCodeAsync(PackageName, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(_context.Config.NeoNews.VersionName) && !string.Equals(version, _context.Config.NeoNews.VersionName, StringComparison.OrdinalIgnoreCase))
+            throw new RuntimeOperationException("A versão do NeoNews não corresponde à versão esperada.", $"Pacote={PackageName}; versão encontrada={version}; esperada={_context.Config.NeoNews.VersionName}; versionCode={versionCode}; esperado={_context.Config.NeoNews.VersionCode}.");
+        if (_context.Config.NeoNews.VersionCode > 0 && versionCode is not null && versionCode != _context.Config.NeoNews.VersionCode)
+            throw new RuntimeOperationException("O versionCode do NeoNews não corresponde ao esperado.", $"Pacote={PackageName}; versionCode encontrado={versionCode}; esperado={_context.Config.NeoNews.VersionCode}.");
+    }
 
     private string NormalizeActivity(string activity)
     {

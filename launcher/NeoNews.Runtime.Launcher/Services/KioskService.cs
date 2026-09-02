@@ -21,18 +21,18 @@ public sealed class KioskService
 
     private readonly RuntimeContext _context;
     private readonly AdbService _adb;
-    private readonly EmulatorService _emulator;
+    private readonly IAndroidRuntimeBackend _backend;
     private IntPtr _windowHandle;
     private IntPtr _originalStyle;
     private RECT _originalRect;
     private bool _windowCaptured;
     private GuestState? _originalGuestState;
 
-    public KioskService(RuntimeContext context, AdbService adb, EmulatorService emulator)
+    public KioskService(RuntimeContext context, AdbService adb, IAndroidRuntimeBackend backend)
     {
         _context = context;
         _adb = adb;
-        _emulator = emulator;
+        _backend = backend;
     }
 
     public bool IsActive { get; private set; }
@@ -135,10 +135,7 @@ public sealed class KioskService
 
     private void CaptureAndMaximizeEmulatorWindow()
     {
-        var processId = _emulator.ProcessId;
-        if (processId is null) return;
-        var process = System.Diagnostics.Process.GetProcessById(processId.Value);
-        var handle = process.MainWindowHandle;
+        var handle = _backend.WindowHandle;
         if (handle == IntPtr.Zero) return;
 
         _windowHandle = handle;

@@ -37,9 +37,9 @@ public sealed class TrayService : IDisposable
         var menu = new Forms.ContextMenuStrip();
         Add(menu, "Abrir painel", open);
         menu.Items.Add(new Forms.ToolStripSeparator());
-        AddAsync(menu, "Iniciar Android", start);
-        AddAsync(menu, "Parar Android", stop);
-        AddAsync(menu, "Reiniciar Android", restart);
+        AddAsync(menu, "Iniciar sistema", start);
+        AddAsync(menu, "Parar sistema", stop);
+        AddAsync(menu, "Reiniciar sistema", restart);
         menu.Items.Add(new Forms.ToolStripSeparator());
         AddAsync(menu, "Ativar kiosk", kiosk);
         AddAsync(menu, "Sair do kiosk", exitKiosk);

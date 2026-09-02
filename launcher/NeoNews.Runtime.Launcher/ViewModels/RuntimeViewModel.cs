@@ -35,9 +35,9 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
         _snapshot = controller.Snapshot;
         _controller.SnapshotChanged += Controller_SnapshotChanged;
 
-        StartCommand = new AsyncCommand(() => RunAsync("Iniciar NeoNews", (p, ct) => _controller.StartNeoNewsAsync(p, ct)), () => !IsBusy);
-        StopCommand = new AsyncCommand(() => RunAsync("Parar Android", (p, ct) => _controller.StopAndroidAsync(p, ct)), () => !IsBusy);
-        RestartCommand = new AsyncCommand(() => RunAsync("Reiniciar Android", (p, ct) => _controller.RestartAndroidAsync(p, ct)), () => !IsBusy);
+        StartCommand = new AsyncCommand(() => RunAsync("Iniciar sistema", (p, ct) => _controller.StartSystemAsync(p, ct)), () => !IsBusy);
+        StopCommand = new AsyncCommand(() => RunAsync("Parar sistema", (p, ct) => _controller.StopSystemAsync(p, ct)), () => !IsBusy);
+        RestartCommand = new AsyncCommand(() => RunAsync("Reiniciar sistema", (p, ct) => _controller.RestartSystemAsync(p, ct)), () => !IsBusy);
         OpenCommand = new AsyncCommand(() => RunAsync("Abrir NeoNews", (p, ct) => _controller.OpenNeoNewsAsync(p, ct)), () => !IsBusy);
         RestartNeoNewsCommand = new AsyncCommand(() => RunAsync("Reiniciar aplicativo", (p, ct) => _controller.RestartNeoNewsAsync(p, ct)), () => !IsBusy);
         InstallCommand = new AsyncCommand(() => RunAsync("Instalar / atualizar", (_, ct) => _controller.InstallNeoNewsAsync(null, ct)), () => !IsBusy);
@@ -227,13 +227,13 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
     public Task ExecuteCommandAsync(RuntimeCommand command) => command switch
     {
         RuntimeCommand.Show => Task.CompletedTask,
-        RuntimeCommand.Start => RunAsync("Iniciar NeoNews", (p, ct) => _controller.StartNeoNewsAsync(p, ct)),
-        RuntimeCommand.Stop => RunAsync("Parar Android", (p, ct) => _controller.StopAndroidAsync(p, ct)),
-        RuntimeCommand.Restart => RunAsync("Reiniciar Android", (p, ct) => _controller.RestartAndroidAsync(p, ct)),
+        RuntimeCommand.Start => RunAsync("Iniciar sistema", (p, ct) => _controller.StartSystemAsync(p, ct)),
+        RuntimeCommand.Stop => RunAsync("Parar sistema", (p, ct) => _controller.StopSystemAsync(p, ct)),
+        RuntimeCommand.Restart => RunAsync("Reiniciar sistema", (p, ct) => _controller.RestartSystemAsync(p, ct)),
         RuntimeCommand.Kiosk => RunAsync("Ativar kiosk", (p, ct) => _controller.EnterKioskAsync(p, ct)),
         RuntimeCommand.ExitKiosk => RunAsync("Sair do kiosk", (_, ct) => _controller.ExitKioskAsync(ct)),
         RuntimeCommand.Autostart => RunAsync("Inicialização automática", (p, ct) => _controller.Context.Config.Startup.StartNeoNews
-            ? _controller.StartNeoNewsAsync(p, ct)
+            ? _controller.StartSystemAsync(p, ct)
             : _controller.StartAndroidAsync(p, ct)),
         RuntimeCommand.Diagnostics => CollectDiagnosticsAsync(),
         RuntimeCommand.Install => RunAsync("Instalar / atualizar", (_, ct) => _controller.InstallNeoNewsAsync(null, ct)),

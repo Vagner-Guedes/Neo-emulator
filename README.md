@@ -1,29 +1,25 @@
 # NeoNews Runtime
 
-Runtime Windows para sinalização digital com guest Android 7.1.1/API 25, perfil de kiosk, launcher WPF, supervisor, diagnóstico e benchmark.
+Runtime Windows para sinalização digital com guest Android-x86 7.1.2/API 25, QEMU/WHPX, perfil de kiosk, launcher WPF, supervisor, diagnóstico e benchmark.
 
 ## Estado atual
 
-O runtime base foi provisionado e validado. A homologação do NeoNews está bloqueada neste host porque o APK fornecido contém apenas `arm64-v8a` e `armeabi-v7a`, enquanto a imagem x86 não possui native bridge. O APK proprietário, WebView e RHVoice permanecem artefatos externos.
+O runtime está migrando para o backend QEMU x86_64 com disco persistente e ADB TCP. A homologação completa permanece pendente até que Android-x86 7.1-r5, Native Bridge ARM, WebView 119, RHVoice e o APK oficial sejam provisionados e testados no mesmo guest. O APK proprietário e demais componentes externos permanecem fora do Git.
 
 Consulte [`docs/FINAL-REPORT.md`](docs/FINAL-REPORT.md) para evidências e pendências.
 
 ## Primeira execução
 
 ```powershell
-.\scripts\provision\Install-AndroidRuntime.ps1 -AcceptLicenses
-.\scripts\provision\Create-Api25Avds.ps1
-.\scripts\provision\Configure-NeoNewsAvd.ps1
+.\scripts\provision\Provision-QemuAndroidRuntime.ps1 -RequireInstallerImage
 ```
 
 Forneça o APK em `packages/neonews/neonews.apk` e execute os validadores:
 
-Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do repositório; a publicação o copia automaticamente para `packages/neonews/neonews.apk`, e o botão “Iniciar NeoNews” tenta instalá-lo antes de abrir a atividade.
+Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do repositório; a publicação o copia automaticamente para `packages/neonews/neonews.apk`, e o botão “Iniciar sistema” tenta instalá-lo antes de abrir a atividade.
 
 ```powershell
-.\scripts\validation\Test-WebViewProvider.ps1 -StartEmulator -StopEmulator
-.\scripts\validation\Test-TtsProvider.ps1 -StartEmulator -StopEmulator
-.\scripts\runtime\Start-NeoNews.ps1 -StartEmulator -Launch
+.\scripts\validation\Test-NativeBridge.ps1
 ```
 
 O launcher WPF pode ser compilado com o SDK local .NET 8:
@@ -34,9 +30,11 @@ dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj
 
 ## Executando o Runtime
 
-O runtime profissional é `NeoNewsRuntime.exe`, uma aplicação WPF `WinExe` autocontida para `win-x64`. A operação normal não abre PowerShell nem terminal: ADB, Emulator e `schtasks.exe` são executados diretamente, com saída capturada em `logs/`.
+O runtime profissional é `NeoNewsRuntime.exe`, uma aplicação WPF `WinExe` autocontida para `win-x64`. A operação normal não abre PowerShell nem terminal: ADB, QEMU e `schtasks.exe` são executados diretamente, com saída capturada em `logs/`.
 
 Para publicar a distribuição final, consulte [`docs/BUILD.md`](docs/BUILD.md). O resultado fica em `dist/NeoNewsRuntime/` com o executável único e `config/runtime.json`. O APK proprietário continua opcional e externo; sem ele, o painel ainda abre e os estados reportam a dependência ausente.
+
+O backend padrão é `qemu-android-x86`, com `-accel whpx`, ADB encaminhado de `127.0.0.1:5556` para a porta 5555 do guest e disco persistente em `runtime/android/neonews-api25.qcow2`. Esses caminhos são relativos ao diretório da distribuição e podem conter espaços.
 
 Argumentos suportados:
 
