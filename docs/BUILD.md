@@ -39,6 +39,10 @@ Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbS
 
 O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes em `runtime/state/provisioning.json` e não baixa componentes. Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis; o boot normal não instala APKs desconhecidos.
 
+Com o guest online, `scripts/provision/Install-GuestComponents.ps1` faz a
+instalação opt-in desses componentes com `adb install -r`, sem uninstall ou
+limpeza de dados. A síntese RHVoice continua exigindo um teste real separado.
+
 Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.
 
 O ícone `launcher/NeoNews.Runtime.Launcher/Assets/NeoNewsRuntime.ico` é embutido no `.exe`. Para recriá-lo após uma alteração visual, execute `scripts/build/New-NeoNewsRuntimeIcon.ps1` antes da publicação.

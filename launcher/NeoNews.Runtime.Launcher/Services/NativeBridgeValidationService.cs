@@ -65,7 +65,7 @@ public sealed class NativeBridgeValidationService
             : apkAbis.FirstOrDefault(abi => abi.Equals(_context.Config.Android.NativeBridge.PreferredAbi, StringComparison.OrdinalIgnoreCase));
         var launched = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);
         var stable = false;
-        if (launched)
+        if (guest.Ready && installSucceeded && selected is not null && launched)
         {
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.NativeBridgeStabilitySeconds)), cancellationToken);
             stable = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);

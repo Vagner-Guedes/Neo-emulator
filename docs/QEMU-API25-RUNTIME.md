@@ -30,6 +30,17 @@ Execute:
 
 O script apenas valida arquivos locais e salva hashes no estado de provisionamento. Ele não baixa uma ISO, QEMU, Native Bridge, WebView ou TTS.
 
+Depois que o guest estiver online, a instalação dos componentes locais é uma
+operação separada e explícita:
+
+```powershell
+.\scripts\provision\Install-GuestComponents.ps1 `
+  -InstallNativeBridge -InstallWebView -InstallTts -SetRhVoiceDefault
+```
+
+O comando usa somente os arquivos configurados, `adb install -r` e registra
+hashes/estado. O boot normal não instala componentes desconhecidos.
+
 ## Fluxo de execução
 
 1. validar QEMU, WHPX, ADB e qcow2;

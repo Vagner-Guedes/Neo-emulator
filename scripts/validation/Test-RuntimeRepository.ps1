@@ -47,6 +47,7 @@ $requiredPaths = @(
     'docs/QEMU-API25-RUNTIME.md',
     'docs/FINAL-REPORT.md',
     'scripts/provision/Provision-QemuAndroidRuntime.ps1',
+    'scripts/provision/Install-GuestComponents.ps1',
     'scripts/validation/Test-NativeBridge.ps1',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
