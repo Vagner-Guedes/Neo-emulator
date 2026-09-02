@@ -161,6 +161,86 @@ function Read-ApkManifestIdentity([string]$Path) {
     return [pscustomobject]@{ PackageName = $packageName; VersionName = $versionName; VersionCode = $versionCode }
 }
 
+function Read-Asn1Node {
+    param(
+        [byte[]]$Data,
+        [ref]$Offset,
+        [int]$Limit
+    )
+
+    $start = [int]$Offset.Value
+    if ($start -lt 0 -or $start + 2 -gt $Limit) { throw 'ASN.1 fora dos limites.' }
+    $tag = [int]$Data[$Offset.Value]
+    $Offset.Value++
+    $lengthByte = [int]$Data[$Offset.Value]
+    $Offset.Value++
+    if (($lengthByte -band 0x80) -eq 0) {
+        $length = $lengthByte
+    }
+    else {
+        $lengthOctets = $lengthByte -band 0x7F
+        if ($lengthOctets -eq 0 -or $lengthOctets -gt 4 -or $Offset.Value + $lengthOctets -gt $Limit) { throw 'Comprimento ASN.1 inválido.' }
+        $length = 0
+        for ($index = 0; $index -lt $lengthOctets; $index++) { $length = ($length -shl 8) -bor [int]$Data[$Offset.Value]; $Offset.Value++ }
+    }
+    $valueOffset = [int]$Offset.Value
+    $end = $valueOffset + $length
+    if ($length -lt 0 -or $end -gt $Limit) { throw 'Conteúdo ASN.1 fora dos limites.' }
+    $Offset.Value = $end
+    return [pscustomobject]@{ Tag = $tag; Start = $start; ValueOffset = $valueOffset; End = $end; Constructed = (($tag -band 0x20) -ne 0) }
+}
+
+function Find-ApkCertificateSha256 {
+    param(
+        [byte[]]$Data,
+        [int]$Offset,
+        [int]$Limit
+    )
+
+    while ($Offset -lt $Limit) {
+        $cursor = $Offset
+        $node = Read-Asn1Node $Data ([ref]$cursor) $Limit
+        if ($node.Tag -eq 0x30) {
+            try {
+                $encoded = [byte[]]$Data[$node.Start..($node.End - 1)]
+                $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($encoded)
+                try {
+                    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+                    try { return ([BitConverter]::ToString($sha256.ComputeHash($certificate.RawData)) -replace '-', '').ToUpperInvariant() }
+                    finally { $sha256.Dispose() }
+                }
+                finally { $certificate.Dispose() }
+            }
+            catch [System.Security.Cryptography.CryptographicException] { }
+            catch [System.ArgumentException] { }
+        }
+        if ($node.Constructed -or $node.Tag -eq 0xA0) {
+            $found = Find-ApkCertificateSha256 $Data $node.ValueOffset $node.End
+            if ($found) { return $found }
+        }
+        $Offset = $node.End
+    }
+    return $null
+}
+
+function Read-ApkCertificateSha256([string]$Path) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $entry = $archive.Entries | Where-Object {
+            $_.FullName -match '(?i)^META-INF/[^/]+\.(RSA|DSA|EC)$'
+        } | Select-Object -First 1
+        if ($null -eq $entry) { return $null }
+        $entryStream = $entry.Open()
+        $memory = [System.IO.MemoryStream]::new()
+        try { $entryStream.CopyTo($memory); $data = $memory.ToArray() }
+        finally { $memory.Dispose(); $entryStream.Dispose() }
+    }
+    finally { $archive.Dispose() }
+    if ($data.Length -eq 0) { return $null }
+    return Find-ApkCertificateSha256 $data 0 $data.Length
+}
+
 function Test-ActivityRunning([string]$Dump) {
     $candidates = @(
         $activity,
@@ -227,6 +307,13 @@ if ($apkIdentity.PackageName -ne [string]$config.neonews.packageName) {
 }
 if ($apkIdentity.VersionName -ne [string]$config.neonews.versionName -or [int64]$apkIdentity.VersionCode -ne [int64]$config.neonews.versionCode) {
     throw "O APK oficial possui versão '$($apkIdentity.VersionName)'/$($apkIdentity.VersionCode), esperada '$($config.neonews.versionName)'/$($config.neonews.versionCode). Nenhuma instalação foi tentada."
+}
+$expectedCertificateSha256 = ([string]$config.neonews.signingCertificateSha256 -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+if ($expectedCertificateSha256) {
+    $actualCertificateSha256 = Read-ApkCertificateSha256 $ApkPath
+    if (-not $actualCertificateSha256 -or $actualCertificateSha256 -ne $expectedCertificateSha256) {
+        throw "A assinatura X.509 do APK oficial diverge da fingerprint autorizada. Encontrada='$actualCertificateSha256'; esperada='$expectedCertificateSha256'. Nenhuma instalação foi tentada."
+    }
 }
 $preferredApkAbi = if ($config.android.nativeBridge.preferredAbi) { [string]$config.android.nativeBridge.preferredAbi } else { [string]$config.android.preferredApkAbi }
 if ($apkAbis.Count -eq 0 -or ($preferredApkAbi -and $apkAbis -notcontains $preferredApkAbi)) {
@@ -344,6 +431,8 @@ $report = [ordered]@{
     apkVersionName = $apkIdentity.VersionName
     apkVersionCode = $apkIdentity.VersionCode
     apkIdentityMatches = $apkIdentity.PackageName -eq [string]$config.neonews.packageName -and $apkIdentity.VersionName -eq [string]$config.neonews.versionName -and [int64]$apkIdentity.VersionCode -eq [int64]$config.neonews.versionCode
+    apkCertificateSha256 = $actualCertificateSha256
+    apkSignatureMatches = [string]::IsNullOrWhiteSpace($expectedCertificateSha256) -or $actualCertificateSha256 -eq $expectedCertificateSha256
     selectedApkAbi = $selectedApkAbi
     installSucceeded = $installSucceeded
     primaryCpuAbi = $primaryCpuAbi
