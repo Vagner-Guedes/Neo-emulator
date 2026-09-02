@@ -65,7 +65,11 @@ public sealed class NativeBridgeValidationService
             : null;
         var launched = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);
         var stable = false;
-        if (guest.Ready && installSucceeded && selected is not null && launched)
+        // Installation evidence and runtime evidence are independent. An
+        // already-installed matching APK must still be launchable; the
+        // install gate remains false until this run actually observed
+        // adb install -r returning Success.
+        if (guest.Ready && selected is not null && launched)
         {
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.NativeBridgeStabilitySeconds)), cancellationToken);
             stable = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);

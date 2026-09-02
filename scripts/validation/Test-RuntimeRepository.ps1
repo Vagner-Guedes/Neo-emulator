@@ -75,6 +75,8 @@ $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (
 $contractErrors = @()
 $qemuSourcePath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\QemuAndroidRuntimeBackend.cs'
 $qemuSource = if (Test-Path -LiteralPath $qemuSourcePath) { Get-Content -LiteralPath $qemuSourcePath -Raw -Encoding utf8 } else { '' }
+$runtimeControllerPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\RuntimeController.cs'
+$runtimeControllerSource = if (Test-Path -LiteralPath $runtimeControllerPath) { Get-Content -LiteralPath $runtimeControllerPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -87,6 +89,13 @@ $contractChecks = [ordered]@{
     noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)'
     portableRuntimePaths = [string]$configObject.android.qemu.executable -match '(?i)^runtime[\\/]' -and [string]$configObject.android.qemu.disk -match '(?i)^runtime[\\/]'
     qemuEnvironmentFallbackDisabled = -not [bool]$configObject.android.tooling.allowEnvironmentFallback
+    installEvidenceTracksAdbSuccess = $launcherSourceText -match 'LastInstallSucceeded' -and $launcherSourceText -match 'InstallApkAsync'
+    noConfiguredAbiEvidenceFallback = $runtimeControllerSource -notmatch 'return\s+_context\.Config\.NeoNews\.SupportedApkAbis'
+    existingInstallCanReachStabilityGate = $launcherSourceText -match 'guest\.Ready\s+&&\s+selected\s+is\s+not\s+null\s+&&\s+launched'
+    kioskRestoresGuestStateOnFailedEntry = $launcherSourceText -match 'capturedHere' -and $launcherSourceText -match 'RestoreGuestStateAsync'
+    kioskValidatesWindowGeometry = $launcherSourceText -match 'IsKioskWindowApplied' -and $launcherSourceText -match 'GetWindowRect'
+    normalBootRequiresProvisioningState = $launcherSourceText -match 'Provisionamento local ainda' -and $launcherSourceText -match 'DiskFingerprint'
+    provisioningPreservesStrongDiskHash = $launcherSourceText -match 'Keep it intact' -and $launcherSourceText -match 'ImageHash'
 }
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }

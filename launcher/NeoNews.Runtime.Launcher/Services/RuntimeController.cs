@@ -214,8 +214,19 @@ public sealed class RuntimeController : IAsyncDisposable
         WithOperationAsync(RuntimeState.Preparing, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
+            _lastAbiCompatibility = null;
             progress?.Report(new RuntimeProgress("Atualizando NeoNews", "Instalando APK autorizado sem apagar dados...", 75));
             await _neoNews.InstallAsync(cancellationToken);
+            var bridge = await SafeNativeBridgeAsync(cancellationToken);
+            if (bridge is not null)
+            {
+                _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(
+                    _neoNews.PackageName,
+                    _neoNews.ActivityName,
+                    ResolveApkAbis(),
+                    _neoNews.LastInstallSucceeded,
+                    cancellationToken);
+            }
             await RefreshSnapshotAsync(cancellationToken);
             progress?.Report(new RuntimeProgress("NeoNews atualizado", "Instalação concluída.", 100));
         });
@@ -303,7 +314,7 @@ public sealed class RuntimeController : IAsyncDisposable
             if (_context.Config.Android.Provisioning.RequireTts && !tts.Ready) throw new RuntimeOperationException("A voz RHVoice pt-BR não está disponível.", tts.Detail);
             _state.Set(RuntimeState.StartingNeoNews);
             await _neoNews.StartAsync(progress, cancellationToken);
-            _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), true, cancellationToken);
+            _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), _neoNews.LastInstallSucceeded, cancellationToken);
             await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !_lastAbiCompatibility.RuntimeStable) throw new RuntimeOperationException("O NeoNews não permaneceu estável com a ABI ARM.", $"primaryCpuAbi={_lastAbiCompatibility.PrimaryCpuAbi}; selectedApkAbi={_lastAbiCompatibility.SelectedApkAbi}; runtimeStable=false");
             if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _kiosk.EnterAsync(progress, cancellationToken); }
@@ -368,9 +379,9 @@ public sealed class RuntimeController : IAsyncDisposable
     private IReadOnlyList<string> ResolveApkAbis()
     {
         var path = _context.ResolveApkPath();
-        if (!File.Exists(path)) return _context.Config.NeoNews.SupportedApkAbis;
+        if (!File.Exists(path)) return [];
         try { return NativeBridgeValidationService.ReadApkAbis(path); }
-        catch (Exception exception) { _logs.Warning("launcher", $"Não foi possível extrair ABIs do APK local: {exception.Message}"); return _context.Config.NeoNews.SupportedApkAbis; }
+        catch (Exception exception) { _logs.Warning("launcher", $"Falha ao extrair ABIs do APK local: {exception.Message}"); return []; }
     }
 
     private async Task EnsureGuestIdentityAsync(CancellationToken cancellationToken)

@@ -35,9 +35,18 @@ Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O dire
 
 Quando `app.apk` existir na raiz do repositório (ou `packages/neonews/neonews.apk` já existir), o script de publicação o inclui na distribuição. O comando `--start` também instala automaticamente esse APK autorizado quando o pacote ainda não estiver presente no Android.
 
+O diagnóstico só marca `installSucceeded=true` quando observou `adb install -r`
+retornar `Success`; iniciar um APK já instalado pode comprovar estabilidade e
+ABI, mas não falsifica a evidência de uma atualização.
+
 Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbSeconds`, `bootSeconds`, `neoNewsStartSeconds`, `installSeconds`, `emulatorStopSeconds`, `qemuShutdownSeconds`, `adbRetrySeconds` e `nativeBridgeStabilitySeconds`) e podem ser ajustados sem recompilar o launcher.
 
 O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes em `runtime/state/provisioning.json` e não baixa componentes. Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis; o boot normal não instala APKs desconhecidos.
+
+O boot normal exige que esse `provisioning.json` já exista; ele não cria um
+registro de provisionamento incompleto. O SHA-256 forte registrado do disco é
+preservado, e o launcher mantém apenas um fingerprint barato separado para
+detectar mudanças entre boots.
 
 Com o guest online, `scripts/provision/Install-GuestComponents.ps1` faz a
 instalação opt-in desses componentes com `adb install -r`, sem uninstall ou

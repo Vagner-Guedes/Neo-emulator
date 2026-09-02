@@ -8,6 +8,12 @@ O projeto agora possui o caminho de runtime preparado para a homologação funci
 
 **Status atual: NÃO HOMOLOGADO.** A infraestrutura foi implementada e verificada estaticamente, mas os binários externos do QEMU, ADB, imagem Android-x86, disco qcow2, Native Bridge, WebView 119 e RHVoice ainda não estão presentes nesta cópia de trabalho. Portanto, não há evidência honesta de execução do NeoNews no novo guest.
 
+Os gates de instalação, ABI, kiosk e provisionamento foram deliberadamente
+endurecidos nesta rodada: o launcher não transforma um pacote já presente em
+evidência de `adb install -r`, não infere ABI a partir da configuração, exige
+um registro prévio de provisionamento e restaura o guest se a entrada em kiosk
+falhar.
+
 ## Alterações verificadas
 
 | Área | Evidência | Resultado |
@@ -18,11 +24,11 @@ O projeto agora possui o caminho de runtime preparado para a homologação funci
 | Configuração | `schemaVersion=2`, migração de schema 1 com backup `.bak`, caminhos relativos | validado por JSON |
 | Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi` e relatório de compatibilidade | implementado; não homologado |
 | NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
-| Persistência | qcow2 externo e estado em `runtime/state/provisioning.json` | implementado; não executado |
+| Persistência | qcow2 externo, estado obrigatório em `runtime/state/provisioning.json` e hash forte preservado | implementado; não executado |
 | WebView/TTS | provider ativo, ABI nativa, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e síntese real são pré-condições do fluxo completo | implementado; não homologado |
 | Rede/mídia/offline | probe local para DNS, HTTP/HTTPS, HLS/MediaPlayer, cache e NIC QMP reversível | implementado; não executado sem guest provisionado |
-| Kiosk | serviço existente usa o contrato do backend e localiza a janela por PID/título | compilado |
-| Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown e limite de tentativas | compilado |
+| Kiosk | serviço existente usa o contrato do backend, valida geometria/estilo da janela e restaura configurações | compilado |
+| Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
 | Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
 | Regressão | `Test-RuntimeRepository.ps1` | 28 scripts, JSON e ignore checks aprovados |

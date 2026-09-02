@@ -50,7 +50,7 @@ public sealed class KioskService
         var windowRequired = _context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
             ? _context.Config.Android.Qemu.ShowWindow
             : _context.Config.Android.Emulator.ShowWindow;
-        var windowReady = !windowRequired || (_windowCaptured && IsWindow(_windowHandle));
+        var windowReady = !windowRequired || IsKioskWindowApplied();
         return windowReady &&
                policy.Contains(kiosk.ImmersivePolicy, StringComparison.OrdinalIgnoreCase) &&
                timeout.Trim().Equals(kiosk.ScreenOffTimeoutMs.ToString(), StringComparison.OrdinalIgnoreCase) &&
@@ -64,28 +64,43 @@ public sealed class KioskService
     public async Task EnterAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
         var kiosk = _context.Config.Android.Kiosk;
-        if (_originalGuestState is null) _originalGuestState = await CaptureGuestStateAsync(cancellationToken);
-        progress?.Report(new RuntimeProgress("Ativando kiosk", "Aplicando fullscreen no Android...", 88));
-        await _adb.PutSettingAsync("global", "policy_control", kiosk.ImmersivePolicy, cancellationToken);
-        await _adb.PutSettingAsync("system", "screen_off_timeout", kiosk.ScreenOffTimeoutMs.ToString(), cancellationToken);
-        await _adb.PutSettingAsync("global", "stay_on_while_plugged_in", kiosk.StayAwakePluggedIn.ToString(), cancellationToken);
-        await _adb.PutSettingAsync("secure", "screensaver_enabled", "0", cancellationToken);
-        await _adb.PutSettingAsync("system", "accelerometer_rotation", "0", cancellationToken);
-        await _adb.PutSettingAsync("system", "user_rotation", ResolveRotation(kiosk.Orientation).ToString(), cancellationToken);
-        await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
-
-        var windowCaptured = CaptureAndMaximizeEmulatorWindow();
-        var windowRequired = _context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
-            ? _context.Config.Android.Qemu.ShowWindow
-            : _context.Config.Android.Emulator.ShowWindow;
-        if (windowRequired && !windowCaptured)
+        var capturedHere = _originalGuestState is null;
+        var original = _originalGuestState ??= await CaptureGuestStateAsync(cancellationToken);
+        try
         {
-            throw new RuntimeOperationException(
-                "NÃ£o foi possÃ­vel localizar a janela grÃ¡fica do Android.",
-                $"Backend={_backend.Name}; PID={_backend.ProcessId}; a janela principal do processo nÃ£o foi encontrada.");
+            progress?.Report(new RuntimeProgress("Ativando kiosk", "Aplicando fullscreen no Android...", 88));
+            await _adb.PutSettingAsync("global", "policy_control", kiosk.ImmersivePolicy, cancellationToken);
+            await _adb.PutSettingAsync("system", "screen_off_timeout", kiosk.ScreenOffTimeoutMs.ToString(), cancellationToken);
+            await _adb.PutSettingAsync("global", "stay_on_while_plugged_in", kiosk.StayAwakePluggedIn.ToString(), cancellationToken);
+            await _adb.PutSettingAsync("secure", "screensaver_enabled", "0", cancellationToken);
+            await _adb.PutSettingAsync("system", "accelerometer_rotation", "0", cancellationToken);
+            await _adb.PutSettingAsync("system", "user_rotation", ResolveRotation(kiosk.Orientation).ToString(), cancellationToken);
+            await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
+
+            var windowCaptured = CaptureAndMaximizeEmulatorWindow();
+            var windowRequired = _context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
+                ? _context.Config.Android.Qemu.ShowWindow
+                : _context.Config.Android.Emulator.ShowWindow;
+            if (windowRequired && !windowCaptured)
+            {
+                throw new RuntimeOperationException(
+                    "NÃ£o foi possÃ­vel localizar a janela grÃ¡fica do Android.",
+                    $"Backend={_backend.Name}; PID={_backend.ProcessId}; a janela principal do processo nÃ£o foi encontrada.");
+            }
+            IsActive = true;
+            progress?.Report(new RuntimeProgress("Kiosk ativo", "Android em modo imersivo.", 100));
         }
-        IsActive = true;
-        progress?.Report(new RuntimeProgress("Kiosk ativo", "Android em modo imersivo.", 100));
+        catch
+        {
+            // A first kiosk attempt is transactional: do not leave guest
+            // settings modified when the host window cannot be captured.
+            if (capturedHere)
+            {
+                try { await RestoreGuestStateAsync(original, CancellationToken.None); } catch { }
+                _originalGuestState = null;
+            }
+            throw;
+        }
     }
 
     public async Task ExitAsync(CancellationToken cancellationToken)
@@ -94,21 +109,31 @@ public sealed class KioskService
         if (original is null)
         {
             await _adb.DeleteSettingAsync("global", "policy_control", cancellationToken);
+            await _adb.DeleteSettingAsync("system", "screen_off_timeout", cancellationToken);
+            await _adb.DeleteSettingAsync("global", "stay_on_while_plugged_in", cancellationToken);
+            await _adb.DeleteSettingAsync("secure", "screensaver_enabled", cancellationToken);
+            await _adb.DeleteSettingAsync("system", "accelerometer_rotation", cancellationToken);
+            await _adb.DeleteSettingAsync("system", "user_rotation", cancellationToken);
             await ResetDisplayAsync(cancellationToken);
         }
         else
         {
-            await RestoreSettingAsync("global", "policy_control", original.PolicyControl, cancellationToken);
-            await RestoreSettingAsync("system", "screen_off_timeout", original.ScreenOffTimeout, cancellationToken);
-            await RestoreSettingAsync("global", "stay_on_while_plugged_in", original.StayAwakePluggedIn, cancellationToken);
-            await RestoreSettingAsync("secure", "screensaver_enabled", original.ScreensaverEnabled, cancellationToken);
-            await RestoreSettingAsync("system", "accelerometer_rotation", original.AccelerometerRotation, cancellationToken);
-            await RestoreSettingAsync("system", "user_rotation", original.UserRotation, cancellationToken);
-            await RestoreDisplayAsync(original.DisplaySize, original.DisplayDensity, cancellationToken);
+            await RestoreGuestStateAsync(original, cancellationToken);
         }
         RestoreEmulatorWindow();
         IsActive = false;
         _originalGuestState = null;
+    }
+
+    private async Task RestoreGuestStateAsync(GuestState original, CancellationToken cancellationToken)
+    {
+        await RestoreSettingAsync("global", "policy_control", original.PolicyControl, cancellationToken);
+        await RestoreSettingAsync("system", "screen_off_timeout", original.ScreenOffTimeout, cancellationToken);
+        await RestoreSettingAsync("global", "stay_on_while_plugged_in", original.StayAwakePluggedIn, cancellationToken);
+        await RestoreSettingAsync("secure", "screensaver_enabled", original.ScreensaverEnabled, cancellationToken);
+        await RestoreSettingAsync("system", "accelerometer_rotation", original.AccelerometerRotation, cancellationToken);
+        await RestoreSettingAsync("system", "user_rotation", original.UserRotation, cancellationToken);
+        await RestoreDisplayAsync(original.DisplaySize, original.DisplayDensity, cancellationToken);
     }
 
     private async Task<GuestState> CaptureGuestStateAsync(CancellationToken cancellationToken)
@@ -179,9 +204,12 @@ public sealed class KioskService
         var handle = _backend.WindowHandle;
         if (handle == IntPtr.Zero) return false;
 
+        var originalStyle = GetWindowLongPtr(handle, GwlStyle);
+        if (!GetWindowRect(handle, out var originalRect)) return false;
+
         _windowHandle = handle;
-        _originalStyle = GetWindowLongPtr(handle, GwlStyle);
-        GetWindowRect(handle, out _originalRect);
+        _originalStyle = originalStyle;
+        _originalRect = originalRect;
         _windowCaptured = true;
 
         var screens = Screen.AllScreens;
@@ -189,10 +217,35 @@ public sealed class KioskService
         var bounds = screens[index].Bounds;
         var style = _originalStyle.ToInt64() & ~(WsCaption | WsThickFrame | WsMinimizeBox | WsMaximizeBox);
         SetWindowLongPtr(handle, GwlStyle, new IntPtr(style));
-        SetWindowPos(handle, HwndTopmost, bounds.Left, bounds.Top, bounds.Width, bounds.Height, SwpShowWindow);
+        if (!SetWindowPos(handle, HwndTopmost, bounds.Left, bounds.Top, bounds.Width, bounds.Height, SwpShowWindow))
+        {
+            RestoreEmulatorWindow();
+            return false;
+        }
         ShowWindow(handle, SwShow);
         SetForegroundWindow(handle);
+        if (!IsKioskWindowApplied())
+        {
+            RestoreEmulatorWindow();
+            return false;
+        }
         return true;
+    }
+
+    private bool IsKioskWindowApplied()
+    {
+        if (!_windowCaptured || _windowHandle == IntPtr.Zero || !IsWindow(_windowHandle)) return false;
+        if (!GetWindowRect(_windowHandle, out var rect)) return false;
+
+        var screens = Screen.AllScreens;
+        var index = Math.Clamp(_context.Config.Android.Kiosk.MonitorIndex, 0, Math.Max(0, screens.Length - 1));
+        var bounds = screens[index].Bounds;
+        var style = GetWindowLongPtr(_windowHandle, GwlStyle).ToInt64();
+        return rect.Left == bounds.Left &&
+               rect.Top == bounds.Top &&
+               rect.Right - rect.Left == bounds.Width &&
+               rect.Bottom - rect.Top == bounds.Height &&
+               (style & (WsCaption | WsThickFrame | WsMinimizeBox | WsMaximizeBox)) == 0;
     }
 
     private void RestoreEmulatorWindow()

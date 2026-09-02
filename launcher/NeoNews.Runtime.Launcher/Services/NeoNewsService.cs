@@ -17,6 +17,7 @@ public sealed class NeoNewsService
 
     public string PackageName => _context.Config.NeoNews.PackageName;
     public string ActivityName => NormalizeActivity(_context.Config.NeoNews.LaunchActivity);
+    public bool LastInstallSucceeded { get; private set; }
 
     public Task<bool> IsInstalledAsync(CancellationToken cancellationToken = default) =>
         _adb.IsPackageInstalledAsync(PackageName, cancellationToken);
@@ -61,7 +62,9 @@ public sealed class NeoNewsService
         if (!status.Installed || versionMismatch)
         {
             progress?.Report(new RuntimeProgress("Instalando NeoNews", "APK local autorizado encontrado; instalando no Android...", 78));
+            LastInstallSucceeded = false;
             await _adb.InstallApkAsync(apkPath, cancellationToken);
+            LastInstallSucceeded = true;
             status = await GetStatusAsync(cancellationToken);
             if (!status.Installed)
             {
@@ -85,11 +88,13 @@ public sealed class NeoNewsService
 
     public async Task InstallAsync(CancellationToken cancellationToken = default)
     {
+        LastInstallSucceeded = false;
         var apkPath = _context.ResolveApkPath();
         if (!File.Exists(apkPath)) throw new RuntimeOperationException("NeoNews.apk oficial não foi encontrado.", $"Caminho esperado: {apkPath}");
         ValidateAuthorizedApk(apkPath);
         await _adb.InstallApkAsync(apkPath, cancellationToken);
         await ValidateInstalledVersionAsync(cancellationToken);
+        LastInstallSucceeded = true;
     }
 
     private void ValidateAuthorizedApk(string apkPath)

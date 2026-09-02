@@ -14,6 +14,7 @@ public sealed class ProvisioningState
     public string NeoNewsVersion { get; set; } = string.Empty;
     public DateTimeOffset LastValidation { get; set; }
     public string ImageHash { get; set; } = string.Empty;
+    public string DiskFingerprint { get; set; } = string.Empty;
     [JsonPropertyName("provenance")]
     public Dictionary<string, ProvisionedComponent> Provenance { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -57,11 +58,30 @@ public sealed class AndroidProvisioningService
                 $"Arquivos obrigatórios ausentes:\n{string.Join("\n", missing)}\nO provisionamento deve ser feito antes da execução normal; o launcher não baixa binários pela Internet.");
         }
 
-        var state = await LoadAsync(cancellationToken) ?? new ProvisioningState();
+        var state = await LoadAsync(cancellationToken);
+        if (state is null)
+        {
+            throw new RuntimeOperationException(
+                "O provisionamento local ainda nÃ£o foi registrado.",
+                "Execute scripts/provision/Provision-QemuAndroidRuntime.ps1 com os componentes locais aprovados antes do boot normal.");
+        }
+
         state.Schema = 1;
         state.AndroidImageVersion = _context.Config.Android.Release;
         state.LastValidation = DateTimeOffset.UtcNow;
-        state.ImageHash = await ComputeFingerprintAsync(disk, cancellationToken);
+        var fingerprint = await ComputeFingerprintAsync(disk, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(state.DiskFingerprint) &&
+            !state.DiskFingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "O disco persistente do Android mudou desde o provisionamento.",
+                $"Fingerprint anterior={state.DiskFingerprint}; atual={fingerprint}; disco={disk}. Revalide o componente local antes de executar.");
+        }
+        state.DiskFingerprint = fingerprint;
+        // Provision-QemuAndroidRuntime.ps1 records the strong SHA-256 in
+        // ImageHash. Keep it intact; DiskFingerprint is only the cheap
+        // per-boot change marker.
+        if (string.IsNullOrWhiteSpace(state.ImageHash)) state.ImageHash = fingerprint;
         await SaveAsync(state, cancellationToken);
         _logs.Info("provisioning", $"Estrutura local validada. QEMU={qemu}; disco={disk}; ADB={adb}.");
         return state;
