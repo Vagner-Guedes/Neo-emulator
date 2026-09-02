@@ -47,6 +47,8 @@ Na validação de 2026-09-02, `reports/diagnostics.json` e `reports/launcher-smo
 
 O smoke direto do QEMU também foi executado com `-accel whpx`, `-L runtime/qemu/share`, firmware `bios-256k.bin`, máquina `pc`, disco IDE qcow2, NIC e1000, forwarding `127.0.0.1:5556` para a porta 5555 do guest e QMP. A negociação QMP, o envio de `quit` e a saída sem kill forçado foram observados nesse smoke; a imagem permaneceu válida no `qemu-img check`. Isso não substitui a prova de uma sessão ADB online nem a homologação funcional do guest.
 
+No probe adicional do guest, a chave pública ADB do host foi instalada somente em uma sessão QEMU `-snapshot`: o arquivo `/data/misc/adb/adb_keys` retornou 700 bytes, modo `600` e SHA-256 `7465959a33569cca0a945ca5028ff13a4181c500d15b9ca9557407c613009867`, coincidente com a chave pública do host. Mesmo assim, após `persist.adb.tcp.port=5555`, `service.adb.tcp.port=5555`, reinício do serviço e execução manual de `adbd -a`, o host continuou em `offline`/falha de conexão. O listener `tcp6 :::5555` e o forwarding QEMU foram observados; o bloqueio restante está no comportamento do `adbd`/guest, não em pacote ou conteúdo de voz.
+
 Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo. O smoke do launcher também grava, por padrão, ao lado do executável que foi testado; o checklist compara esse diretório com o diagnóstico e com a estabilidade integrada quando ambos existem, evitando misturar publicações diferentes.
 
 O launcher lê o AndroidManifest AXML e as ABIs do APK antes do `adb install -r`;
