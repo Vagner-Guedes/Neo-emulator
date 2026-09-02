@@ -74,6 +74,7 @@ Antes do checklist, execute `Test-RuntimeStability.ps1` com os relatórios
 runner observa por pelo menos 600 segundos o backend, ADB, NeoNews, watchdog,
 kiosk, WebView, RHVoice e logcat; ausência de qualquer evidência mantém o
 resultado como `not-validated`.
+O diagnóstico live do kiosk também precisa registrar `screensaverEnabled=0`.
 
 The stability runner also requires the smoke report to contain the explicit
 manual fields `manualEvidence.neoNewsContentObserved=true` and

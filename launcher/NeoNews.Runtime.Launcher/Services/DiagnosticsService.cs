@@ -173,6 +173,7 @@ public sealed class DiagnosticsService
                     policyControl = guest.PolicyControl,
                     screenOffTimeout = guest.ScreenOffTimeout,
                     stayAwake = guest.StayAwake,
+                    screensaverEnabled = guest.ScreensaverEnabled,
                     rotation = guest.UserRotation
                 }
             },
@@ -264,6 +265,7 @@ public sealed class DiagnosticsService
             await SafeAsync(() => _adb.GetSettingAsync("global", "policy_control", cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.GetSettingAsync("system", "screen_off_timeout", cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.GetSettingAsync("global", "stay_on_while_plugged_in", cancellationToken), cancellationToken),
+            await SafeAsync(() => _adb.GetSettingAsync("secure", "screensaver_enabled", cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.GetSettingAsync("system", "user_rotation", cancellationToken), cancellationToken));
     }
 
@@ -417,8 +419,9 @@ public sealed class DiagnosticsService
         string PolicyControl,
         string ScreenOffTimeout,
         string StayAwake,
+        string ScreensaverEnabled,
         string UserRotation)
     {
-        public static GuestDiagnostics Empty { get; } = new("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "");
+        public static GuestDiagnostics Empty { get; } = new("", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "");
     }
 }

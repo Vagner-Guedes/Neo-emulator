@@ -136,6 +136,7 @@ function Test-KioskState {
         [string]$kiosk.policyControl -match [regex]::Escape([string]$config.android.kiosk.immersivePolicy) -and
         [string]$kiosk.screenOffTimeout -eq [string]$config.android.kiosk.screenOffTimeoutMs -and
         [string]$kiosk.stayAwake -eq [string]$config.android.kiosk.stayAwakePluggedIn -and
+        [string]$kiosk.screensaverEnabled -eq '0' -and
         [string]$kiosk.rotation -eq $expectedRotation
 }
 

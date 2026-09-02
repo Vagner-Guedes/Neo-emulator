@@ -198,7 +198,9 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
     public int ScreenWidth => _controller.Context.Config.Android.Optimization.Screen.Width;
     public int ScreenHeight => _controller.Context.Config.Android.Optimization.Screen.Height;
     public int Density => _controller.Context.Config.Android.Optimization.Screen.Density;
-    public string GpuMode => _controller.Context.Config.Android.Emulator.Gpu;
+    public string GpuMode => _controller.Context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
+        ? _controller.Context.Config.Android.Qemu.Gpu
+        : _controller.Context.Config.Android.Emulator.Gpu;
     public int MonitorIndex => _controller.Context.Config.Android.Kiosk.MonitorIndex;
     public string PerformanceProfile => _controller.Context.Config.Android.Optimization.Profile;
     public string Hotkey => _controller.Context.Config.Runtime.Hotkey;

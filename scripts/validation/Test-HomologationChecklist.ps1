@@ -203,7 +203,8 @@ if ($kioskItem) {
         (Has-PropertyValue $diagnostics 'android.kiosk.rotation' { param($v) [string]$v.Trim() -eq [string]$expectedRotation }) -and
         (Has-PropertyValue $diagnostics 'android.kiosk.policyControl' { param($v) [string]$v -match [regex]::Escape([string]$config.android.kiosk.immersivePolicy) }) -and
         (Has-PropertyValue $diagnostics 'android.kiosk.screenOffTimeout' { param($v) [string]$v.Trim() -eq [string]$config.android.kiosk.screenOffTimeoutMs }) -and
-        (Has-PropertyValue $diagnostics 'android.kiosk.stayAwake' { param($v) [string]$v.Trim() -eq [string]$config.android.kiosk.stayAwakePluggedIn })
+        (Has-PropertyValue $diagnostics 'android.kiosk.stayAwake' { param($v) [string]$v.Trim() -eq [string]$config.android.kiosk.stayAwakePluggedIn }) -and
+        (Has-PropertyValue $diagnostics 'android.kiosk.screensaverEnabled' { param($v) [string]$v.Trim() -eq '0' })
     $kioskItem.status = if ($null -eq $launcherSmoke -or $null -eq $diagnostics) { 'pending' } elseif ($configKiosk -and (Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Test-ReportFresh $launcherSmoke) -and $kioskLive -and (Has-PropertyValue $launcherSmoke 'manualEvidence.kioskObserved' $true)) { 'pass' } else { 'fail' }
 }
 $hotkeyItem = $items | Where-Object { $_.id -eq 'hotkey' } | Select-Object -First 1
