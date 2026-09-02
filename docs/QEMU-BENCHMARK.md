@@ -35,4 +35,5 @@ evidence. Use `-StabilitySeconds` to set the evidence window explicitly.
 The final homologation checklist requires a Native Bridge evidence report with
 at least 600 seconds of observed stability; a short smoke or baseline window
 does not approve the release.
-Shutdown uses QMP and never uses `adb emu kill`.
+Shutdown negotiates QMP, confirms the positive response to `quit`, and never
+uses `adb emu kill`.

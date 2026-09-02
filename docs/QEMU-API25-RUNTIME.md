@@ -64,7 +64,10 @@ hashes/estado. O boot normal não instala componentes desconhecidos.
 8. iniciar e confirmar `TerminalActivity` por `dumpsys activity`;
 9. ativar kiosk e watchdog.
 
-Para parar, o backend solicita `qmp_capabilities`/`quit` via QMP, aguarda o processo e só então usa encerramento forçado após timeout. `adb emu kill` não é usado pelo backend QEMU.
+Para parar, o backend negocia `qmp_capabilities`, exige resposta positiva,
+envia `quit` e exige a resposta positiva antes de aguardar o processo; só
+usa encerramento forçado após timeout. `adb emu kill` não é usado pelo
+backend QEMU.
 
 ## Diagnóstico da ABI
 

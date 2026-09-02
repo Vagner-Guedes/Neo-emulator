@@ -69,9 +69,9 @@ são contados como aprovação. O limite pode ser ajustado com
 `-EvidenceMaxAgeHours`.
 
 Os benchmarks QEMU tambem precisam registrar `qmpCapabilitiesSucceeded=true`,
-`qmpQuitSent=true`, `qmpShutdownSucceeded=true` e `forcedKill=false` em cada
-execucao. O fato de o processo terminar, sozinho, nao comprova desligamento
-controlado via QMP.
+`qmpQuitSent=true`, `qmpQuitResponseSucceeded=true`,
+`qmpShutdownSucceeded=true` e `forcedKill=false` em cada execucao. O fato de
+o processo terminar, sozinho, nao comprova desligamento controlado via QMP.
 
 Cada probe invalida seu relatorio no inicio com `status=not-validated`; uma
 falha de pre-voo nao deixa um relatorio anterior recente ser reutilizado.

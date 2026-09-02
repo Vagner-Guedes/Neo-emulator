@@ -241,6 +241,21 @@ function Read-QemuQmpLine {
     }
 }
 
+function Test-QemuQmpSuccess {
+    param([string]$Message)
+
+    if ([string]::IsNullOrWhiteSpace($Message)) { return $false }
+    try {
+        $response = $Message | ConvertFrom-Json
+        $returnProperty = $response.PSObject.Properties['return']
+        $errorProperty = $response.PSObject.Properties['error']
+        return $null -ne $returnProperty -and $null -eq $errorProperty
+    }
+    catch {
+        return $false
+    }
+}
+
 function Stop-QemuBenchmarkProcess {
     param(
         [System.Diagnostics.Process]$Process,
@@ -253,6 +268,7 @@ function Stop-QemuBenchmarkProcess {
             Exited = $true
             QmpCapabilitiesSucceeded = $false
             QmpQuitSent = $false
+            QmpQuitResponseSucceeded = $false
             QmpShutdownSucceeded = $false
             ForcedKill = $false
             QmpDetail = 'no-process'
@@ -261,6 +277,7 @@ function Stop-QemuBenchmarkProcess {
 
     $qmpCapabilitiesSucceeded = $false
     $qmpQuitSent = $false
+    $qmpQuitResponseSucceeded = $false
     $qmpDetail = 'QMP não conectado.'
     $client = $null
     $stream = $null
@@ -283,7 +300,7 @@ function Stop-QemuBenchmarkProcess {
                 $writer.WriteLine('{"execute":"qmp_capabilities"}')
                 $writer.Flush()
                 $capabilitiesResponse = Read-QemuQmpLine $reader
-                $qmpCapabilitiesSucceeded = $capabilitiesResponse -match '(?i)"return"\s*:' -and $capabilitiesResponse -notmatch '(?i)"error"\s*:'
+                $qmpCapabilitiesSucceeded = Test-QemuQmpSuccess $capabilitiesResponse
                 if (-not $qmpCapabilitiesSucceeded) {
                     $qmpDetail = "QMP qmp_capabilities sem retorno de sucesso: $capabilitiesResponse"
                 }
@@ -291,7 +308,14 @@ function Stop-QemuBenchmarkProcess {
                     $writer.WriteLine('{"execute":"quit"}')
                     $writer.Flush()
                     $qmpQuitSent = $true
-                    $qmpDetail = 'QMP qmp_capabilities confirmado e quit enviado.'
+                    $quitResponse = Read-QemuQmpLine $reader
+                    $qmpQuitResponseSucceeded = Test-QemuQmpSuccess $quitResponse
+                    if ($qmpQuitResponseSucceeded) {
+                        $qmpDetail = 'QMP qmp_capabilities e resposta de quit confirmadas.'
+                    }
+                    else {
+                        $qmpDetail = "QMP quit sem retorno de sucesso: $quitResponse"
+                    }
                 }
             }
         }
@@ -322,12 +346,13 @@ function Stop-QemuBenchmarkProcess {
     }
     $exited = $false
     try { $exited = $Process.HasExited } catch { }
-    $qmpShutdownSucceeded = $qmpCapabilitiesSucceeded -and $qmpQuitSent -and $exited -and -not $forcedKill
+    $qmpShutdownSucceeded = $qmpCapabilitiesSucceeded -and $qmpQuitSent -and $qmpQuitResponseSucceeded -and $exited -and -not $forcedKill
     $Process.Dispose()
     return [pscustomobject]@{
         Exited = $exited
         QmpCapabilitiesSucceeded = $qmpCapabilitiesSucceeded
         QmpQuitSent = $qmpQuitSent
+        QmpQuitResponseSucceeded = $qmpQuitResponseSucceeded
         QmpShutdownSucceeded = $qmpShutdownSucceeded
         ForcedKill = $forcedKill
         QmpDetail = $qmpDetail

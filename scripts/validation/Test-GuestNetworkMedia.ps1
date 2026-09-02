@@ -23,6 +23,7 @@ $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 $scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
+. (Join-Path $scriptRepositoryRoot 'scripts\benchmark\QemuBenchmark.Common.ps1')
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-GuestNetworkMedia'
 if (-not $BuildOnly -and [string]::IsNullOrWhiteSpace($HlsUrl)) { throw 'Forneça -HlsUrl para validar uma playlist HLS real.' }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
@@ -76,23 +77,43 @@ function Read-ProbeResult {
 function Invoke-Qmp {
     param([string]$Payload)
     $client = [System.Net.Sockets.TcpClient]::new()
+    $stream = $null
+    $reader = $null
+    $writer = $null
     try {
         $connect = $client.ConnectAsync('127.0.0.1', [int]$config.android.qemu.qmpPort)
         if (-not $connect.Wait(2000) -or -not $client.Connected) { throw "QMP não está disponível na porta $($config.android.qemu.qmpPort)." }
         $stream = $client.GetStream()
         $stream.ReadTimeout = 2000
-        $greeting = New-Object byte[] 2048
-        try { $null = $stream.Read($greeting, 0, $greeting.Length) } catch { }
-        foreach ($command in @('{"execute":"qmp_capabilities"}', $Payload)) {
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes("$command`r`n")
-            $stream.Write($bytes, 0, $bytes.Length)
-            $stream.Flush()
-            Start-Sleep -Milliseconds 100
+        $qmpEncoding = [System.Text.UTF8Encoding]::new($false)
+        $reader = [System.IO.StreamReader]::new($stream, $qmpEncoding, $false, 4096, $true)
+        $writer = [System.IO.StreamWriter]::new($stream, $qmpEncoding, 4096, $true)
+        $greeting = Read-QemuQmpLine $reader
+        if ([string]::IsNullOrWhiteSpace($greeting) -or $greeting -notmatch '(?i)"QMP"\s*:') {
+            throw 'QMP greeting JSON invalido.'
         }
-        Start-Sleep -Milliseconds 250
-        $stream.Dispose()
+
+        $writer.WriteLine('{"execute":"qmp_capabilities"}')
+        $writer.Flush()
+        $capabilitiesResponse = Read-QemuQmpLine $reader
+        if (-not (Test-QemuQmpSuccess $capabilitiesResponse)) {
+            throw "QMP qmp_capabilities sem retorno de sucesso: $capabilitiesResponse"
+        }
+
+        $writer.WriteLine($Payload)
+        $writer.Flush()
+        $payloadResponse = Read-QemuQmpLine $reader
+        if (-not (Test-QemuQmpSuccess $payloadResponse)) {
+            throw "QMP comando set_link sem retorno de sucesso: $payloadResponse"
+        }
+        return $true
     }
-    finally { $client.Dispose() }
+    finally {
+        if ($writer) { try { $writer.Dispose() } catch { } }
+        if ($reader) { try { $reader.Dispose() } catch { } }
+        if ($stream) { try { $stream.Dispose() } catch { } }
+        $client.Dispose()
+    }
 }
 
 if ([string]::IsNullOrWhiteSpace($SdkRoot)) {
@@ -174,6 +195,8 @@ $onlineResult = ''
 $offlineResult = ''
 $linkDown = $false
 $linkWasToggled = $false
+$qmpLinkDownConfirmed = $false
+$qmpLinkRestoreConfirmed = $false
 try {
     $null = Invoke-Adb @('-s', $Serial, 'shell', 'am', 'force-stop', $probePackage)
     $startOnline = Invoke-Adb @('-s', $Serial, 'shell', 'am', 'start', '-W', '-n', "$probePackage/.MainActivity", '--es', 'httpUrl', $HttpUrl, '--es', 'httpsUrl', $HttpsUrl, '--es', 'hlsUrl', $HlsUrl)
@@ -183,22 +206,26 @@ try {
     $null = Invoke-Adb @('-s', $Serial, 'shell', 'am', 'force-stop', $probePackage)
     $startOffline = Invoke-Adb @('-s', $Serial, 'shell', 'am', 'start', '-W', '-n', "$probePackage/.MainActivity", '--ez', 'offline', 'true', '--es', 'httpsUrl', $HttpsUrl, '--ei', 'delayMs', ([math]::Max(1, $OfflineDelaySeconds) * 1000).ToString())
     if ($startOffline.ExitCode -ne 0 -or $startOffline.Text -match '(?i)Error:|Exception|does not exist') { throw "Falha ao iniciar o probe offline: $($startOffline.Text)" }
-    Invoke-Qmp '{"execute":"set_link","arguments":{"name":"neonewsnic","up":false}}'
-    $linkDown = $true
-    $linkWasToggled = $true
+    $qmpLinkDownConfirmed = [bool](Invoke-Qmp '{"execute":"set_link","arguments":{"name":"neonewsnic","up":false}}')
+    $linkDown = $qmpLinkDownConfirmed
     Start-Sleep -Seconds ([math]::Max(5, $OfflineDelaySeconds + 20))
-    Invoke-Qmp '{"execute":"set_link","arguments":{"name":"neonewsnic","up":true}}'
+    $qmpLinkRestoreConfirmed = [bool](Invoke-Qmp '{"execute":"set_link","arguments":{"name":"neonewsnic","up":true}}')
     $linkDown = $false
+    $linkWasToggled = $qmpLinkDownConfirmed -and $qmpLinkRestoreConfirmed
     $offlineResult = Read-ProbeResult -TimeoutSeconds $ProbeTimeoutSeconds
 }
 finally {
     if ($linkDown) {
-        try { Invoke-Qmp '{"execute":"set_link","arguments":{"name":"neonewsnic","up":true}}' } catch { }
+        try {
+            $qmpLinkRestoreConfirmed = [bool](Invoke-Qmp '{"execute":"set_link","arguments":{"name":"neonewsnic","up":true}}')
+            $linkWasToggled = $qmpLinkDownConfirmed -and $qmpLinkRestoreConfirmed
+        }
+        catch { }
     }
 }
 
 $onlineValidated = $onlineResult -match '(?i)^status=ok;.*dns=true;.*http=true;.*https=true;.*hlsPlaylist=true;.*hlsPlayable=true;.*cache=true'
-$offlineValidated = $offlineResult -match '(?i)^status=ok;.*cachedContent=true;.*networkUnavailable=true'
+$offlineValidated = $qmpLinkDownConfirmed -and $qmpLinkRestoreConfirmed -and $offlineResult -match '(?i)^status=ok;.*cachedContent=true;.*networkUnavailable=true'
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     transport = $config.android.adb.transport
@@ -206,7 +233,13 @@ $result = [ordered]@{
     urls = [ordered]@{ http = $HttpUrl; https = $HttpsUrl; hls = $HlsUrl }
     probePackage = $probePackage
     online = [ordered]@{ raw = $onlineResult; validated = $onlineValidated }
-    offline = [ordered]@{ raw = $offlineResult; validated = $offlineValidated; networkLinkToggled = $linkWasToggled }
+    offline = [ordered]@{
+        raw = $offlineResult
+        validated = $offlineValidated
+        networkLinkToggled = $linkWasToggled
+        qmpLinkDownConfirmed = $qmpLinkDownConfirmed
+        qmpLinkRestoreConfirmed = $qmpLinkRestoreConfirmed
+    }
     status = if ($onlineValidated -and $offlineValidated) { 'validated' } else { 'not-validated' }
 }
 $json = $result | ConvertTo-Json -Depth 10

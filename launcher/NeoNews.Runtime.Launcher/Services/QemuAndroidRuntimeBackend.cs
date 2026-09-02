@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using NeoNews.Runtime.Launcher.Models;
 
 namespace NeoNews.Runtime.Launcher.Services;
@@ -224,16 +225,60 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             using var client = new TcpClient();
             await client.ConnectAsync("127.0.0.1", port, timeout.Token);
             await using var stream = client.GetStream();
-            var greeting = new byte[4096];
-            _ = await stream.ReadAsync(greeting.AsMemory(), timeout.Token);
+            using var reader = new StreamReader(stream, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
+            var greeting = await ReadQmpMessageAsync(reader, timeout.Token);
+            if (!IsQmpGreeting(greeting)) throw new InvalidDataException("O servidor QMP não retornou um greeting válido.");
             await SendQmpCommandAsync(stream, "qmp_capabilities", timeout.Token);
+            var capabilitiesResponse = await ReadQmpResponseAsync(reader, timeout.Token);
+            if (!IsQmpSuccess(capabilitiesResponse)) throw new InvalidDataException("QMP rejeitou qmp_capabilities.");
             await SendQmpCommandAsync(stream, "quit", timeout.Token);
+            var quitResponse = await ReadQmpResponseAsync(reader, timeout.Token);
+            if (!IsQmpSuccess(quitResponse)) throw new InvalidDataException("QMP rejeitou quit.");
             _logs.Info("qemu", "Desligamento solicitado via QMP.");
         }
-        catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logs.Warning("qemu", "QMP não confirmou o desligamento dentro do timeout; usando encerramento controlado do processo.");
+        }
+        catch (Exception exception) when (exception is IOException or SocketException or JsonException or InvalidDataException)
         {
             _logs.Warning("qemu", $"QMP indisponível; usando encerramento controlado do processo: {exception.Message}");
         }
+    }
+
+    private static async Task<string> ReadQmpMessageAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null) throw new IOException("A conexão QMP foi encerrada antes de retornar uma mensagem.");
+            if (!string.IsNullOrWhiteSpace(line)) return line;
+        }
+    }
+
+    private static async Task<string> ReadQmpResponseAsync(StreamReader reader, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 32; attempt++)
+        {
+            var message = await ReadQmpMessageAsync(reader, cancellationToken);
+            using var document = JsonDocument.Parse(message);
+            if (document.RootElement.TryGetProperty("return", out _) || document.RootElement.TryGetProperty("error", out _))
+                return message;
+        }
+
+        throw new InvalidDataException("O servidor QMP não retornou uma resposta de comando.");
+    }
+
+    private static bool IsQmpGreeting(string message)
+    {
+        using var document = JsonDocument.Parse(message);
+        return document.RootElement.TryGetProperty("QMP", out _);
+    }
+
+    private static bool IsQmpSuccess(string message)
+    {
+        using var document = JsonDocument.Parse(message);
+        return document.RootElement.TryGetProperty("return", out _) && !document.RootElement.TryGetProperty("error", out _);
     }
 
     private static async Task SendQmpCommandAsync(NetworkStream stream, string command, CancellationToken cancellationToken)

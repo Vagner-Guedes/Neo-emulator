@@ -40,6 +40,7 @@ $stopResult = [pscustomobject]@{
     Exited = $false
     QmpCapabilitiesSucceeded = $false
     QmpQuitSent = $false
+    QmpQuitResponseSucceeded = $false
     QmpShutdownSucceeded = $false
     ForcedKill = $false
     QmpDetail = 'not-attempted'
@@ -69,7 +70,7 @@ $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     backend = 'qemu-android-x86'
     acceleration = 'whpx'
-    qemu = [ordered]@{ executable = $paths.Qemu; processId = $processId; disk = $paths.Disk; gpu = $config.android.qemu.gpu; stopped = $stopped; qmpCapabilitiesSucceeded = $stopResult.QmpCapabilitiesSucceeded; qmpQuitSent = $stopResult.QmpQuitSent; qmpShutdownSucceeded = $stopResult.QmpShutdownSucceeded; forcedKill = $stopResult.ForcedKill; qmpDetail = $stopResult.QmpDetail }
+    qemu = [ordered]@{ executable = $paths.Qemu; processId = $processId; disk = $paths.Disk; gpu = $config.android.qemu.gpu; stopped = $stopped; qmpCapabilitiesSucceeded = $stopResult.QmpCapabilitiesSucceeded; qmpQuitSent = $stopResult.QmpQuitSent; qmpQuitResponseSucceeded = $stopResult.QmpQuitResponseSucceeded; qmpShutdownSucceeded = $stopResult.QmpShutdownSucceeded; forcedKill = $stopResult.ForcedKill; qmpDetail = $stopResult.QmpDetail }
     adb = [ordered]@{ serial = $serial; transport = $config.android.adb.transport; ready = $milestones.adbReady; readySeconds = $milestones.adbReadySeconds; booted = $milestones.booted; bootSeconds = $milestones.bootSeconds; adbToBootSeconds = $milestones.adbToBootSeconds }
     app = $launch
     host = [ordered]@{ idle = $hostIdle; neonewsWorkload = $hostWorkload }
