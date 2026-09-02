@@ -6,7 +6,7 @@ Data da atualização: **2026-09-02**
 
 O projeto agora possui o caminho de runtime preparado para a homologação funcional do APK ARM oficial, sem modificar, recompilar, resignar ou substituir o APK. O backend padrão foi migrado para **QEMU x86_64 + WHPX**, com Android-x86 7.1.2/API 25, disco persistente, janela gráfica identificável e ADB sobre TCP.
 
-**Status atual: NÃO HOMOLOGADO.** A infraestrutura foi implementada e verificada estaticamente. A ISO oficial Android-x86 7.1-r5 já está presente e validada por SHA-1 (`1E65CB2E37B415576939398BAF4C8A92330FBB24`), mas QEMU standalone, ADB, disco qcow2, Native Bridge, WebView 119 e RHVoice ainda não estão provisionados nesta cópia de trabalho. Portanto, não há evidência honesta de execução do NeoNews no novo guest.
+**Status atual: NÃO HOMOLOGADO.** A infraestrutura local foi implementada e provisionada: ISO oficial Android-x86 7.1-r5 validada por SHA-1 (`1E65CB2E37B415576939398BAF4C8A92330FBB24`), QEMU x86_64, ADB Platform Tools e disco qcow2 persistente estão presentes com hashes registrados. O smoke direto do QEMU com WHPX, firmware portátil, IDE qcow2, e1000 e QMP passou; `qemu-img check` não encontrou erros. No teste live, a interface Android iniciou, mas a sessão ADB TCP permaneceu `offline` após as tentativas de adbd, reinício e variantes de rede. Native Bridge, WebView 119 e RHVoice continuam sem provisionamento/evidência de guest, portanto não há evidência honesta de execução do NeoNews no novo runtime.
 
 Os gates de instalação, ABI, kiosk e provisionamento foram deliberadamente
 endurecidos nesta rodada: o launcher não transforma um pacote já presente em
@@ -19,12 +19,12 @@ falhar.
 | Área | Evidência | Resultado |
 |---|---|---|
 | Backend | `IAndroidRuntimeBackend`, `QemuAndroidRuntimeBackend` e compatibilidade legada | implementado |
-| QEMU | `-accel whpx`, qcow2 persistente, forwarding ADB, QMP e título `NeoNews Android Runtime` | implementado; não executado sem binários |
-| ADB | transporte `tcp`, serial configurável `host:port`, `start-server`, `connect`, retry e estados fortes | implementado |
+| QEMU | `-accel whpx`, qcow2 persistente, forwarding ADB, QMP e título `NeoNews Android Runtime` | implementado; smoke direto aprovado; guest live não homologado |
+| ADB | transporte `tcp`, serial configurável `host:port`, `start-server`, `connect`, retry e estados fortes | implementado; ferramenta local presente; sessão guest `offline` |
 | Configuração | `schemaVersion=2`, migração de schema 1 com backup `.bak`, caminhos relativos | validado por JSON |
 | Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi`, manifesto, ABIs e certificado X.509 antes da instalação | implementado; não homologado |
 | NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
-| Persistência | qcow2 externo, estado obrigatório em `runtime/state/provisioning.json` e hash forte preservado | implementado; não executado |
+| Persistência | qcow2 externo, estado obrigatório em `runtime/state/provisioning.json` e hash forte preservado | implementado; imagem íntegra; reinício/marcador ainda não homologados |
 | WebView/TTS | provider ativo, ABI nativa, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e síntese real são pré-condições do fluxo completo | implementado; não homologado |
 | Otimização Android | inventário real, política descoberta, snapshot, debloat reversível e proteção RHVoice antes/depois de cada grupo | implementado; não executado sem guest |
 | Rede/mídia/offline | probe local para DNS, HTTP/HTTPS, HLS/MediaPlayer, cache e NIC QMP reversível | implementado; não executado sem guest provisionado |
@@ -32,7 +32,7 @@ falhar.
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
 | Build | SDK local .NET 8.0.424 / host .NET 8.0.30, `Release` | 0 erros, 0 avisos; publicação atual verificada |
-| Regressão | `Test-RuntimeRepository.ps1` | 30 scripts, JSON e ignore checks aprovados |
+| Regressão | `Test-RuntimeRepository.ps1` | 31 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |
@@ -42,6 +42,10 @@ falhar.
 ## Verificacao local desta rodada
 
 A publicação de verificação `dist/NeoNewsRuntime-current` foi gerada depois do build Release e passou pelo smoke do executável publicado. O relatório registrou janela WPF responsiva, single-instance, CLI, `--exit`, caminho com espaços e ausência de processos residuais; os campos manuais de console, tray e hotkey foram registrados explicitamente. A coleta fresca `--diagnostics` também terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponível, a ISO Android-x86 validada e os demais arquivos externos ausentes.
+
+Na validação de 2026-09-02, `reports/diagnostics.json` e `reports/launcher-smoke.json` foram regenerados contra a mesma publicação `dist/NeoNewsRuntime-current`; a identidade de publicação passou a coincidir. O diagnóstico confirmou QEMU 11.1.0, WHPX disponível, ISO, qcow2 e ADB presentes, mas registrou `android.adb.online=false` e estado `Offline`. O checklist fresco (`reports/homologation-checklist.json`) permanece `not-approved`, com 0 gates pass, 19 fail e 12 pending; essa contagem não é convertida em aprovação por heurística.
+
+O smoke direto do QEMU também foi executado com `-accel whpx`, `-L runtime/qemu/share`, firmware `bios-256k.bin`, máquina `pc`, disco IDE qcow2, NIC e1000, forwarding `127.0.0.1:5556` para a porta 5555 do guest e QMP. A negociação QMP, o envio de `quit` e a saída sem kill forçado foram observados nesse smoke; a imagem permaneceu válida no `qemu-img check`. Isso não substitui a prova de uma sessão ADB online nem a homologação funcional do guest.
 
 Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo. O smoke do launcher também grava, por padrão, ao lado do executável que foi testado; o checklist compara esse diretório com o diagnóstico e com a estabilidade integrada quando ambos existem, evitando misturar publicações diferentes.
 
@@ -59,7 +63,9 @@ imagem Android quando solicitada; o boot rejeita estado sem essa proveniencia
 ou sem SHA-256 forte. A instalacao opt-in de Native Bridge, WebView e RHVoice
 continua exigindo origem/licenca por componente.
 
-O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, o disco/guest inicializado, Native Bridge, WebView e RHVoice nao estao provisionados.
+O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque o transporte ADB live está `offline`, a sessão de guest não foi confirmada e Native Bridge, WebView e RHVoice não têm evidência de provisionamento funcional.
+
+O teste de proteção de voz não foi iniciado neste guest sem ADB homologado. O modo `Audit` continua sem alterar o Android; o modo `Apply` permanece bloqueado sem RHVoice/pt-BR homologado e, quando autorizado, só pode operar sobre a política com packages críticos descobertos, sem `uninstall`, `pm clear`, remoção de arquivos ou substituição automática da engine.
 
 O fluxo de otimização agora está documentado em `docs/ANDROID-PACKAGE-OPTIMIZATION.md`. O modo `Audit` não altera o guest; o modo `Apply` exige aprovação explícita, snapshot e gate RHVoice com packages preservados, engine padrão inalterada, locale `pt-BR`, síntese real e áudio não vazio após cada grupo.
 
@@ -84,8 +90,8 @@ O provisionamento é separado da execução normal. [`Provision-QemuAndroidRunti
 
 Para alterar o status, ainda é necessário executar no mesmo runtime:
 
-1. criar/provisionar o disco persistente a partir da ISO Android-x86 7.1-r5/API 25 já validada;
-2. provisionar QEMU x86_64 e ADB localmente, com origem e hashes registrados;
+1. concluir a prova de persistência com marcador no qcow2 e reinício do guest/Windows, reutilizando a imagem já provisionada e validada pelo `qemu-img check`;
+2. corrigir o transporte live e obter uma sessão ADB online em `127.0.0.1:5556`, mantendo origem e hashes registrados para QEMU, ADB e imagem;
 3. provisionar uma Native Bridge legalmente redistribuível e provar a instalação do APK sem `INSTALL_FAILED_NO_MATCHING_ABIS`;
 4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` exatamente;
 5. validar estabilidade após reinício e executar `Test-RuntimeStability.ps1` com conteúdo real do NeoNews em reprodução;
