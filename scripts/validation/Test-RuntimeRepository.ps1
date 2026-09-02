@@ -212,6 +212,7 @@ $contractChecks = [ordered]@{
     uiRefreshesPersistedRuntimeToggles = $launcherSourceText -match 'nameof\(StartWithWindows\)' -and $launcherSourceText -match 'nameof\(WatchdogEnabled\)'
     kioskEvidenceIncludesScreensaverOff = $launcherSourceText -match 'screensaverEnabled\s*=\s*guest\.ScreensaverEnabled' -and $integratedStabilitySource -match 'kiosk\.screensaverEnabled' -and $checklistSource -match 'android\.kiosk\.screensaverEnabled'
     uiUsesSelectedBackendGpu = $launcherSourceText -match 'Backend\.Equals\("qemu-android-x86"' -and $launcherSourceText -match 'Config\.Android\.Qemu\.Gpu'
+    checklistStatusCoversAllDeclaredGates = $checklistSource -match '\$items\.Count -gt 0' -and $checklistSource -match '\$failed\.Count -eq 0' -and $checklistSource -match '\$pending\.Count -eq 0'
 }
 $contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'ShouldLog\(ref _lastAdbOfflineLog\)' -and $launcherSourceText -match 'cooldownSeconds = Math\.Max\(15'
 $contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'
