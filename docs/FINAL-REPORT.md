@@ -22,7 +22,7 @@ falhar.
 | QEMU | `-accel whpx`, qcow2 persistente, forwarding ADB, QMP e título `NeoNews Android Runtime` | implementado; não executado sem binários |
 | ADB | transporte `tcp`, serial configurável `host:port`, `start-server`, `connect`, retry e estados fortes | implementado |
 | Configuração | `schemaVersion=2`, migração de schema 1 com backup `.bak`, caminhos relativos | validado por JSON |
-| Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi` e relatório de compatibilidade | implementado; não homologado |
+| Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi`, manifesto, ABIs e certificado X.509 antes da instalação | implementado; não homologado |
 | NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
 | Persistência | qcow2 externo, estado obrigatório em `runtime/state/provisioning.json` e hash forte preservado | implementado; não executado |
 | WebView/TTS | provider ativo, ABI nativa, versão esperada, conteúdo HTML/CSS/JavaScript/HTTPS e síntese real são pré-condições do fluxo completo | implementado; não homologado |
@@ -30,7 +30,7 @@ falhar.
 | Kiosk | serviço existente usa o contrato do backend, valida geometria/estilo da janela e restaura configurações | compilado |
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
-| Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos; publicação atual verificada |
+| Build | SDK local .NET 8.0.424 / host .NET 8.0.30, `Release` | 0 erros, 0 avisos; publicação atual verificada |
 | Regressão | `Test-RuntimeRepository.ps1` | 30 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
@@ -44,7 +44,12 @@ A publicação de verificação `dist/NeoNewsRuntime-current` foi gerada depois 
 
 Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo. O smoke do launcher também grava, por padrão, ao lado do executável que foi testado; o checklist compara esse diretório com o diagnóstico e com a estabilidade integrada quando ambos existem, evitando misturar publicações diferentes.
 
-O launcher le o AndroidManifest AXML do APK antes do `adb install -r` e rejeita package, versionName ou versionCode divergentes. O parser foi exercitado contra o `app.apk` local e encontrou `com.in9midia.neonews.player`, `9.0.3` e `522`.
+O launcher lê o AndroidManifest AXML e as ABIs do APK antes do `adb install -r`;
+rejeita package, versionName, versionCode, ausência de `armeabi-v7a` e qualquer
+ABI x86/x86_64. O probe de Native Bridge também valida o certificado X.509 v1
+contra a fingerprint configurada antes da instalação. Esses parsers foram
+exercitados contra o `app.apk` local e encontraram `com.in9midia.neonews.player`,
+`9.0.3`, `522`, `arm64-v8a`, `armeabi-v7a` e fingerprint compatível.
 
 O pacote publicado contem zero arquivos em `packages/`; APK oficial, Native Bridge, WebView, RHVoice e demais dependencias externas continuam fora da distribuicao e do Git. Essa verificacao local nao substitui a execucao do guest.
 
