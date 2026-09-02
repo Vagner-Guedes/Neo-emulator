@@ -66,6 +66,7 @@ $requiredPaths = @(
     'scripts/validation/Test-QemuPersistence.ps1',
     'scripts/validation/Test-LauncherSmoke.ps1',
     'scripts/validation/Test-HomologationChecklist.ps1',
+    'scripts/diagnostics/Collect-Diagnostics.ps1',
     'tools/media-probe/AndroidManifest.xml',
     'tools/media-probe/MainActivity.java',
     'launcher/NeoNews.Runtime.Launcher/Services/AndroidRuntimeParsing.cs',
@@ -85,6 +86,8 @@ $networkMediaPath = Join-Path $RepositoryRoot 'scripts\validation\Test-GuestNetw
 $networkMediaSource = if (Test-Path -LiteralPath $networkMediaPath) { Get-Content -LiteralPath $networkMediaPath -Raw -Encoding utf8 } else { '' }
 $checklistPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HomologationChecklist.ps1'
 $checklistSource = if (Test-Path -LiteralPath $checklistPath) { Get-Content -LiteralPath $checklistPath -Raw -Encoding utf8 } else { '' }
+$diagnosticsScriptPath = Join-Path $RepositoryRoot 'scripts\diagnostics\Collect-Diagnostics.ps1'
+$diagnosticsScriptSource = if (Test-Path -LiteralPath $diagnosticsScriptPath) { Get-Content -LiteralPath $diagnosticsScriptPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -103,6 +106,8 @@ $contractChecks = [ordered]@{
     existingInstalledPackageCanStartOffline = $launcherSourceText -match 'var installationRequired = !status\.Installed \|\| versionMismatch' -and $launcherSourceText -match 'if \(installationRequired\)' -and $launcherSourceText -match 'ValidateAuthorizedApk\(apkPath\)'
     activityGateRequiresForegroundState = $launcherSourceText -match 'mResumedActivity' -and $launcherSourceText -match 'mFocusedActivity' -and $launcherSourceText -match 'IsActivityRunningAsync'
     diagnosticsIncludesNeoNewsActivity = $launcherSourceText -match 'packageName = _neoNews\.PackageName' -and $launcherSourceText -match 'activity = _neoNews\.ActivityName' -and $launcherSourceText -match 'versionCode = neoNewsVersionCode'
+    diagnosticsCliExitsAfterCollection = $launcherSourceText -match 'exitAfterDiagnostics' -and $launcherSourceText -match 'RequestExit\(\)'
+    diagnosticsScriptUsesCanonicalLauncher = $diagnosticsScriptSource -match "ArgumentList '--diagnostics'" -and $diagnosticsScriptSource -match 'schema.*identidade'
     arm32NativeBridgeAbiIsRequired = $launcherSourceText -match 'PreferredAbi' -and $launcherSourceText -match 'primary\.Equals\(preferredAbi'
     kioskRestoresGuestStateOnFailedEntry = $launcherSourceText -match 'capturedHere' -and $launcherSourceText -match 'RestoreGuestStateAsync'
     kioskValidatesWindowGeometry = $launcherSourceText -match 'IsKioskWindowApplied' -and $launcherSourceText -match 'GetWindowRect'

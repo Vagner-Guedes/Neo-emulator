@@ -3,6 +3,8 @@
 Data: **2026-09-01**
 Script: [`scripts/diagnostics/Collect-Diagnostics.ps1`](../scripts/diagnostics/Collect-Diagnostics.ps1)
 
+O script PowerShell atua como wrapper de compatibilidade e delega a coleta ao `NeoNewsRuntime.exe --diagnostics`; ele recusa um relatório sem o schema canônico de identidade do runtime.
+
 O coletor principal do runtime também está disponível por `NeoNewsRuntime.exe --diagnostics`.
 Ele acrescenta integridade SHA-256 dos componentes locais, preflight WHPX,
 PID/título do backend, compatibilidade ABI, rede/DNS, armazenamento `/data`,

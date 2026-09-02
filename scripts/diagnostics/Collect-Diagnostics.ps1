@@ -7,119 +7,79 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
-if ([string]::IsNullOrWhiteSpace($ReportPath)) { $ReportPath = Join-Path $PSScriptRoot '..\..\reports\diagnostics.json' }
-
-function Resolve-SdkRoot {
-    if ($env:ANDROID_SDK_ROOT) { return $env:ANDROID_SDK_ROOT }
-    if ($env:ANDROID_HOME) { return $env:ANDROID_HOME }
-    return (Join-Path $env:LOCALAPPDATA 'Android\Sdk')
-}
-
-function Invoke-Adb {
-    param([string]$AdbPath, [string[]]$Arguments)
-    $output = & $AdbPath -s $Serial @Arguments 2>&1
-    return (($output | Out-String).Trim())
-}
-
-function Get-FirstLines {
-    param([string]$Text, [int]$Count)
-    return @($Text -split "`r?`n" | Select-Object -First $Count)
-}
-
-if (-not (Test-Path -LiteralPath $ConfigPath)) {
-    throw "Configuração não encontrada: $ConfigPath"
-}
-
-$config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
-if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
-if (-not (Test-Path -LiteralPath $adbPath)) {
-    throw "ADB não encontrado: $adbPath"
-}
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $repositoryRoot 'config\runtime.json' }
+$configFullPath = (Resolve-Path -LiteralPath $ConfigPath).Path
+$runtimeRoot = Split-Path -Parent (Split-Path -Parent $configFullPath)
+$config = Get-Content -LiteralPath $configFullPath -Raw -Encoding utf8 | ConvertFrom-Json
 
-if (-not $Serial) {
-    $Serial = if ($config.android.adb.transport -eq 'tcp') {
-        "$($config.android.adb.host):$($config.android.adb.hostPort)"
-    } elseif ($config.android.adb.emulatorSerial) {
-        $config.android.adb.emulatorSerial
-    } else {
-        "emulator-$($config.android.emulator.validationPort)"
-    }
-}
-
-$os = Get-CimInstance Win32_OperatingSystem
-$computer = Get-CimInstance Win32_ComputerSystem
-$processor = Get-CimInstance Win32_Processor | Select-Object -First 1
-$systemDrive = Get-PSDrive -Name C -ErrorAction SilentlyContinue
-$deviceState = (& $adbPath -s $Serial get-state 2>&1 | Out-String).Trim()
-$device = $null
-
-if ($deviceState -eq 'device') {
-    $packageName = [string]$config.neonews.packageName
-    $packageDump = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'dumpsys', 'package', $packageName)
-    $device = [ordered]@{
-        state = $deviceState
-        release = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'getprop', 'ro.build.version.release')
-        apiLevel = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'getprop', 'ro.build.version.sdk')
-        abi = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'getprop', 'ro.product.cpu.abi')
-        fingerprint = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'getprop', 'ro.build.fingerprint')
-        bootCompleted = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'getprop', 'sys.boot_completed')
-        displaySize = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'wm', 'size')
-        displayDensity = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'wm', 'density')
-        packagePath = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'pm', 'path', $packageName)
-        packageSummary = @(Get-FirstLines -Text (($packageDump -split "`r?`n" | Where-Object { $_ -match 'versionName=|versionCode=|nativeLibraryDir=' }) -join "`n") -Count 20)
-        webView = @(Get-FirstLines -Text (Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'dumpsys', 'webviewupdate')) -Count 80)
-        ttsDefault = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'settings', 'get', 'secure', 'tts_default_synth')
-        ttsPackages = @((Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'pm', 'list', 'packages')) -split "`r?`n" | Where-Object { $_ -match '(?i)(rhvoice|tts|svox|pico|speech)' })
-        memory = @(Get-FirstLines -Text (Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'dumpsys', 'meminfo')) -Count 40)
-        graphics = @(Get-FirstLines -Text (Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'dumpsys', 'gfxinfo')) -Count 40)
-        logcat = @(Get-FirstLines -Text (Invoke-Adb -AdbPath $adbPath -Arguments @('logcat', '-d', '-b', 'all', '-t', $MaxLogLines)) -Count $MaxLogLines)
-    }
+$expectedSerial = if ($config.android.adb.transport -eq 'tcp') {
+    "$($config.android.adb.host):$($config.android.adb.hostPort)"
+} elseif ($config.android.adb.emulatorSerial) {
+    [string]$config.android.adb.emulatorSerial
 } else {
-    $device = [ordered]@{
-        state = $deviceState
-        status = 'device-unavailable'
-    }
+    "emulator-$($config.android.emulator.validationPort)"
+}
+if (-not [string]::IsNullOrWhiteSpace($Serial) -and $Serial -ne $expectedSerial) {
+    throw "O diagnóstico do launcher usa o serial configurado '$expectedSerial'; não é seguro substituir a identidade por '$Serial'."
 }
 
-$result = [ordered]@{
-    timestamp = (Get-Date).ToUniversalTime().ToString('o')
-    runtime = $config.runtime
-    host = [ordered]@{
-        computerName = $env:COMPUTERNAME
-        os = $os.Caption
-        osVersion = $os.Version
-        processor = $processor.Name
-        logicalProcessors = $computer.NumberOfLogicalProcessors
-        memoryBytes = [int64]$computer.TotalPhysicalMemory
-        freeSpaceCBytes = if ($systemDrive) { [int64]$systemDrive.Free } else { $null }
-    }
-    sdk = [ordered]@{
-        root = $sdkRoot
-        adb = $adbPath
-        adbVersion = ((& $adbPath version 2>&1 | Out-String).Trim())
-        transport = $config.android.adb.transport
-        endpoint = $Serial
-    }
-    qemu = [ordered]@{
-        executable = $config.android.qemu.executable
-        disk = $config.android.qemu.disk
-        acceleration = $config.android.qemu.acceleration
-    }
-    device = $device
-    status = if ($deviceState -eq 'device') { 'collected' } else { 'host-only' }
+$launcherCandidates = @(
+    (Join-Path $runtimeRoot 'NeoNewsRuntime.exe'),
+    (Join-Path $runtimeRoot 'launcher\NeoNews.Runtime.Launcher\bin\Release\net8.0-windows\NeoNewsRuntime.exe'),
+    (Join-Path $runtimeRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe')
+)
+$launcherCandidates += @(Get-ChildItem -LiteralPath (Join-Path $runtimeRoot 'dist') -Filter 'NeoNewsRuntime.exe' -File -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTimeUtc -Descending |
+    Select-Object -ExpandProperty FullName)
+$launcherPath = $launcherCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($launcherPath)) {
+    throw 'NeoNewsRuntime.exe não encontrado. Publique o launcher antes de coletar o diagnóstico.'
+}
+$launcherPath = (Resolve-Path -LiteralPath $launcherPath).Path
+$reportRelativePath = [string]$config.diagnostics.defaultReport
+$launcherRoot = Split-Path -Parent $launcherPath
+$canonicalReportPath = if ([System.IO.Path]::IsPathRooted($reportRelativePath)) {
+    $reportRelativePath
+} else {
+    Join-Path $launcherRoot ($reportRelativePath -replace '/', '\')
 }
 
-$json = $result | ConvertTo-Json -Depth 10
-if ($ReportPath) {
-    $reportDirectory = Split-Path -Parent $ReportPath
-    if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) {
-        New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null
+$before = if (Test-Path -LiteralPath $canonicalReportPath) {
+    (Get-Item -LiteralPath $canonicalReportPath).LastWriteTimeUtc
+} else {
+    [datetime]::MinValue
+}
+$process = Start-Process -FilePath $launcherPath -ArgumentList '--diagnostics' -WorkingDirectory (Split-Path -Parent $launcherPath) -PassThru -Wait
+if ($process.ExitCode -ne 0) { throw "A coleta de diagnóstico falhou com código $($process.ExitCode)." }
+
+$fresh = $false
+$deadline = (Get-Date).ToUniversalTime().AddSeconds(30)
+do {
+    if (Test-Path -LiteralPath $canonicalReportPath) {
+        $fresh = (Get-Item -LiteralPath $canonicalReportPath).LastWriteTimeUtc -gt $before
     }
-    Set-Content -LiteralPath $ReportPath -Value $json -Encoding utf8
+    if (-not $fresh) { Start-Sleep -Milliseconds 250 }
+} while (-not $fresh -and (Get-Date).ToUniversalTime() -lt $deadline)
+if (-not $fresh) { throw "O launcher não produziu um relatório novo em $canonicalReportPath." }
+
+$jsonText = Get-Content -LiteralPath $canonicalReportPath -Raw -Encoding utf8
+$json = $jsonText | ConvertFrom-Json
+if (-not $json.tools -or -not $json.android -or -not $json.timestamp) {
+    throw 'O relatório não possui o schema canônico de identidade do runtime.'
 }
 
-$json
+$outputPath = if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    $canonicalReportPath
+} elseif ([System.IO.Path]::IsPathRooted($ReportPath)) {
+    $ReportPath
+} else {
+    Join-Path $repositoryRoot ($ReportPath -replace '/', '\')
+}
+if (-not [System.IO.Path]::GetFullPath($outputPath).Equals([System.IO.Path]::GetFullPath($canonicalReportPath), [StringComparison]::OrdinalIgnoreCase)) {
+    $outputDirectory = Split-Path -Parent $outputPath
+    if ($outputDirectory) { New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null }
+    Copy-Item -LiteralPath $canonicalReportPath -Destination $outputPath -Force
+}
+
+$jsonText

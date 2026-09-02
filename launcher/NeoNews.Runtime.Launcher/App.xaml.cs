@@ -25,6 +25,7 @@ public partial class App : System.Windows.Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         _singleInstance = new SingleInstanceService();
         var command = RuntimeCommandParser.Parse(e.Args);
+        var exitAfterDiagnostics = e.Args.Length > 0 && command == RuntimeCommand.Diagnostics;
 
         if (!_singleInstance.TryAcquire())
         {
@@ -59,6 +60,7 @@ public partial class App : System.Windows.Application
             if (command == RuntimeCommand.Show) _mainWindow.ShowPanel();
             else { _mainWindow.SuppressErrors = true; _mainWindow.PrepareForBackground(); }
             await _mainWindow.ViewModel.ExecuteCommandAsync(command);
+            if (exitAfterDiagnostics) RequestExit();
         }
         catch (Exception exception)
         {
