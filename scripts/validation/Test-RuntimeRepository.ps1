@@ -28,7 +28,10 @@ $configPath = Join-Path $RepositoryRoot 'config\runtime.json'
 $configValid = $true
 $configError = $null
 try {
-    $null = Get-Content -LiteralPath $configPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $configObject = Get-Content -LiteralPath $configPath -Raw -Encoding utf8 | ConvertFrom-Json
+    if ($configObject.schemaVersion -ne 2) { throw "runtime.json precisa usar schemaVersion=2." }
+    if ($configObject.android.backend -ne 'qemu-android-x86') { throw "backend padrão precisa ser qemu-android-x86." }
+    if ($configObject.android.adb.transport -ne 'tcp') { throw "ADB do backend QEMU precisa usar transporte tcp." }
 } catch {
     $configValid = $false
     $configError = $_.Exception.Message
@@ -41,7 +44,10 @@ $requiredPaths = @(
     'docs/WEBVIEW-ETAPA-4.md',
     'docs/TTS-ETAPA-5.md',
     'docs/NEONEWS-ETAPA-6.md',
+    'docs/QEMU-API25-RUNTIME.md',
     'docs/FINAL-REPORT.md',
+    'scripts/provision/Provision-QemuAndroidRuntime.ps1',
+    'scripts/validation/Test-NativeBridge.ps1',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })

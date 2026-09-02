@@ -4,7 +4,7 @@
 
 - Windows x64;
 - SDK .NET 8 instalado, ou o SDK local usado pelo projeto;
-- SDK Android/ADB e Emulator apenas para executar o runtime e seus testes de integração;
+- QEMU x86_64, Android-x86 7.1-r5/API 25, ADB e disco qcow2 provisionados localmente para executar o runtime e seus testes de integração;
 - APK NeoNews não é necessário para compilar ou abrir o painel.
 
 ## Build rápido
@@ -31,11 +31,13 @@ dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.cspr
   --output .\dist\NeoNewsRuntime
 ```
 
-Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe`, `config/runtime.json`, `runtime/`, `packages/`, `logs/`, `reports/` e `docs/`; o PDB pode ser mantido para diagnóstico. O SDK Android não é embutido no executável: em produção, configure `android.tooling.sdkRoot` para um SDK distribuído junto ou permita o fallback para `ANDROID_SDK_ROOT`, `ANDROID_HOME` ou `%LOCALAPPDATA%\Android\Sdk`.
+Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe`, `config/runtime.json`, `runtime/qemu`, `runtime/android`, `runtime/adb`, `runtime/state`, `packages/`, `logs/`, `reports/` e `docs/`; o PDB pode ser mantido para diagnóstico. QEMU, ADB, a imagem Android e o disco persistente não são embutidos no executável e são copiados somente quando já existem localmente.
 
 Quando `app.apk` existir na raiz do repositório (ou `packages/neonews/neonews.apk` já existir), o script de publicação o inclui na distribuição. O comando `--start` também instala automaticamente esse APK autorizado quando o pacote ainda não estiver presente no Android.
 
-Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbSeconds`, `bootSeconds`, `neoNewsStartSeconds`, `installSeconds` e `emulatorStopSeconds`) e podem ser ajustados sem recompilar o launcher.
+Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbSeconds`, `bootSeconds`, `neoNewsStartSeconds`, `installSeconds`, `emulatorStopSeconds`, `qemuShutdownSeconds`, `adbRetrySeconds` e `nativeBridgeStabilitySeconds`) e podem ser ajustados sem recompilar o launcher.
+
+O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes em `runtime/state/provisioning.json` e não baixa componentes. Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis; o boot normal não instala APKs desconhecidos.
 
 Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.
 
@@ -51,7 +53,7 @@ Pop-Location
 
 Argumentos: `--show`, `--start`, `--stop`, `--restart`, `--kiosk`, `--exit-kiosk`, `--diagnostics`, `--autostart` e `--exit`. A segunda execução não abre outra janela; ela envia o comando para a instância principal via named pipe.
 
-O menu do tray oferece abrir painel, iniciar/parar/reiniciar Android, kiosk, diagnóstico e encerramento. Fechar a janela apenas a oculta no tray. O startup do Windows, quando ativado na configuração, cria a tarefa `NeoNews Runtime Supervisor` com a ação `NeoNewsRuntime.exe --autostart`; nenhum PowerShell é usado pelo caminho de operação normal.
+O menu do tray oferece abrir painel, iniciar/parar/reiniciar o sistema, kiosk, diagnóstico e encerramento. Fechar a janela apenas a oculta no tray. O startup do Windows, quando ativado na configuração, cria a tarefa `NeoNews Runtime Supervisor` com a ação `NeoNewsRuntime.exe --autostart`; nenhum PowerShell é usado pelo caminho de operação normal.
 
 ## Checklist manual de zero-console
 
@@ -61,7 +63,7 @@ O menu do tray oferece abrir painel, iniciar/parar/reiniciar Android, kiosk, dia
 4. Execute `NeoNewsRuntime.exe --diagnostics`; confira `reports/` e `logs/`.
 5. Execute `NeoNewsRuntime.exe --exit`; confirme que o processo encerrou.
 6. Copie a pasta para `C:\NeoNews Runtime Test\NeoNewsRuntime\` e repita os passos 2–5. Caminhos com espaços devem funcionar.
-7. Se o APK estiver disponível, use `--start`, `--install`, `--kiosk` e `--stop`; sem APK, o painel deve mostrar um erro gráfico explicando a dependência ausente.
+7. Se todos os componentes estiverem provisionados, use `--start`, `--install`, `--kiosk` e `--stop`; sem QEMU/disco/ADB ou sem o APK, o painel deve mostrar um erro gráfico explicando a dependência ausente.
 
 O registro da tarefa do Agendador depende da permissão do Windows. O launcher tenta primeiro sem elevação e solicita UAC somente para `schtasks.exe` quando recebe `Acesso negado`; confirme que a ação contém somente `NeoNewsRuntime.exe --autostart`.
 

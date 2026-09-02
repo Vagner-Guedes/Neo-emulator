@@ -147,5 +147,5 @@ if ($ReportPath) {
 $json
 
 if ($StopEmulator -and $startedProcess) {
-    & $adbPath -s $serial emu kill 2>$null | Out-Null
+    if (-not $startedProcess.HasExited) { Stop-Process -Id $startedProcess.Id -Force -ErrorAction SilentlyContinue }
 }

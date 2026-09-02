@@ -63,8 +63,10 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
+$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
+if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
 $emulatorPath = Join-Path $sdkRoot 'emulator\emulator.exe'
 
 if (-not (Test-Path -LiteralPath $adbPath)) {
@@ -72,9 +74,12 @@ if (-not (Test-Path -LiteralPath $adbPath)) {
 }
 
 if (-not $Serial) {
-    $Serial = "emulator-$($config.android.emulator.validationPort)"
-    if ($Serial -eq 'emulator-') {
-        $Serial = 'emulator-5556'
+    $Serial = if ($config.android.adb.transport -eq 'tcp') {
+        "$($config.android.adb.host):$($config.android.adb.hostPort)"
+    } elseif ($config.android.adb.emulatorSerial) {
+        $config.android.adb.emulatorSerial
+    } else {
+        "emulator-$($config.android.emulator.validationPort)"
     }
 }
 
@@ -88,6 +93,9 @@ if (-not $Activity) {
 
 $startedProcess = $null
 if ($StartEmulator) {
+    if ($config.android.backend -eq 'qemu-android-x86') {
+        throw 'O backend configurado é QEMU. Use NeoNewsRuntime.exe --start; este script só mantém compatibilidade com AVDs legados.'
+    }
     if (-not (Test-Path -LiteralPath $emulatorPath)) {
         throw "Emulator não encontrado: $emulatorPath"
     }
@@ -164,5 +172,5 @@ if ($ReportPath) {
 $json
 
 if ($StopEmulator -and $startedProcess) {
-    & $adbPath -s $Serial emu kill 2>$null | Out-Null
+    if (-not $startedProcess.HasExited) { Stop-Process -Id $startedProcess.Id -Force -ErrorAction SilentlyContinue }
 }

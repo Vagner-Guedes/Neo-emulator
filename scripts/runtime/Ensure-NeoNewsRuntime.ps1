@@ -56,13 +56,20 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
 $sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
+$allowEnvironmentFallback = [bool]$config.android.tooling.allowEnvironmentFallback
+if (-not (Test-Path -LiteralPath $adbPath) -and $allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
 $emulatorPath = Join-Path $sdkRoot 'emulator\emulator.exe'
 if (-not (Test-Path -LiteralPath $adbPath)) { throw "ADB não encontrado: $adbPath" }
 
 if (-not $Serial) {
-    $port = if ($config.android.emulator.validationPort) { $config.android.emulator.validationPort } else { 5556 }
-    $Serial = "emulator-$port"
+    if ($config.android.adb.transport -eq 'tcp') {
+        $Serial = "$($config.android.adb.host):$($config.android.adb.hostPort)"
+    } else {
+        $port = if ($config.android.emulator.validationPort) { $config.android.emulator.validationPort } else { 5556 }
+        $Serial = if ($config.android.adb.emulatorSerial) { $config.android.adb.emulatorSerial } else { "emulator-$port" }
+    }
 }
 if (-not $MaxAttempts) { $MaxAttempts = [int]$config.resilience.maxAttempts }
 if (-not $MaxAttempts) { $MaxAttempts = 3 }
@@ -155,7 +162,9 @@ try {
     }
 } finally {
     if ($StopEmulatorOnFailure -and $startedProcess -and $result -and $result.status -ne 'healthy') {
-        & $adbPath -s $Serial emu kill 2>$null | Out-Null
+        if ($startedProcess -and -not $startedProcess.HasExited) {
+            Stop-Process -Id $startedProcess.Id -Force -ErrorAction SilentlyContinue
+        }
     }
     if ($lockStream) { $lockStream.Dispose() }
 }

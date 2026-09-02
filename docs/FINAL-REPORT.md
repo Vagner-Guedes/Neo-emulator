@@ -1,104 +1,59 @@
-# Relatório final — NeoNews Runtime 7
+# Relatório final — NeoNews Runtime
 
-Data: **2026-09-01**
+Data da atualização: **2026-09-02**
 
 ## Estado executivo
 
-O repositório foi inicializado, conectado a `origin/master` e evoluído com uma base reproduzível de runtime Windows/Android. A base técnica, o launcher WPF, kiosk, supervisor, startup, diagnóstico, resiliência e benchmark estão versionados.
+O projeto agora possui o caminho de runtime preparado para a homologação funcional do APK ARM oficial, sem modificar, recompilar, resignar ou substituir o APK. O backend padrão foi migrado para **QEMU x86_64 + WHPX**, com Android-x86 7.1.2/API 25, disco persistente, janela gráfica identificável e ADB sobre TCP.
 
-**Status de homologação do NeoNews: bloqueado por dependências externas.** O APK auditado é ARM-only; não foi possível instalá-lo funcionalmente no AVD x86, e o Emulator ARM disponível não concluiu a instalação sem derrubar o `system_server` durante o `dex2oat`.
+**Status atual: NÃO HOMOLOGADO.** A infraestrutura foi implementada e verificada estaticamente, mas os binários externos do QEMU, ADB, imagem Android-x86, disco qcow2, Native Bridge, WebView 119 e RHVoice ainda não estão presentes nesta cópia de trabalho. Portanto, não há evidência honesta de execução do NeoNews no novo guest.
 
-## Evidências principais
+## Alterações verificadas
 
-## Windows Launcher
-
-O launcher foi evoluído para `NeoNewsRuntime.exe`, WPF/.NET 8 `WinExe`, publicação self-contained `win-x64` em arquivo único e versão `1.0.0`. A janela usa MVVM, dashboard escuro, progresso assíncrono, logs incrementais, tray, configuração, diálogos gráficos de erro, diagnóstico e hotkey global.
-
-O caminho normal não depende de scripts PowerShell: `ProcessRunnerService` inicia ADB, Emulator e `schtasks.exe` com `UseShellExecute=false`, `CreateNoWindow=true`, redirecionamento de stdout/stderr, timeout, cancelamento e encerramento de árvore de processo. O `ScriptExecutionService` cobre os scripts legados quando necessários, com o mesmo tratamento invisível; a elevação é solicitada apenas como fallback do `schtasks.exe`. O startup criado pelo painel executa somente `NeoNewsRuntime.exe --autostart`. Os scripts existentes permanecem como ferramentas de provisionamento, validação e compatibilidade.
-
-Validações do executável publicado:
-
-| Teste | Resultado |
-|---|---|
-| Publicação self-contained `win-x64` | `dist/NeoNewsRuntime/NeoNewsRuntime.exe` gerado, 161.869.337 bytes |
-| Abertura do painel | `MainWindowHandle` válido, título `NeoNews Runtime` |
-| Instância única | segunda chamada encerra e mantém um único processo |
-| `--exit` | instância e serviços liberados; nenhum processo NeoNewsRuntime restante |
-| Caminhos externos | aprovado em `C:\NeoNews Runtime Test\NeoNewsRuntime\` e `C:\NeoNewsRuntime\`, com `config/runtime.json` e diagnóstico criados no destino |
-| `--start`/`--stop` | Emulator real iniciou, ADB confirmou boot, erro gráfico/logado do APK ausente e encerramento sem processos residuais |
-| `--restart`/`--autostart` | Emulator real reiniciou/iniciou, `Android pronto` foi registrado, e ambos encerraram sem processos residuais |
-| `--kiosk`/`--exit-kiosk` | `policy_control=immersive.full=*` durante kiosk e `null` após a saída |
-| Hotkey global | `Ctrl+Alt+Shift+F12` registrado com a janela invisível; teste de entrada solicitou o painel e saiu do kiosk |
-| Console/filhos | processo GUI sem console; Emulator encerrado pelo runtime após o teste |
-| Regressão final | 16 scripts PowerShell parseados, JSON válido, caminhos obrigatórios presentes e APK ignorado |
-
-A publicação do launcher foi aprovada, mas isso não altera o status de homologação do aplicativo: ABI ARM-only, WebView divergente e RHVoice ausente continuam bloqueadores externos.
-
-| Área | Evidência | Estado |
+| Área | Evidência | Resultado |
 |---|---|---|
-| APK | pacote `com.in9midia.neonews.player`, versão `9.0.3`, ABIs `arm64-v8a`/`armeabi-v7a` | auditado |
-| Android | API 25/7.1.1 inicializou no AVD x86 | validado |
-| Aceleração | WHPX instalado e utilizável | validado |
-| ABI x86 | `INSTALL_FAILED_NO_MATCHING_ABIS` e native bridge ausente | bloqueado |
-| ABI ARM32 | Emulator legado iniciou, mas watchdog matou `system_server` no `dex2oat` | bloqueado |
-| WebView | `55.0.2883.91` instalado; alvo `119.0.6045.193` | divergente |
-| TTS | `com.google.android.tts` presente; RHVoice ausente; default `null` | bloqueado |
-| Kiosk | `immersive.full=*`, timeout máximo, display `1920×1080`/`160 dpi` | aplicado no guest |
-| Boot | cold boot medido em `12,61 s` no benchmark de uma iteração | base medida |
-| Launcher | WPF Release compilado com `0` erros e `0` avisos | validado |
-| Startup Scheduler | ação preparada como `NeoNewsRuntime.exe --autostart`; criação real recusada neste host por `Acesso negado` sem sessão UAC disponível | fallback UAC implementado |
+| Backend | `IAndroidRuntimeBackend`, `QemuAndroidRuntimeBackend` e compatibilidade legada | implementado |
+| QEMU | `-accel whpx`, qcow2 persistente, forwarding ADB, QMP e título `NeoNews Android Runtime` | implementado; não executado sem binários |
+| ADB | transporte `tcp`, serial configurável `host:port`, `start-server`, `connect`, retry e estados fortes | implementado |
+| Configuração | `schemaVersion=2`, migração de schema 1 com backup `.bak`, caminhos relativos | validado por JSON |
+| Native Bridge | coleta de `ro.dalvik.vm.native.bridge`, ABI list, `primaryCpuAbi` e relatório de compatibilidade | implementado; não homologado |
+| NeoNews | APK local preservado, `adb install -r`, confirmação da activity e validação de versão | implementado; não executado neste backend |
+| Persistência | qcow2 externo e estado em `runtime/state/provisioning.json` | implementado; não executado |
+| WebView/TTS | provider ativo, versão esperada e engine padrão são pré-condições do fluxo completo | implementado; não homologado |
+| Kiosk | serviço existente usa o contrato do backend e localiza a janela por PID/título | compilado |
+| Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown e limite de tentativas | compilado |
+| Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
+| Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
+| Regressão | `Test-RuntimeRepository.ps1` | 18 scripts, JSON e ignore checks aprovados |
+| Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 
-## Artefatos entregues
+## Contrato do runtime
 
-- `config/runtime.json`: contrato único de runtime, timeouts, ABI, WebView, TTS, kiosk, supervisor, startup, launcher, diagnóstico, resiliência e benchmark.
-- `scripts/provision`: instalação do SDK/API 25, criação de AVD e configuração persistente.
-- `scripts/validation`: validação de WebView, TTS e regressão estática.
-- `scripts/runtime`: lançamento NeoNews, kiosk, supervisor e bootstrap resiliente.
-- `scripts/diagnostics`: coleta host/guest, ADB, pacote, WebView, TTS, memória, gráficos e logcat.
-- `scripts/benchmark`: baseline e benchmark repetível do guest.
-- `launcher/NeoNews.Runtime.Launcher`: launcher WPF local.
-- `dist/NeoNewsRuntime`: distribuição publicada self-contained (gerada localmente; ver `docs/BUILD.md`).
-- `docs/BUILD.md`: build, publicação, argumentos, layout e checklist de teste do executável.
-- `docs`: evidências por etapa e decisões de homologação.
+O arquivo [`config/runtime.json`](../config/runtime.json) usa:
 
-## Pendências que impedem a homologação
+- backend `qemu-android-x86`;
+- Android release `7.1.2`, API `25`;
+- ABI ARM preferencial `armeabi-v7a`;
+- QEMU em `runtime/qemu/qemu-system-x86_64.exe`;
+- disco persistente em `runtime/android/neonews-api25.qcow2`;
+- ADB host `127.0.0.1:5556` encaminhado para guest `5555`;
+- Native Bridge obrigatório;
+- WebView `119.0.6045.193` e RHVoice `pt-BR` obrigatórios no fluxo comercial.
 
-1. fornecer uma build NeoNews com `x86`/`x86_64`, ou disponibilizar dispositivo/backend ARM executável;
-2. fornecer um pacote WebView 119 compatível com API 25 e validar versão, assinatura e página de teste;
-3. fornecer e instalar RHVoice compatível com API 25, selecionar a engine padrão e sintetizar áudio `pt-BR`;
-4. repetir `Start-NeoNews.ps1 -Launch`, supervisor, diagnóstico e benchmark com o APK instalado;
-5. somente após os testes acima, registrar a tarefa de startup com `Register-NeoNewsStartup.ps1 -Apply`.
+O provisionamento é separado da execução normal. [`Provision-QemuAndroidRuntime.ps1`](../scripts/provision/Provision-QemuAndroidRuntime.ps1) valida componentes locais, registra hashes e não baixa binários. O build copia apenas componentes locais explicitamente existentes; nenhum binário proprietário é incorporado ao executável ou versionado.
 
-Nenhum APK proprietário, native bridge não homologada ou engine TTS de fonte incerta foi incluído no Git.
+## Homologação pendente
 
-## Commits enviados
+Para alterar o status, ainda é necessário executar no mesmo runtime:
 
-As etapas foram commitadas e enviadas progressivamente para `origin/master`. Principais commits:
+1. provisionar a release oficial Android-x86 7.1-r5/API 25 e o disco persistente;
+2. provisionar QEMU x86_64 e ADB localmente, com origem e hashes registrados;
+3. provisionar uma Native Bridge legalmente redistribuível e provar a instalação do APK sem `INSTALL_FAILED_NO_MATCHING_ABIS`;
+4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` ou equivalente;
+5. validar estabilidade após reinício e conteúdo real do NeoNews;
+6. validar provider WebView 119 em HTML/CSS/JavaScript/HTTPS e no NeoNews;
+7. validar RHVoice com síntese real em `pt-BR`;
+8. executar testes de rede, HLS/m3u8, áudio, offline, kiosk, watchdog, startup, tray, instância única e persistência;
+9. registrar tempos de boot, consumo e teste prolongado nesta versão do relatório.
 
-```text
-2796e8f docs: registrar auditoria inicial do runtime
-169a313 chore: provisionar runtime base Android API 25
-cfcdeaf docs: registrar validacao de ABI do NeoNews
-d14c046 feat: automatizar validacao do provedor WebView
-81463d3 feat: automatizar diagnostico de TTS offline
-2fbd87c feat: formalizar integracao e lancamento do NeoNews
-54de177 feat: aplicar perfil otimizado ao AVD do NeoNews
-a29923f feat: coletar baseline do runtime Android
-a6d6670 feat: aplicar configuracao kiosk no Android
-a89dc3d chore: limpar formatacao do supervisor
-93801ea chore: limpar formatacao da documentacao de startup
-9afd186 feat: adicionar launcher WPF do runtime
-166f318 chore: limpar fim do coletor de diagnosticos
-d5131db feat: adicionar bootstrap resiliente do runtime
-17d0904 chore: limpar formatacao do benchmark
-1769ac chore: limpar documentacao de regressao
-f8b38bb feat: implementar painel profissional do runtime
-5370b2e feat: publicar runtime Windows self-contained
-7c0e89e fix: fortalecer status e watchdog do runtime
-34babd2 feat: finalizar controles do runtime e validação
-acb5cda fix: fortalecer ciclo de vida e startup do runtime
-```
-
-## Conclusão
-
-O runtime está preparado para continuar a homologação assim que as dependências externas forem disponibilizadas. A infraestrutura não declara suporte funcional ao NeoNews enquanto a ABI, o WebView 119 e o RHVoice não forem comprovados no mesmo guest.
+Não solicitar outro APK x86. O critério correto é provar que o APK ARM oficial é executado no guest x86/x86_64 através de Native Bridge. Até essa prova existir, o relatório deve permanecer como **NÃO HOMOLOGADO**.

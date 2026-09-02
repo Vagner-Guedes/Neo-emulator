@@ -2,6 +2,7 @@
 param(
     [string]$ConfigPath,
     [string]$TaskName,
+    [string]$ExecutablePath,
     [switch]$Apply,
     [switch]$Unregister
 )
@@ -22,18 +23,15 @@ if (-not $TaskName) {
 }
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$supervisorScript = (Resolve-Path (Join-Path $PSScriptRoot '..\runtime\Watch-NeoNews.ps1')).Path
-$powershellCommand = Get-Command pwsh -ErrorAction SilentlyContinue
-if ($powershellCommand) {
-    $powershellPath = $powershellCommand.Source
-} else {
-    $powershellPath = Join-Path $PSHOME 'powershell.exe'
+if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
+    $ExecutablePath = Join-Path $repositoryRoot 'dist\NeoNewsRuntime\NeoNewsRuntime.exe'
 }
-
-$logPath = Join-Path $repositoryRoot $config.supervisor.logPath
-$serial = if ($config.android.emulator.validationPort) { "emulator-$($config.android.emulator.validationPort)" } else { 'emulator-5556' }
-$actionArguments = "-NoLogo -NonInteractive -ExecutionPolicy Bypass -File `"$supervisorScript`" -Serial $serial -LogPath `"$logPath`""
-$action = New-ScheduledTaskAction -Execute $powershellPath -Argument $actionArguments -WorkingDirectory $repositoryRoot
+$ExecutablePath = [System.IO.Path]::GetFullPath($ExecutablePath)
+if (-not (Test-Path -LiteralPath $ExecutablePath)) {
+    throw "NeoNewsRuntime.exe não encontrado: $ExecutablePath"
+}
+$workingDirectory = Split-Path -Parent $ExecutablePath
+$action = New-ScheduledTaskAction -Execute $ExecutablePath -Argument '--autostart' -WorkingDirectory $workingDirectory
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $trigger.Delay = 'PT30S'
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
@@ -41,11 +39,9 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 
 $result = [ordered]@{
     taskName = $TaskName
-    powershell = $powershellPath
-    supervisorScript = $supervisorScript
-    workingDirectory = $repositoryRoot
-    serial = $serial
-    actionArguments = $actionArguments
+    executable = $ExecutablePath
+    argument = '--autostart'
+    workingDirectory = $workingDirectory
     applyRequested = [bool]$Apply
     unregisterRequested = [bool]$Unregister
     status = 'preview'

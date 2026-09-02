@@ -76,3 +76,6 @@ Para prosseguir com as etapas funcionais, é necessário um destes caminhos:
 
 Até essa decisão, as etapas de WebView, TTS, kiosk e supervisor permanecem especificadas, mas não podem ser homologadas contra o APK real neste ambiente.
 
+## Atualização da meta QEMU
+
+O bloqueio acima descreve exclusivamente o AVD Google APIs x86 e o Emulator ARM legado. A decisão de implementação atual não solicita um APK x86: o próximo teste deve usar Android-x86 7.1-r5/API 25 com Native Bridge ARM dentro do backend QEMU/WHPX. A conclusão só poderá mudar quando o teste real registrar instalação `Success`, `primaryCpuAbi`, lançamento da `TerminalActivity`, estabilidade e logcat sem falhas.

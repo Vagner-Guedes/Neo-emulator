@@ -115,12 +115,7 @@ APK ARM → ARM32 no Emulator oficial atual: arquitetura não suportada
 **Concluído:** SDK local, API 25 final, AVDs de comparação, boot x86 e diagnóstico WHPX.  
 **Não concluído:** execução do NeoNews.
 
-A Etapa 3 não pode ser marcada como concluída nesta máquina. As opções técnicas que permanecem são:
-
-1. disponibilizar uma build NeoNews com `x86`/`x86_64` nativo;
-2. obter e validar uma native bridge ARM legalmente distribuível para a imagem x86;
-3. executar o teste em um host/dispositivo com suporte real à arquitetura ARM;
-4. usar outro backend de virtualização/emulação que suporte ARM e medir seu desempenho.
+A Etapa 3 não pode ser marcada como concluída nesta máquina. O caminho de implementação adotado é validar a Native Bridge ARM legalmente redistribuível no Android-x86 7.1-r5/API 25 dentro do backend QEMU/WHPX. Não é necessário solicitar ou fabricar uma build x86 do NeoNews.
 
 Não foi instalada nenhuma bridge de fonte não homologada e nenhuma otimização do Android foi aplicada.
 
@@ -130,4 +125,3 @@ Não foi instalada nenhuma bridge de fonte não homologada e nenhuma otimizaçã
 - [Notas da plataforma Android 7.1/API 25](https://developer.android.com/tools/releases/platforms)
 - [Inicialização do Emulator por linha de comando](https://developer.android.com/studio/run/emulator-commandline)
 - [Aceleração do Android Emulator](https://developer.android.com/studio/run/emulator-acceleration)
-

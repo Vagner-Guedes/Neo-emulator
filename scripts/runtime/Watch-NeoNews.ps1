@@ -60,7 +60,9 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
 $sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
+if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
 if (-not (Test-Path -LiteralPath $adbPath)) {
     throw "ADB não encontrado: $adbPath"
 }
@@ -73,6 +75,10 @@ if ($activityName -match '/') {
 
 if (-not $LogPath) {
     $LogPath = Join-Path (Join-Path $PSScriptRoot '..\..\logs') 'supervisor.log'
+}
+
+if ($PSBoundParameters.ContainsKey('Serial') -and $Serial -eq 'emulator-5556' -and $config.android.adb.transport -eq 'tcp') {
+    $Serial = "$($config.android.adb.host):$($config.android.adb.hostPort)"
 }
 
 $logDirectory = Split-Path -Parent $LogPath
