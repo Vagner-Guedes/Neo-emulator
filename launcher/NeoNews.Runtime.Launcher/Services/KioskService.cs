@@ -201,16 +201,21 @@ public sealed class KioskService
 
     private bool CaptureAndMaximizeEmulatorWindow()
     {
-        var handle = _backend.WindowHandle;
+        var handle = _windowCaptured && _windowHandle != IntPtr.Zero && IsWindow(_windowHandle)
+            ? _windowHandle
+            : _backend.WindowHandle;
         if (handle == IntPtr.Zero) return false;
 
-        var originalStyle = GetWindowLongPtr(handle, GwlStyle);
-        if (!GetWindowRect(handle, out var originalRect)) return false;
+        if (!_windowCaptured || _windowHandle != handle)
+        {
+            var originalStyle = GetWindowLongPtr(handle, GwlStyle);
+            if (!GetWindowRect(handle, out var originalRect)) return false;
 
-        _windowHandle = handle;
-        _originalStyle = originalStyle;
-        _originalRect = originalRect;
-        _windowCaptured = true;
+            _windowHandle = handle;
+            _originalStyle = originalStyle;
+            _originalRect = originalRect;
+            _windowCaptured = true;
+        }
 
         var screens = Screen.AllScreens;
         var index = Math.Clamp(_context.Config.Android.Kiosk.MonitorIndex, 0, Math.Max(0, screens.Length - 1));

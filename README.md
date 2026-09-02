@@ -22,6 +22,13 @@ Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do reposit�
 .\scripts\validation\Test-NativeBridge.ps1
 ```
 
+Para a evidÃªncia de estabilidade exigida pelo checklist final, execute com
+uma janela prolongada (padrÃ£o mÃ­nimo de 600 segundos):
+
+```powershell
+.\scripts\validation\Test-NativeBridge.ps1 -StabilitySeconds 600 -RestartCount 1
+```
+
 Depois do provisionamento do guest, os probes de integração são executados
 separadamente e falham sem declarar homologação quando falta evidência real:
 

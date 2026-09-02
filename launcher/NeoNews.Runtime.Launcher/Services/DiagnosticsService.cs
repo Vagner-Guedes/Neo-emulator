@@ -49,8 +49,10 @@ public sealed class DiagnosticsService
         var adbOnline = await SafeBoolAsync(() => _adb.IsDeviceOnlineAsync(cancellationToken), cancellationToken);
         var qemuVersion = await GetQemuVersionAsync(cancellationToken);
         var integrity = await GetRequiredFileIntegrityAsync(cancellationToken);
+        var provisioningState = await SafeProvisioningStateAsync(cancellationToken);
         var neoNews = adbOnline ? await SafeNeoNewsAsync(cancellationToken) : null;
         var neoNewsVersionCode = adbOnline ? await SafeNullableIntAsync(() => _adb.GetPackageVersionCodeAsync(_neoNews.PackageName, cancellationToken), cancellationToken) : null;
+        var primaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_neoNews.PackageName, cancellationToken), cancellationToken) ?? string.Empty : string.Empty;
         object? neoNewsReport = neoNews is null
             ? null
             : new
@@ -61,6 +63,7 @@ public sealed class DiagnosticsService
                 running = neoNews.Running,
                 version = neoNews.Version,
                 versionCode = neoNewsVersionCode,
+                primaryCpuAbi,
                 expectedVersion = _context.Config.NeoNews.VersionName,
                 expectedVersionCode = _context.Config.NeoNews.VersionCode,
                 detail = neoNews.Detail
@@ -72,7 +75,6 @@ public sealed class DiagnosticsService
         var nativeBridge = adbOnline ? await SafeNativeBridgeAsync(cancellationToken) : null;
         var apkAbis = ReadApkAbis();
         var apkSignature = ReadApkSignature();
-        var primaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_neoNews.PackageName, cancellationToken), cancellationToken) ?? string.Empty : string.Empty;
         var webViewPrimaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken) : null;
         var validatedAbi = _getAbiCompatibility?.Invoke();
         // Never infer the selected APK ABI from configuration. It is evidence
@@ -127,6 +129,21 @@ public sealed class DiagnosticsService
                 requiredFiles = integrity,
                 whpx
             },
+            provisioning = provisioningState is null
+                ? null
+                : new
+                {
+                    schema = provisioningState.Schema,
+                    androidImageVersion = provisioningState.AndroidImageVersion,
+                    nativeBridgeStatus = provisioningState.NativeBridgeStatus,
+                    webViewVersion = provisioningState.WebViewVersion,
+                    ttsStatus = provisioningState.TtsStatus,
+                    neoNewsVersion = provisioningState.NeoNewsVersion,
+                    lastValidation = provisioningState.LastValidation,
+                    imageHash = provisioningState.ImageHash,
+                    diskFingerprint = provisioningState.DiskFingerprint,
+                    provenance = provisioningState.Provenance?.Keys.ToArray() ?? []
+                },
             android = new
             {
                 state = guest.BootCompleted == "1" ? "Online" : backendRunning ? "Booting" : "Offline",
@@ -293,6 +310,13 @@ public sealed class DiagnosticsService
         try { return await new NativeBridgeValidationService(_context, _adb).ValidateGuestAsync(cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial de Native Bridge: {exception.Message}"); return null; }
+    }
+
+    private async Task<ProvisioningState?> SafeProvisioningStateAsync(CancellationToken cancellationToken)
+    {
+        try { return await new AndroidProvisioningService(_context, _logs).LoadAsync(cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) { _logs.Warning("launcher", $"DiagnÃ³stico parcial do provisionamento: {exception.Message}"); return null; }
     }
 
     private async Task<NeoNewsStatus?> SafeNeoNewsAsync(CancellationToken cancellationToken)

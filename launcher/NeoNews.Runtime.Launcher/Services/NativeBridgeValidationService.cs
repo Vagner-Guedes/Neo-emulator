@@ -67,6 +67,16 @@ public sealed class NativeBridgeValidationService
                        && (string.IsNullOrWhiteSpace(preferredAbi) || primary.Equals(preferredAbi, StringComparison.OrdinalIgnoreCase))
             ? primary
             : null;
+        if (selected is null && !installSucceeded && apkAbis.Count == 0 && primary is not null &&
+            (string.IsNullOrWhiteSpace(preferredAbi) || primary.Equals(preferredAbi, StringComparison.OrdinalIgnoreCase)))
+        {
+            // A provisioned guest may retain the authorized APK while the
+            // host-side package is intentionally absent from the portable
+            // distribution. In that case package-manager evidence is enough
+            // to select the ABI for a normal offline boot; installSucceeded
+            // remains false until this run observes adb install -r Success.
+            selected = primary;
+        }
         var launched = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);
         var stable = false;
         // Installation evidence and runtime evidence are independent. An

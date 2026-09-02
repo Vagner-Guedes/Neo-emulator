@@ -37,6 +37,14 @@ falhar.
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |
 | Checklist | `Test-HomologationChecklist.ps1` | 30 gates agregados; pendências nunca viram aprovação |
 
+## Verificacao local desta rodada
+
+A publicacao de verificacao `dist/NeoNewsRuntime-final-8` foi gerada depois do build Release e passou pelo smoke do executavel publicado. Foram observados janela WPF responsiva, single-instance, `--exit`, caminho com espacos e ausencia de processos residuais. A coleta `--diagnostics` tambem terminou sem erro e registrou o backend/serial configurados.
+
+O pacote publicado contem zero arquivos em `packages/`; APK oficial, Native Bridge, WebView, RHVoice e demais dependencias externas continuam fora da distribuicao e do Git. Essa verificacao local nao substitui a execucao do guest.
+
+O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos e exit codes zero nos comandos de instalacao e launch. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
+
 ## Contrato do runtime
 
 O arquivo [`config/runtime.json`](../config/runtime.json) usa:

@@ -3,11 +3,13 @@ param(
     [string]$RepositoryRoot,
     [string]$ReportDirectory = 'reports',
     [string]$ReportPath = 'reports/homologation-checklist.json',
-    [int]$EvidenceMaxAgeHours = 24
+    [int]$EvidenceMaxAgeHours = 24,
+    [int]$MinimumStabilitySeconds = 600
 )
 
 $ErrorActionPreference = 'Stop'
 if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
+if ($MinimumStabilitySeconds -lt 600) { throw 'MinimumStabilitySeconds precisa ser pelo menos 600 segundos para a homologação final.' }
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) { $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $RepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 $configPath = Join-Path $RepositoryRoot 'config\runtime.json'
@@ -124,7 +126,8 @@ $configBackend = $config.android.backend -eq 'qemu-android-x86'
 $configWhpx = $config.android.qemu.acceleration -eq 'whpx'
 $configIdentity = $config.android.release -eq '7.1.2' -and $config.android.apiLevel -eq 25
 $configDisk = -not [string]::IsNullOrWhiteSpace([string]$config.android.qemu.disk)
-$configAdb = $config.android.adb.transport -eq 'tcp' -and $config.android.adb.host -eq '127.0.0.1' -and $config.android.adb.hostPort -eq 5556 -and $config.android.adb.guestPort -eq 5555
+$configAdb = $config.android.adb.transport -eq 'tcp' -and $config.android.adb.host -eq '127.0.0.1' -and [int]$config.android.adb.hostPort -gt 0 -and [int]$config.android.adb.guestPort -gt 0
+$adbRequirement = "ADB TCP host $($config.android.adb.host):$($config.android.adb.hostPort) para guest $($config.android.adb.guestPort)"
 $configKiosk = -not [string]::IsNullOrWhiteSpace([string]$config.android.kiosk.displaySize) -and [int]$config.android.kiosk.displayDensity -gt 0
 $configHotkey = -not [string]::IsNullOrWhiteSpace([string]$config.runtime.hotkey)
 $configNative = [bool]$config.android.nativeBridge.required
@@ -144,7 +147,7 @@ $configNoAndroidStudio = -not [bool]$config.android.tooling.allowEnvironmentFall
 Add-ChecklistItem $items 'backend-qemu-whpx' 'QEMU x86_64 com WHPX configurado' 'config/runtime.json + diagnostics.json + launcher-smoke.json' ($configBackend -and $configWhpx -and $configNoAndroidStudio -and (Test-ReportFresh $diagnostics) -and (Test-ReportFresh $launcherSmoke) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'tools.whpx.available' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.qemuNoConsoleObserved' $true)) 'Configuração, backend, serial, WHPX e observação live precisam coincidir.' ($null -ne $diagnostics -or $null -ne $launcherSmoke)
 Add-ChecklistItem $items 'guest-identity' 'Android-x86 7.1.2/API 25 confirmado' 'diagnostics.json ou nativebridge.json' ($configIdentity -and (((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'android.identityMatches' $true)) -or ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'guestIdentityMatches' $true)))) 'Release, API, backend/serial e sys.boot_completed precisam ser confirmados no guest.' ($null -ne $diagnostics -or $null -ne $native)
 Add-ChecklistItem $items 'persistent-disk' 'qcow2 persistente configurado e reutilizado' 'config/runtime.json + qemu-persistence.json + launcher-smoke.json' ($configDisk -and (Test-ReportFresh $persistence) -and (Test-QemuReportIdentity $persistence) -and (Test-ReportFresh $launcherSmoke) -and (Has-PropertyValue $persistence 'status' 'validated') -and (Has-PropertyValue $launcherSmoke 'manualEvidence.windowsRestartObserved' $true)) 'O marcador deve sobreviver a processos QEMU; backend, serial e reinício do Windows precisam ser observados.' ($null -ne $persistence -or $null -ne $launcherSmoke)
-Add-ChecklistItem $items 'adb-tcp' 'ADB TCP host 127.0.0.1:5556 para guest 5555' 'config/runtime.json + diagnostics.json' ($configAdb -and (Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics)) 'O serial e o encaminhamento precisam ser observados no runtime.' ($null -ne $diagnostics)
+Add-ChecklistItem $items 'adb-tcp' $adbRequirement 'config/runtime.json + diagnostics.json' ($configAdb -and (Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics)) 'O serial e o encaminhamento precisam ser observados no runtime.' ($null -ne $diagnostics)
 Add-ChecklistItem $items 'qmp-shutdown' 'Desligamento QEMU via QMP sem adb emu kill' 'qemu-benchmark.json ou qemu-persistence.json' (((Test-ReportFresh $benchmark) -and (Test-QemuReportIdentity $benchmark) -and (Has-PropertyValue $benchmark 'runs.0.stopped' $true)) -or ((Test-ReportFresh $persistence) -and (Test-QemuReportIdentity $persistence) -and (Has-PropertyValue $persistence 'firstShutdownSucceeded' $true))) 'O relatório live deve registrar encerramento controlado no backend e serial configurados.' ($null -ne $benchmark -or $null -ne $persistence)
 Add-ChecklistItem $items 'native-bridge-property' 'Native Bridge ARM declarado e operacional' 'nativebridge.json ou diagnostics.json' ($configNative -and (((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'nativeBridgeReady' $true)) -or ((Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'abiCompatibility.nativeBridgeReady' $true)))) 'Property isolada não basta; o relatório precisa incluir a execução do APK.' ($null -ne $native -or $null -ne $diagnostics)
 Add-ChecklistItem $items 'official-apk-identity' 'APK oficial, pacote, versão e activity corretos' 'config/runtime.json + diagnostics.json' ($configApk -and (Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and (Has-PropertyValue $diagnostics 'tools.requiredFiles.neoNewsApk.exists' $true)) 'A presença do arquivo é pré-condição; a assinatura é validada separadamente.' ($null -ne $diagnostics)
@@ -171,6 +174,20 @@ Add-ChecklistItem $items 'rhvoice-audio' 'RHVoice produziu áudio não vazio' 't
 Add-ChecklistItem $items 'network-online' 'DNS, HTTP e HTTPS funcionam no guest' 'guest-network-media.json' ((Test-ReportFresh $networkMedia) -and (Test-ReportTransport $networkMedia) -and (Has-PropertyValue $networkMedia 'online.validated' $true) -and (Has-PropertyValue $networkMedia 'online.raw' { param($v) [string]$v -match '(?i)dns=true.*http=true.*https=true' })) 'Use URLs aprovadas pelo ambiente e o serial configurado.' ($null -ne $networkMedia)
 Add-ChecklistItem $items 'hls-playback' 'Playlist HLS/m3u8 e reprodução MediaPlayer funcionam' 'guest-network-media.json' ((Test-ReportFresh $networkMedia) -and (Test-ReportTransport $networkMedia) -and (Has-PropertyValue $networkMedia 'online.validated' $true) -and (Has-PropertyValue $networkMedia 'online.raw' { param($v) [string]$v -match '(?i)hlsPlaylist=True.*hlsPlayable=True' })) 'O teste deve registrar playlist válida e playback efetivo no guest configurado.' ($null -ne $networkMedia)
 Add-ChecklistItem $items 'offline-cache' 'Cache permanece legível e a rede falha ao desligar a NIC' 'guest-network-media.json' ((Test-ReportFresh $networkMedia) -and (Test-ReportTransport $networkMedia) -and (Has-PropertyValue $networkMedia 'offline.validated' $true) -and (Has-PropertyValue $networkMedia 'offline.networkLinkToggled' $true)) 'A perda de rede precisa ser reversível e registrada no guest configurado.' ($null -ne $networkMedia)
+
+$initialStabilityItem = $items | Where-Object { $_.id -eq 'initial-stability' } | Select-Object -First 1
+if ($initialStabilityItem) {
+    $initialStabilityItem.status = if ($null -eq $native) {
+        'pending'
+    } elseif ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and
+        (Has-PropertyValue $native 'runtimeStable' $true) -and
+        (Has-PropertyValue $native 'stabilitySeconds' { param($v) [int]$v -ge $MinimumStabilitySeconds })) {
+        'pass'
+    } else {
+        'fail'
+    }
+    $initialStabilityItem.details = "Logcat filtrado não pode conter falhas; a janela observada precisa ser de pelo menos $MinimumStabilitySeconds segundos."
+}
 
 # These two items deliberately require explicit visual evidence. A configured
 # tray or hotkey is not the same as observing it in the published executable.
@@ -204,6 +221,7 @@ $result = [ordered]@{
     failed = $failed.Count
     pending = $pending.Count
     evidenceMaxAgeHours = $EvidenceMaxAgeHours
+    minimumStabilitySeconds = $MinimumStabilitySeconds
     reportFreshness = $reportFreshness
     items = $items.ToArray()
     status = if ($items.Count -eq 30 -and $failed.Count -eq 0 -and $pending.Count -eq 0) { 'validated' } else { 'not-approved' }

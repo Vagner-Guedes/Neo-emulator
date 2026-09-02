@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($StabilitySeconds -lt 1) { throw 'StabilitySeconds precisa ser pelo menos 1 segundo.' }
 if ([string]::IsNullOrWhiteSpace($RepositoryRoot)) {
     $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
@@ -85,7 +86,8 @@ $installOutput = ''
 $installSucceeded = $false
 if (Test-Path -LiteralPath $ApkPath) {
     $installOutput = Invoke-Adb @('-s', $serial, 'install', '-r', $ApkPath)
-    $installSucceeded = $installOutput -match '(?im)\bSuccess\b'
+    $installExitCode = $LASTEXITCODE
+    $installSucceeded = $installExitCode -eq 0 -and $installOutput -match '(?im)\bSuccess\b'
 }
 $packageDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'package', $packageName)
 $primaryCpuAbi = if ($packageDump -match 'primaryCpuAbi=([^\s]+)') { $Matches[1] } else { $null }
@@ -95,7 +97,8 @@ $launchOutput = ''
 $launchSucceeded = $false
 if ($installSucceeded -or $packageDump -match "Package \[$([regex]::Escape($packageName))\]") {
     $launchOutput = Invoke-Adb @('-s', $serial, 'shell', 'am', 'start', '-W', '-n', $activity)
-    $launchSucceeded = $launchOutput -notmatch '(?im)(Error:|Exception|does not exist)'
+    $launchExitCode = $LASTEXITCODE
+    $launchSucceeded = $launchExitCode -eq 0 -and $launchOutput -notmatch '(?im)(Error:|Exception|does not exist)'
 }
 Start-Sleep -Seconds ([math]::Max(1, $StabilitySeconds))
 $activityDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'activity', 'activities')
@@ -122,12 +125,14 @@ for ($restart = 1; $restart -le [math]::Max(0, $RestartCount) -and $runtimeStabl
     } while ((Get-Date).ToUniversalTime() -lt $rebootDeadline)
 
     $relaunchOutput = ''
+    $relaunchExitCode = $null
     $relaunchSucceeded = $false
     $relaunchActivityRunning = $false
     $relaunchErrors = @()
     if ($rebootBooted) {
         $relaunchOutput = Invoke-Adb @('-s', $serial, 'shell', 'am', 'start', '-W', '-n', $activity)
-        $relaunchSucceeded = $relaunchOutput -notmatch '(?im)(Error:|Exception|does not exist)'
+        $relaunchExitCode = $LASTEXITCODE
+        $relaunchSucceeded = $relaunchExitCode -eq 0 -and $relaunchOutput -notmatch '(?im)(Error:|Exception|does not exist)'
         Start-Sleep -Seconds ([math]::Max(1, $StabilitySeconds))
         $relaunchActivityDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'activity', 'activities')
         $relaunchActivityRunning = Test-ActivityRunning $relaunchActivityDump
@@ -139,6 +144,7 @@ for ($restart = 1; $restart -le [math]::Max(0, $RestartCount) -and $runtimeStabl
         rebootOutput = $rebootOutput
         booted = $rebootBooted
         launchSucceeded = $relaunchSucceeded
+        launchExitCode = if ($null -ne $relaunchExitCode) { [int]$relaunchExitCode } else { $null }
         activityRunning = $relaunchActivityRunning
         relevantErrors = $relaunchErrors
         stable = $rebootBooted -and $relaunchSucceeded -and $relaunchActivityRunning -and $relaunchErrors.Count -eq 0
@@ -166,6 +172,9 @@ $report = [ordered]@{
     launchSucceeded = $launchSucceeded
     activityRunning = $activityRunning
     runtimeStable = $runtimeStable
+    stabilitySeconds = $StabilitySeconds
+    installExitCode = if ($null -ne $installExitCode) { [int]$installExitCode } else { $null }
+    launchExitCode = if ($null -ne $launchExitCode) { [int]$launchExitCode } else { $null }
     restartCount = [math]::Max(0, $RestartCount)
     restartResults = @($restartResults)
     installOutput = $installOutput

@@ -84,6 +84,8 @@ $componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Instal
 $componentProvisioningSource = if (Test-Path -LiteralPath $componentProvisioningPath) { Get-Content -LiteralPath $componentProvisioningPath -Raw -Encoding utf8 } else { '' }
 $networkMediaPath = Join-Path $RepositoryRoot 'scripts\validation\Test-GuestNetworkMedia.ps1'
 $networkMediaSource = if (Test-Path -LiteralPath $networkMediaPath) { Get-Content -LiteralPath $networkMediaPath -Raw -Encoding utf8 } else { '' }
+$nativeBridgeValidationPath = Join-Path $RepositoryRoot 'scripts\validation\Test-NativeBridge.ps1'
+$nativeBridgeValidationSource = if (Test-Path -LiteralPath $nativeBridgeValidationPath) { Get-Content -LiteralPath $nativeBridgeValidationPath -Raw -Encoding utf8 } else { '' }
 $checklistPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HomologationChecklist.ps1'
 $checklistSource = if (Test-Path -LiteralPath $checklistPath) { Get-Content -LiteralPath $checklistPath -Raw -Encoding utf8 } else { '' }
 $diagnosticsScriptPath = Join-Path $RepositoryRoot 'scripts\diagnostics\Collect-Diagnostics.ps1'
@@ -104,20 +106,28 @@ $contractChecks = [ordered]@{
     noConfiguredAbiEvidenceFallback = $runtimeControllerSource -notmatch 'return\s+_context\.Config\.NeoNews\.SupportedApkAbis'
     existingInstallCanReachStabilityGate = $launcherSourceText -match 'guest\.Ready\s+&&\s+selected\s+is\s+not\s+null\s+&&\s+launched'
     existingInstalledPackageCanStartOffline = $launcherSourceText -match 'var installationRequired = !status\.Installed \|\| versionMismatch' -and $launcherSourceText -match 'if \(installationRequired\)' -and $launcherSourceText -match 'ValidateAuthorizedApk\(apkPath\)'
+    offlineInstalledApkUsesPackageAbiEvidence = $launcherSourceText -match 'apkAbis\.Count == 0' -and $launcherSourceText -match 'package-manager evidence is enough'
     activityGateRequiresForegroundState = $launcherSourceText -match 'mResumedActivity' -and $launcherSourceText -match 'mFocusedActivity' -and $launcherSourceText -match 'IsActivityRunningAsync'
-    diagnosticsIncludesNeoNewsActivity = $launcherSourceText -match 'packageName = _neoNews\.PackageName' -and $launcherSourceText -match 'activity = _neoNews\.ActivityName' -and $launcherSourceText -match 'versionCode = neoNewsVersionCode'
+    diagnosticsIncludesNeoNewsActivity = $launcherSourceText -match 'packageName = _neoNews\.PackageName' -and $launcherSourceText -match 'activity = _neoNews\.ActivityName' -and $launcherSourceText -match 'versionCode = neoNewsVersionCode' -and $launcherSourceText -match 'primaryCpuAbi'
+    diagnosticsIncludesProvisioningState = $launcherSourceText -match 'SafeProvisioningStateAsync' -and $launcherSourceText -match 'imageHash = provisioningState\.ImageHash' -and $launcherSourceText -match 'diskFingerprint = provisioningState\.DiskFingerprint'
     diagnosticsCliExitsAfterCollection = $launcherSourceText -match 'exitAfterDiagnostics' -and $launcherSourceText -match 'RequestExit\(\)'
     diagnosticsScriptUsesCanonicalLauncher = $diagnosticsScriptSource -match "ArgumentList '--diagnostics'" -and $diagnosticsScriptSource -match 'schema.*identidade'
+    prolongedStabilityEvidence = $nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
+    configurableAdbPorts = $checklistSource -match 'hostPort\s*-gt 0' -and $checklistSource -match 'guestPort\s*-gt 0' -and $checklistSource -match 'adbRequirement'
+    nativeBridgeCommandsRequireExitCode = $nativeBridgeValidationSource -match 'installExitCode' -and $nativeBridgeValidationSource -match 'launchExitCode' -and $nativeBridgeValidationSource -match 'installExitCode -eq 0'
     arm32NativeBridgeAbiIsRequired = $launcherSourceText -match 'PreferredAbi' -and $launcherSourceText -match 'primary\.Equals\(preferredAbi'
     kioskRestoresGuestStateOnFailedEntry = $launcherSourceText -match 'capturedHere' -and $launcherSourceText -match 'RestoreGuestStateAsync'
     kioskValidatesWindowGeometry = $launcherSourceText -match 'IsKioskWindowApplied' -and $launcherSourceText -match 'GetWindowRect'
     kioskRetriesBackendWindowDiscovery = $launcherSourceText -match 'CaptureAndMaximizeEmulatorWindowAsync' -and $launcherSourceText -match 'const int attempts = 12' -and $launcherSourceText -match 'backend PID/title pair'
+    kioskPreservesOriginalWindowState = $launcherSourceText -match '_windowCaptured.*IsWindow\(_windowHandle\)' -and $launcherSourceText -match '_originalStyle = originalStyle' -and $launcherSourceText -match 'RestoreEmulatorWindow'
     normalBootRequiresProvisioningState = $launcherSourceText -match 'Provisionamento local ainda' -and $launcherSourceText -match 'DiskFingerprint'
     provisioningPreservesStrongDiskHash = $launcherSourceText -match 'Keep it intact' -and $launcherSourceText -match 'ImageHash'
     mutableQcow2FingerprintDoesNotBlockBoot = $launcherSourceText -match 'valid guest write into a' -and $launcherSourceText -match 'state\.DiskFingerprint = fingerprint'
     provisioningRejectsWeakOrMissingHash = $launcherSourceText -match 'IsSha256' -and $launcherSourceText -match 'SHA-256 forte'
+    provisioningRevalidatesBaseBinaryHashes = $launcherSourceText -match 'foreach \(var componentName' -and $launcherSourceText -match 'ComputeSha256Async\(qemu' -and $launcherSourceText -match 'ComputeSha256Async\(adb'
     componentProvisioningMergesState = $componentProvisioningSource -match 'existingState\.provenance' -and $componentProvisioningSource -match 'existingState\.imageHash'
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
+    componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
     publishPreservesPersistentDisk = $publishSource -match 'persistentDiskTargetPath' -and $publishSource -match 'Preservando disco persistente existente' -and $publishSource -match 'OrdinalIgnoreCase'
     guestNetworkQmpNegotiatesCapabilities = $networkMediaSource -match 'qmp_capabilities' -and $networkMediaSource -match 'set_link'

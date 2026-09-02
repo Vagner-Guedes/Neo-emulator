@@ -40,6 +40,27 @@ if ($existingImageHash -notmatch '^[0-9a-fA-F]{64}$' -or $existingProvenance.Cou
     throw "O estado base de provisionamento é incompleto ou não possui SHA-256/proveniência fortes: $statePath. Reexecute Provision-QemuAndroidRuntime.ps1."
 }
 
+$basePaths = [ordered]@{
+    qemu = Resolve-ConfiguredPath $config.android.qemu.executable
+    adb = Resolve-ConfiguredPath (Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath)
+    disk = Resolve-ConfiguredPath $config.android.qemu.disk
+}
+foreach ($baseName in $basePaths.Keys) {
+    $record = $existingState.provenance.$baseName
+    if ($null -eq $record -or [string]$record.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "A provenance do componente-base '$baseName' não possui hash SHA-256 forte: $statePath."
+    }
+    if (-not (Test-Path -LiteralPath $basePaths[$baseName])) {
+        throw "O componente-base '$baseName' não foi encontrado: $($basePaths[$baseName])."
+    }
+    if ($baseName -ne 'disk') {
+        $currentHash = (Get-FileHash -LiteralPath $basePaths[$baseName] -Algorithm SHA256).Hash
+        if ($currentHash -ne [string]$record.sha256) {
+            throw "O hash do componente-base '$baseName' diverge do provisionamento: registrado=$($record.sha256); atual=$currentHash."
+        }
+    }
+}
+
 function Invoke-Adb {
     param([string[]]$Arguments)
     $output = & $script:adbPath @Arguments 2>&1

@@ -86,6 +86,28 @@ public sealed class AndroidProvisioningService
                 $"Estado sem entradas de provenance: {_context.ResolveProvisioningStatePath()}.");
         }
 
+        foreach (var componentName in new[] { "qemu", "adb", "disk" })
+        {
+            if (!state.Provenance.TryGetValue(componentName, out var component) || !IsSha256(component.Sha256))
+            {
+                throw new RuntimeOperationException(
+                    "O registro de provisionamento não possui hashes fortes dos componentes-base.",
+                    $"Entrada ausente ou inválida: provenance.{componentName}; estado={_context.ResolveProvisioningStatePath()}.");
+            }
+        }
+
+        var qemuHash = await ComputeSha256Async(qemu, cancellationToken);
+        var adbHash = await ComputeSha256Async(adb, cancellationToken);
+        var registeredQemuHash = state.Provenance["qemu"].Sha256;
+        var registeredAdbHash = state.Provenance["adb"].Sha256;
+        if (!registeredQemuHash.Equals(qemuHash, StringComparison.OrdinalIgnoreCase) ||
+            !registeredAdbHash.Equals(adbHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "Os binários locais não correspondem ao provisionamento registrado.",
+                $"QEMU registrado={registeredQemuHash}; atual={qemuHash}; ADB registrado={registeredAdbHash}; atual={adbHash}. Reexecute o provisionamento após uma troca aprovada.");
+        }
+
         state.Schema = 1;
         state.AndroidImageVersion = _context.Config.Android.Release;
         state.LastValidation = DateTimeOffset.UtcNow;
@@ -133,6 +155,12 @@ public sealed class AndroidProvisioningService
         await Task.CompletedTask;
         cancellationToken.ThrowIfCancellationRequested();
         return $"{info.Length:x}-{info.LastWriteTimeUtc.Ticks:x}";
+    }
+
+    private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
+    {
+        await using var stream = File.OpenRead(path);
+        return Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(stream, cancellationToken));
     }
 
     private static bool IsSha256(string? value) =>
