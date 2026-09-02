@@ -81,6 +81,8 @@ $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRun
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
 $componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1'
 $componentProvisioningSource = if (Test-Path -LiteralPath $componentProvisioningPath) { Get-Content -LiteralPath $componentProvisioningPath -Raw -Encoding utf8 } else { '' }
+$checklistPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HomologationChecklist.ps1'
+$checklistSource = if (Test-Path -LiteralPath $checklistPath) { Get-Content -LiteralPath $checklistPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -105,6 +107,7 @@ $contractChecks = [ordered]@{
     componentProvisioningMergesState = $componentProvisioningSource -match 'existingState\.provenance' -and $componentProvisioningSource -match 'existingState\.imageHash'
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
+    staleEvidenceCannotApprove = $checklistSource -match 'EvidenceMaxAgeHours' -and $checklistSource -match 'Test-ReportFresh' -and $checklistSource -match 'reportFreshness'
 }
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }

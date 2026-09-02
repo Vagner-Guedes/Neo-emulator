@@ -18,7 +18,7 @@ runtime/
   state/provisioning.json
 ```
 
-O disco não é recriado durante o boot nem durante a atualização do launcher. Native Bridge, WebView, RHVoice e o APK oficial são pacotes externos; só entram na distribuição quando fornecidos localmente e explicitamente.
+O disco não é recriado durante o boot nem durante a atualização do launcher. Native Bridge, WebView, RHVoice e o APK oficial são pacotes externos; ficam fora da publicação e devem ser fornecidos separadamente pelo operador, com origem, licença e hash registrados.
 
 ## Provisionamento
 

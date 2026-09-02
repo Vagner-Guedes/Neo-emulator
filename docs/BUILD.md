@@ -58,8 +58,10 @@ Para validar o repositório sem o APK, execute `powershell -NoProfile -Execution
 
 Depois de gerar os relatórios live, execute `Test-HomologationChecklist.ps1`.
 Ele agrega exatamente 30 gates da especificação e retorna código diferente de
-zero enquanto houver evidência pendente ou falha; um JSON antigo ou de outro
-backend não é contado como aprovação.
+zero enquanto houver evidência pendente ou falha. Relatórios ausentes ficam
+pendentes; relatórios inválidos ou com mais de 24 horas ficam em falha e não
+são contados como aprovação. O limite pode ser ajustado com
+`-EvidenceMaxAgeHours`.
 
 ```powershell
 .\scripts\validation\Test-LauncherSmoke.ps1 `
