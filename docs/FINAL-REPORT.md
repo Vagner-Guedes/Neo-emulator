@@ -83,6 +83,16 @@ O fluxo de otimização agora está documentado em `docs/ANDROID-PACKAGE-OPTIMIZ
 
 Os relatorios de benchmark so podem aprovar o gate de desligamento quando registram a negociacao QMP, o envio de `quit`, a saida do processo e `forcedKill=false` em todas as execucoes.
 
+A verificacao mais recente foi publicada em `dist/NeoNewsRuntime-live-check`
+com o SDK local .NET 8.0.424: build, publish, diagnostico e smoke terminaram
+sem erros. O smoke contra esse executavel passou com o timeout padrao de 90
+segundos, janela WPF responsiva, single-instance, `--exit` e zero processos
+residuais. O diagnostico confirmou WHPX e os artefatos externos provisionados,
+mas registrou o guest ADB como `Disconnected`, sem APKs proprietarios ou
+componentes Android fornecidos para a prova live. O checklist contra a mesma
+pasta produziu 31 itens, 0 aprovados, 14 falhas e 17 pendencias, mantendo o
+status `not-approved`.
+
 ## Contrato do runtime
 
 O arquivo [`config/runtime.json`](../config/runtime.json) usa:
