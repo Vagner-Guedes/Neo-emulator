@@ -44,11 +44,16 @@ operação separada e explícita:
 
 ```powershell
 .\scripts\provision\Install-GuestComponents.ps1 `
-  -InstallNativeBridge -InstallWebView -InstallTts -SetRhVoiceDefault `
+  -InstallNativeBridge -InstallWebView -InstallTts `
   -NativeBridgeOrigin "<origem aprovada/licenca do Native Bridge>" `
   -WebViewOrigin "<origem aprovada/licenca do WebView>" `
   -TtsOrigin "<origem aprovada/licenca do RHVoice>"
 ```
+
+`-SetRhVoiceDefault` e opcional e nao deve ser usado como efeito colateral da
+instalacao: sem essa chave, a engine TTS existente e preservada e qualquer
+mudanca inesperada e restaurada/verificada. A chave so deve ser usada por
+acao explicita depois da homologacao funcional do RHVoice pt-BR.
 
 O comando usa somente os arquivos configurados, `adb install -r` e registra
 hashes/estado. O boot normal não instala componentes desconhecidos.

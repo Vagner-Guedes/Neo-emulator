@@ -169,6 +169,12 @@ if ($guestReleaseResult.ExitCode -ne 0 -or $guestApiResult.ExitCode -ne 0 -or $g
     throw "O guest conectado não corresponde ao runtime configurado: release=$guestRelease (esperada $($config.android.release)); api=$guestApi (esperada $($config.android.apiLevel)); nenhum componente será instalado."
 }
 
+$baselineDefaultEngineResult = Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
+if ($baselineDefaultEngineResult.ExitCode -ne 0) {
+    throw "Nao foi possivel capturar a engine TTS atual antes do provisionamento: $($baselineDefaultEngineResult.Text)"
+}
+$baselineDefaultEngine = $baselineDefaultEngineResult.Text.Trim()
+
 $components = New-Object System.Collections.Generic.List[object]
 if ($InstallNativeBridge) { $components.Add((Install-Component 'Native Bridge' (Resolve-ConfiguredPath $config.android.provisioning.nativeBridgePackagePath) $NativeBridgeOrigin)) }
 if ($InstallWebView) {
@@ -192,7 +198,10 @@ if ($InstallWebView -and (-not $webViewPackagePresent -or -not $webViewProviderA
     throw "O WebView instalado não corresponde ao provider/versão homologados: packagePresent=$webViewPackagePresent; providerActive=$webViewProviderActive; version=$($webViewVersionMatch.Groups[1].Value); expected=$($config.webView.homologatedVersion)."
 }
 $rhvoicePackages = @($packages -split "`r?`n" | Where-Object { $_ -match '(?i)rhvoice' } | ForEach-Object { $_ -replace '^package:', '' })
-$defaultEngine = (Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')).Text
+if ($packagesResult.ExitCode -ne 0) { throw "Nao foi possivel confirmar os packages apos o provisionamento: $($packagesResult.Text)" }
+$defaultEngineResult = Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
+if ($defaultEngineResult.ExitCode -ne 0) { throw "Nao foi possivel confirmar a engine TTS apos o provisionamento: $($defaultEngineResult.Text)" }
+$defaultEngine = $defaultEngineResult.Text.Trim()
 $defaultChanged = $false
 if ($SetRhVoiceDefault) {
     if ($rhvoicePackages.Count -eq 0) { throw 'Nenhum pacote RHVoice foi encontrado para selecionar como engine padrão.' }
@@ -200,8 +209,27 @@ if ($SetRhVoiceDefault) {
         $setResult = Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'put', 'secure', 'tts_default_synth', $rhvoicePackages[0])
         if ($setResult.ExitCode -ne 0) { throw "Não foi possível selecionar RHVoice como engine padrão: $($setResult.Text)" }
         $defaultChanged = $true
-        $defaultEngine = (Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')).Text
+        $defaultEngineResult = Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
+        if ($defaultEngineResult.ExitCode -ne 0) { throw "Nao foi possivel verificar a engine RHVoice selecionada: $($defaultEngineResult.Text)" }
+        $defaultEngine = $defaultEngineResult.Text.Trim()
+        if ($defaultEngine -notmatch '(?i)rhvoice') { throw "A engine TTS nao confirmou RHVoice apos a selecao explicita: $defaultEngine" }
     }
+}
+
+$defaultEnginePreserved = $defaultEngine -eq $baselineDefaultEngine
+if (-not $SetRhVoiceDefault -and -not $defaultEnginePreserved) {
+    $restoreResult = if ([string]::IsNullOrWhiteSpace($baselineDefaultEngine) -or $baselineDefaultEngine -eq 'null') {
+        Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'delete', 'secure', 'tts_default_synth')
+    } else {
+        Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'put', 'secure', 'tts_default_synth', $baselineDefaultEngine)
+    }
+    if ($restoreResult.ExitCode -ne 0) { throw "A engine TTS mudou durante o provisionamento e nao pode ser restaurada: $($restoreResult.Text)" }
+    $verifyRestore = Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
+    if ($verifyRestore.ExitCode -ne 0 -or $verifyRestore.Text.Trim() -ne $baselineDefaultEngine) {
+        throw "A engine TTS nao foi preservada: antes='$baselineDefaultEngine'; depois='$($verifyRestore.Text.Trim())'"
+    }
+    $defaultEngine = $verifyRestore.Text.Trim()
+    $defaultEnginePreserved = $true
 }
 
 $stateDirectory = Split-Path -Parent $statePath
@@ -232,13 +260,16 @@ $state = [ordered]@{
     webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { '' }
     webViewProvider = [ordered]@{ packagePresent = $webViewPackagePresent; providerActive = $webViewProviderActive; versionMatches = $webViewVersionMatches; packageDumpExitCode = $webViewPackageDumpResult.ExitCode; webViewUpdateExitCode = $webViewDumpResult.ExitCode }
     ttsStatus = if ($rhvoicePackages.Count -gt 0 -and $defaultEngine -match '(?i)rhvoice') { 'selected-local-pending-synthesis-test' } elseif ($rhvoicePackages.Count -gt 0) { 'installed-local-not-selected' } else { 'missing' }
+    ttsEngineBefore = $baselineDefaultEngine
+    ttsEngineAfter = $defaultEngine
+    ttsEnginePreserved = $defaultEnginePreserved
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
     imageHash = if ($existingState) { [string]$existingState.imageHash } else { '' }
     diskFingerprint = if ($existingState) { [string]$existingState.diskFingerprint } else { '' }
     files = @($existingFiles + @($components))
     provenance = $provenance
-    guest = [ordered]@{ serial = $Serial; release = $guestRelease; apiLevel = $guestApi; identityMatches = $true; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
+    guest = [ordered]@{ serial = $Serial; release = $guestRelease; apiLevel = $guestApi; identityMatches = $true; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngineBefore = $baselineDefaultEngine; defaultTtsEngine = $defaultEngine; defaultEnginePreserved = $defaultEnginePreserved; defaultChanged = $defaultChanged }
 }
 $stateJson = $state | ConvertTo-Json -Depth 10
 $temporaryStatePath = "$statePath.tmp"
