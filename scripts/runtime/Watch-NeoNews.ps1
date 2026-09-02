@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [string]$Serial = 'emulator-5556',
+    [string]$Serial,
     [int]$PollSeconds = 5,
     [int]$MaxIterations = 0,
     [switch]$LaunchOnActivityLoss,
@@ -77,8 +77,14 @@ if (-not $LogPath) {
     $LogPath = Join-Path (Join-Path $PSScriptRoot '..\..\logs') 'supervisor.log'
 }
 
-if ($PSBoundParameters.ContainsKey('Serial') -and $Serial -eq 'emulator-5556' -and $config.android.adb.transport -eq 'tcp') {
-    $Serial = "$($config.android.adb.host):$($config.android.adb.hostPort)"
+if (-not $Serial) {
+    $Serial = if ($config.android.adb.transport -eq 'tcp') {
+        "$($config.android.adb.host):$($config.android.adb.hostPort)"
+    } elseif ($config.android.adb.emulatorSerial) {
+        $config.android.adb.emulatorSerial
+    } else {
+        "emulator-$($config.android.emulator.validationPort)"
+    }
 }
 
 $logDirectory = Split-Path -Parent $LogPath

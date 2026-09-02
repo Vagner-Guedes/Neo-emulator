@@ -1,7 +1,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$ConfigPath,
-    [string]$Serial = 'emulator-5556',
+    [string]$Serial,
     [string]$ReportPath
 )
 
@@ -25,10 +25,22 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $sdkRoot = Resolve-SdkRoot
-$adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe'
+$adbPath = Join-Path $repositoryRoot (($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath) -replace '/', '\')
+if (-not (Test-Path -LiteralPath $adbPath) -and $config.android.tooling.allowEnvironmentFallback) { $adbPath = Join-Path $sdkRoot 'platform-tools\adb.exe' }
 if (-not (Test-Path -LiteralPath $adbPath)) {
     throw "ADB não encontrado: $adbPath"
+}
+
+if (-not $Serial) {
+    $Serial = if ($config.android.adb.transport -eq 'tcp') {
+        "$($config.android.adb.host):$($config.android.adb.hostPort)"
+    } elseif ($config.android.adb.emulatorSerial) {
+        $config.android.adb.emulatorSerial
+    } else {
+        "emulator-$($config.android.emulator.validationPort)"
+    }
 }
 
 $state = Invoke-Adb -AdbPath $adbPath -Arguments @('get-state')
