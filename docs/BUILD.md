@@ -67,6 +67,13 @@ pendentes; relatórios inválidos ou com mais de 24 horas ficam em falha e não
 são contados como aprovação. O limite pode ser ajustado com
 `-EvidenceMaxAgeHours`.
 
+Antes do checklist, execute `Test-RuntimeStability.ps1` com os relatórios
+`nativebridge.json`, `webview-content.json`, `tts-synthesis.json` e
+`guest-network-media.json` no diretório `reports/` da mesma publicação. Esse
+runner observa por pelo menos 600 segundos o backend, ADB, NeoNews, watchdog,
+kiosk, WebView, RHVoice e logcat; ausência de qualquer evidência mantém o
+resultado como `not-validated`.
+
 ```powershell
 .\scripts\validation\Test-LauncherSmoke.ps1 `
   -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `

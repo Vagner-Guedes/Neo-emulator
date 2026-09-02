@@ -43,6 +43,15 @@ separadamente e falham sem declarar homologação quando falta evidência real:
 .\scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1 -Iterations 3 -StabilitySeconds 60
 ```
 
+Depois de gerar os quatro relatórios live no mesmo diretório da publicação,
+execute a estabilidade integrada por pelo menos dez minutos:
+
+```powershell
+.\scripts\validation\Test-RuntimeStability.ps1 `
+  -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `
+  -DurationSeconds 600
+```
+
 O probe de rede/mídia exige uma URL HLS aprovada pelo ambiente e valida apenas
 o guest (DNS, HTTP/HTTPS, playlist, reprodução, cache e perda reversível da
 NIC); a renderização do conteúdo proprietário do NeoNews continua sendo uma

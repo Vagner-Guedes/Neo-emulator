@@ -31,15 +31,16 @@ falhar.
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
 | Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
-| Regressão | `Test-RuntimeRepository.ps1` | 28 scripts, JSON e ignore checks aprovados |
+| Regressão | `Test-RuntimeRepository.ps1` | 29 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |
 | Checklist | `Test-HomologationChecklist.ps1` | 30 gates agregados; pendências nunca viram aprovação |
+| Estabilidade integrada | `Test-RuntimeStability.ps1` | runner de 600 s para backend, ADB, NeoNews, watchdog, kiosk, WebView, TTS e logcat; pendente sem guest |
 
 ## Verificacao local desta rodada
 
-A publicacao de verificacao `dist/NeoNewsRuntime-final-11` foi gerada depois do build Release e passou pelo smoke do executavel publicado. Foram observados janela WPF responsiva, single-instance, `--exit`, caminho com espacos e ausencia de processos residuais. A coleta fresca `--diagnostics` tambem terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponivel e os arquivos externos ausentes.
+A publicacao de verificacao `dist/NeoNewsRuntime-final-13` foi gerada depois do build Release e passou pelo smoke do executavel publicado. Foram observados janela WPF responsiva, single-instance, `--exit`, caminho com espacos e ausencia de processos residuais. A coleta fresca `--diagnostics` tambem terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponivel e os arquivos externos ausentes.
 
 O launcher le o AndroidManifest AXML do APK antes do `adb install -r` e rejeita package, versionName ou versionCode divergentes. O parser foi exercitado contra o `app.apk` local e encontrou `com.in9midia.neonews.player`, `9.0.3` e `522`.
 
@@ -75,7 +76,7 @@ Para alterar o status, ainda é necessário executar no mesmo runtime:
 2. provisionar QEMU x86_64 e ADB localmente, com origem e hashes registrados;
 3. provisionar uma Native Bridge legalmente redistribuível e provar a instalação do APK sem `INSTALL_FAILED_NO_MATCHING_ABIS`;
 4. iniciar `TerminalActivity`, observar logcat e confirmar `primaryCpuAbi=armeabi-v7a` exatamente;
-5. validar estabilidade após reinício e conteúdo real do NeoNews;
+5. validar estabilidade após reinício e executar `Test-RuntimeStability.ps1` com conteúdo real do NeoNews;
 6. validar provider WebView 119 em HTML/CSS/JavaScript/HTTPS e no NeoNews;
 7. validar RHVoice com síntese real em `pt-BR`;
 8. executar testes de rede, HLS/m3u8, áudio, offline, kiosk, watchdog, startup, tray, instância única e persistência;

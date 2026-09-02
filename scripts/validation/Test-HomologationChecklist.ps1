@@ -108,6 +108,7 @@ $networkMedia = Read-Report 'guest-network-media.json'
 $persistence = Read-Report 'qemu-persistence.json'
 $benchmark = Read-Report 'qemu-benchmark.json'
 $launcherSmoke = Read-Report 'launcher-smoke.json'
+$integratedStability = Read-Report 'runtime-stability.json'
 $reportFreshness = [ordered]@{
     diagnostics = Get-ReportFreshness $diagnostics
     nativeBridge = Get-ReportFreshness $native
@@ -119,6 +120,7 @@ $reportFreshness = [ordered]@{
     persistence = Get-ReportFreshness $persistence
     benchmark = Get-ReportFreshness $benchmark
     launcherSmoke = Get-ReportFreshness $launcherSmoke
+    runtimeStability = Get-ReportFreshness $integratedStability
 }
 $items = New-Object System.Collections.Generic.List[object]
 
@@ -156,7 +158,7 @@ Add-ChecklistItem $items 'official-apk-abis' 'APK contém arm64-v8a e armeabi-v7
 Add-ChecklistItem $items 'apk-install' 'adb install -r retornou Success e preservou dados' 'nativebridge.json + launcher-smoke.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Test-ReportFresh $launcherSmoke) -and (Has-PropertyValue $native 'installSucceeded' $true) -and (Has-PropertyValue $launcherSmoke 'manualEvidence.updatePreservationObserved' $true)) 'A instalação deve retornar Success e a atualização deve preservar dados, sem uninstall ou clear data.' ($null -ne $native -or $null -ne $launcherSmoke)
 Add-ChecklistItem $items 'abi-selection' 'primaryCpuAbi ARM32 selecionada pela instalação' 'nativebridge.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'selectedApkAbi' { param($v) [string]$v -eq [string]$config.android.preferredApkAbi }) -and (Has-PropertyValue $native 'primaryCpuAbi' { param($v) [string]$v -eq [string]$config.android.preferredApkAbi })) 'A ABI selecionada precisa ser exatamente armeabi-v7a e coincidir com o package dump.' ($null -ne $native)
 Add-ChecklistItem $items 'activity-launch' 'TerminalActivity abriu no guest' 'nativebridge.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'launchSucceeded' $true) -and (Has-PropertyValue $native 'activityRunning' $true)) 'O launch e a atividade em primeiro plano precisam ser confirmados.' ($null -ne $native)
-Add-ChecklistItem $items 'initial-stability' 'NeoNews permaneceu estável após o primeiro launch' 'nativebridge.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'runtimeStable' $true)) 'Logcat filtrado não pode conter falhas de linker, WebView ou crash.' ($null -ne $native)
+Add-ChecklistItem $items 'initial-stability' 'NeoNews permaneceu estável após o primeiro launch' 'nativebridge.json + runtime-stability.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'runtimeStable' $true)) 'Logcat filtrado não pode conter falhas de linker, WebView ou crash; o gate integrado é aplicado abaixo.' ($null -ne $native -or $null -ne $integratedStability)
 Add-ChecklistItem $items 'restart-stability' 'NeoNews sobreviveu a reinício do guest' 'nativebridge.json' ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and (Has-PropertyValue $native 'restartCount' { param($v) [int]$v -ge 1 }) -and (Has-PropertyValue $native 'restartResults' { param($v) @($v).Count -ge 1 -and @($v | Where-Object { $_.stable -ne $true }).Count -eq 0 })) 'Cada reinício deve voltar a boot, launch e estabilidade.' ($null -ne $native)
 Add-ChecklistItem $items 'kiosk-display' 'Kiosk aplicou display, density e rotação configurados' 'config/runtime.json + diagnostics.json + launcher-smoke.json' $configKiosk 'A configuração é necessária; diagnóstico live e observação visual devem conter os valores do guest.' ($null -ne $config)
 Add-ChecklistItem $items 'hotkey' 'Hotkey de saída do kiosk está configurado' 'config/runtime.json + launcher-smoke.json' $configHotkey 'A configuração precisa conter a combinação operacional documentada.' ($null -ne $config)
@@ -177,16 +179,19 @@ Add-ChecklistItem $items 'offline-cache' 'Cache permanece legível e a rede falh
 
 $initialStabilityItem = $items | Where-Object { $_.id -eq 'initial-stability' } | Select-Object -First 1
 if ($initialStabilityItem) {
-    $initialStabilityItem.status = if ($null -eq $native) {
+    $initialStabilityItem.status = if ($null -eq $native -or $null -eq $integratedStability) {
         'pending'
     } elseif ((Test-ReportFresh $native) -and (Test-ReportTransport $native) -and
         (Has-PropertyValue $native 'runtimeStable' $true) -and
-        (Has-PropertyValue $native 'stabilitySeconds' { param($v) [int]$v -ge $MinimumStabilitySeconds })) {
+        (Has-PropertyValue $native 'stabilitySeconds' { param($v) [int]$v -ge $MinimumStabilitySeconds }) -and
+        (Test-ReportFresh $integratedStability) -and (Test-ReportTransport $integratedStability) -and
+        (Has-PropertyValue $integratedStability 'status' 'validated') -and
+        (Has-PropertyValue $integratedStability 'observedDurationSeconds' { param($v) [int]$v -ge $MinimumStabilitySeconds })) {
         'pass'
     } else {
         'fail'
     }
-    $initialStabilityItem.details = "Logcat filtrado não pode conter falhas; a janela observada precisa ser de pelo menos $MinimumStabilitySeconds segundos."
+    $initialStabilityItem.details = "Logcat filtrado não pode conter falhas; Native Bridge e o runtime integrado precisam observar pelo menos $MinimumStabilitySeconds segundos."
 }
 
 # These two items deliberately require explicit visual evidence. A configured

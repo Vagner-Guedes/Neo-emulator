@@ -56,6 +56,7 @@ $requiredPaths = @(
     'scripts/provision/Provision-QemuAndroidRuntime.ps1',
     'scripts/provision/Install-GuestComponents.ps1',
     'scripts/validation/Test-NativeBridge.ps1',
+    'scripts/validation/Test-RuntimeStability.ps1',
     'scripts/validation/Test-TtsSynthesis.ps1',
     'scripts/validation/Test-WebViewContent.ps1',
     'tools/tts-probe/AndroidManifest.xml',
@@ -89,6 +90,8 @@ $networkMediaPath = Join-Path $RepositoryRoot 'scripts\validation\Test-GuestNetw
 $networkMediaSource = if (Test-Path -LiteralPath $networkMediaPath) { Get-Content -LiteralPath $networkMediaPath -Raw -Encoding utf8 } else { '' }
 $nativeBridgeValidationPath = Join-Path $RepositoryRoot 'scripts\validation\Test-NativeBridge.ps1'
 $nativeBridgeValidationSource = if (Test-Path -LiteralPath $nativeBridgeValidationPath) { Get-Content -LiteralPath $nativeBridgeValidationPath -Raw -Encoding utf8 } else { '' }
+$integratedStabilityPath = Join-Path $RepositoryRoot 'scripts\validation\Test-RuntimeStability.ps1'
+$integratedStabilitySource = if (Test-Path -LiteralPath $integratedStabilityPath) { Get-Content -LiteralPath $integratedStabilityPath -Raw -Encoding utf8 } else { '' }
 $webViewProviderPath = Join-Path $RepositoryRoot 'scripts\validation\Test-WebViewProvider.ps1'
 $webViewProviderSource = if (Test-Path -LiteralPath $webViewProviderPath) { Get-Content -LiteralPath $webViewProviderPath -Raw -Encoding utf8 } else { '' }
 $webViewContentPath = Join-Path $RepositoryRoot 'scripts\validation\Test-WebViewContent.ps1'
@@ -125,6 +128,7 @@ $contractChecks = [ordered]@{
     diagnosticsScriptUsesCanonicalLauncher = $diagnosticsScriptSource -match "ArgumentList '--diagnostics'" -and $diagnosticsScriptSource -match 'schema.*identidade'
     diagnosticsSupportsExplicitExecutable = $diagnosticsScriptSource -match '\[string\]\$ExecutablePath' -and $diagnosticsScriptSource -match 'GetFullPath\(\$ExecutablePath\)'
     prolongedStabilityEvidence = $nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
+    integratedStabilityEvidence = $integratedStabilitySource -match 'DurationSeconds = 600' -and $integratedStabilitySource -match 'watchdog\.active' -and $integratedStabilitySource -match 'Test-KioskState' -and $integratedStabilitySource -match 'webView\.status' -and $integratedStabilitySource -match 'voice\.localeReady' -and $checklistSource -match 'runtime-stability.json'
     checklistRequiresApkManifestIdentity = $checklistSource -match "apk\.packageName" -and $checklistSource -match "apk\.versionName" -and $checklistSource -match "apk\.versionCode"
     configurableAdbPorts = $checklistSource -match 'hostPort\s*-gt 0' -and $checklistSource -match 'guestPort\s*-gt 0' -and $checklistSource -match 'adbRequirement'
     nativeBridgeCommandsRequireExitCode = $nativeBridgeValidationSource -match 'Invoke-AdbResult' -and $nativeBridgeValidationSource -match 'propertyExitCodes' -and $nativeBridgeValidationSource -match 'packageDumpExitCode' -and $nativeBridgeValidationSource -match 'activityDumpExitCode' -and $nativeBridgeValidationSource -match 'logcatExitCode' -and $nativeBridgeValidationSource -match 'installExitCode -eq 0' -and $nativeBridgeValidationSource -match 'launchExitCode -eq 0'
