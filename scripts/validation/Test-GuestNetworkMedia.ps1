@@ -95,14 +95,14 @@ function Invoke-Qmp {
 
         $writer.WriteLine('{"execute":"qmp_capabilities"}')
         $writer.Flush()
-        $capabilitiesResponse = Read-QemuQmpLine $reader
+        $capabilitiesResponse = Read-QemuQmpResponse $reader
         if (-not (Test-QemuQmpSuccess $capabilitiesResponse)) {
             throw "QMP qmp_capabilities sem retorno de sucesso: $capabilitiesResponse"
         }
 
         $writer.WriteLine($Payload)
         $writer.Flush()
-        $payloadResponse = Read-QemuQmpLine $reader
+        $payloadResponse = Read-QemuQmpResponse $reader
         if (-not (Test-QemuQmpSuccess $payloadResponse)) {
             throw "QMP comando set_link sem retorno de sucesso: $payloadResponse"
         }

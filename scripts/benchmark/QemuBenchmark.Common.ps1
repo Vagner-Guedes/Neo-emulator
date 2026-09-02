@@ -241,6 +241,32 @@ function Read-QemuQmpLine {
     }
 }
 
+function Read-QemuQmpResponse {
+    param(
+        [System.IO.StreamReader]$Reader,
+        [int]$MaxMessages = 32
+    )
+
+    for ($index = 0; $index -lt [math]::Max(1, $MaxMessages); $index++) {
+        $line = Read-QemuQmpLine $Reader
+        if ($null -eq $line) { return $null }
+        try {
+            $message = $line | ConvertFrom-Json
+            $returnProperty = $message.PSObject.Properties['return']
+            $errorProperty = $message.PSObject.Properties['error']
+            if ($null -ne $returnProperty -or $null -ne $errorProperty) { return $line }
+        }
+        catch {
+            # Preserve malformed JSON as the command response so the caller
+            # rejects it instead of accidentally skipping a protocol error.
+            return $line
+        }
+        # QMP events and other asynchronous messages do not acknowledge the
+        # command that was just sent. Continue until a response is observed.
+    }
+    return $null
+}
+
 function Test-QemuQmpSuccess {
     param([string]$Message)
 
@@ -299,7 +325,7 @@ function Stop-QemuBenchmarkProcess {
             else {
                 $writer.WriteLine('{"execute":"qmp_capabilities"}')
                 $writer.Flush()
-                $capabilitiesResponse = Read-QemuQmpLine $reader
+                $capabilitiesResponse = Read-QemuQmpResponse $reader
                 $qmpCapabilitiesSucceeded = Test-QemuQmpSuccess $capabilitiesResponse
                 if (-not $qmpCapabilitiesSucceeded) {
                     $qmpDetail = "QMP qmp_capabilities sem retorno de sucesso: $capabilitiesResponse"
@@ -308,7 +334,7 @@ function Stop-QemuBenchmarkProcess {
                     $writer.WriteLine('{"execute":"quit"}')
                     $writer.Flush()
                     $qmpQuitSent = $true
-                    $quitResponse = Read-QemuQmpLine $reader
+                    $quitResponse = Read-QemuQmpResponse $reader
                     $qmpQuitResponseSucceeded = Test-QemuQmpSuccess $quitResponse
                     if ($qmpQuitResponseSucceeded) {
                         $qmpDetail = 'QMP qmp_capabilities e resposta de quit confirmadas.'

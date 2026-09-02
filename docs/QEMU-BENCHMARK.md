@@ -36,4 +36,5 @@ The final homologation checklist requires a Native Bridge evidence report with
 at least 600 seconds of observed stability; a short smoke or baseline window
 does not approve the release.
 Shutdown negotiates QMP, confirms the positive response to `quit`, and never
-uses `adb emu kill`.
+uses `adb emu kill`. The response reader skips asynchronous QMP events and
+accepts only the `return`/`error` message associated with each command.

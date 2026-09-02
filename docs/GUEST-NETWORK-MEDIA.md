@@ -17,7 +17,9 @@ runtime and benchmark assign the network device the stable QMP id
 
 The offline evidence is accepted only after QMP returns positive JSON responses
 for `qmp_capabilities` and both `set_link` commands (NIC down and NIC restore).
-Closing the QMP TCP connection after sending a command is not evidence.
+The reader skips asynchronous QMP events and accepts only the command's
+`return`/`error` response. Closing the QMP TCP connection after sending a
+command is not evidence.
 
 Run it only after the QEMU guest is booted and provisioned:
 
