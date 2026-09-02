@@ -93,14 +93,16 @@ public sealed class AndroidProvisioningService
         if (!string.IsNullOrWhiteSpace(state.DiskFingerprint) &&
             !state.DiskFingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase))
         {
-            throw new RuntimeOperationException(
-                "O disco persistente do Android mudou desde o provisionamento.",
-                $"Fingerprint anterior={state.DiskFingerprint}; atual={fingerprint}; disco={disk}. Revalide o componente local antes de executar.");
+            // qcow2 is the mutable data store: Android, NeoNews, WebView and
+            // TTS legitimately update it during normal operation. The cheap
+            // fingerprint is retained as an audit trail, but must not turn a
+            // valid guest write into a boot blocker.
+            _logs.Warning("provisioning", $"Fingerprint do qcow2 mudou desde a última validação; aceitando a mutação persistente. anterior={state.DiskFingerprint}; atual={fingerprint}; disco={disk}.");
         }
         state.DiskFingerprint = fingerprint;
         // Provision-QemuAndroidRuntime.ps1 records the strong SHA-256 in
-        // ImageHash. Keep it intact; DiskFingerprint is only the cheap
-        // per-boot change marker.
+        // ImageHash. Keep it intact; DiskFingerprint is only a cheap,
+        // last-observed change marker for this mutable qcow2.
         await SaveAsync(state, cancellationToken);
         _logs.Info("provisioning", $"Estrutura local validada. QEMU={qemu}; disco={disk}; ADB={adb}.");
         return state;

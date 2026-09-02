@@ -46,9 +46,11 @@ Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbS
 O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes em `runtime/state/provisioning.json` e não baixa componentes. Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis; o boot normal não instala APKs desconhecidos.
 
 O boot normal exige que esse `provisioning.json` já exista; ele não cria um
-registro de provisionamento incompleto. O SHA-256 forte registrado do disco é
-preservado, e o launcher mantém apenas um fingerprint barato separado para
-detectar mudanças entre boots; estado sem SHA-256/proveniência é rejeitado.
+registro de provisionamento incompleto. O SHA-256 forte registrado no
+provisionamento é preservado, e o launcher mantém um fingerprint barato do
+qcow2 como último estado observado. Como o qcow2 é mutável por definição, uma
+mudança legítima de tamanho/data não bloqueia o boot seguinte; estado sem
+SHA-256/proveniência é rejeitado.
 
 Com o guest online, `scripts/provision/Install-GuestComponents.ps1` faz a
 instalação opt-in desses componentes com `adb install -r`, sem uninstall ou
