@@ -226,6 +226,21 @@ function Start-QemuBenchmarkProcess {
     return [System.Diagnostics.Process]::Start($startInfo)
 }
 
+function Read-QemuQmpLine {
+    param([System.IO.StreamReader]$Reader)
+
+    try {
+        while ($true) {
+            $line = $Reader.ReadLine()
+            if ($null -eq $line) { return $null }
+            if (-not [string]::IsNullOrWhiteSpace($line)) { return $line }
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
 function Stop-QemuBenchmarkProcess {
     param(
         [System.Diagnostics.Process]$Process,
@@ -233,32 +248,90 @@ function Stop-QemuBenchmarkProcess {
         [int]$TimeoutSeconds = 20
     )
 
-    if (-not $Process) { return $true }
+    if (-not $Process) {
+        return [pscustomobject]@{
+            Exited = $true
+            QmpCapabilitiesSucceeded = $false
+            QmpQuitSent = $false
+            QmpShutdownSucceeded = $false
+            ForcedKill = $false
+            QmpDetail = 'no-process'
+        }
+    }
+
+    $qmpCapabilitiesSucceeded = $false
+    $qmpQuitSent = $false
+    $qmpDetail = 'QMP não conectado.'
+    $client = $null
+    $stream = $null
+    $reader = $null
+    $writer = $null
     try {
         $client = [System.Net.Sockets.TcpClient]::new()
         $connectTask = $client.ConnectAsync('127.0.0.1', $QmpPort)
         if ($connectTask.Wait(2000) -and $client.Connected) {
             $stream = $client.GetStream()
             $stream.ReadTimeout = 2000
-            $greeting = New-Object byte[] 1024
-            try { $null = $stream.Read($greeting, 0, $greeting.Length) } catch { }
-            foreach ($command in @('{"execute":"qmp_capabilities"}', '{"execute":"quit"}')) {
-                $payload = [System.Text.Encoding]::UTF8.GetBytes("$command`r`n")
-                $stream.Write($payload, 0, $payload.Length)
-                $stream.Flush()
+            $qmpEncoding = [System.Text.UTF8Encoding]::new($false)
+            $reader = [System.IO.StreamReader]::new($stream, $qmpEncoding, $false, 4096, $true)
+            $writer = [System.IO.StreamWriter]::new($stream, $qmpEncoding, 4096, $true)
+            $greeting = Read-QemuQmpLine $reader
+            if ([string]::IsNullOrWhiteSpace($greeting)) {
+                $qmpDetail = 'QMP não retornou o greeting JSON.'
             }
-            $stream.Dispose()
+            else {
+                $writer.WriteLine('{"execute":"qmp_capabilities"}')
+                $writer.Flush()
+                $capabilitiesResponse = Read-QemuQmpLine $reader
+                $qmpCapabilitiesSucceeded = $capabilitiesResponse -match '(?i)"return"\s*:' -and $capabilitiesResponse -notmatch '(?i)"error"\s*:'
+                if (-not $qmpCapabilitiesSucceeded) {
+                    $qmpDetail = "QMP qmp_capabilities sem retorno de sucesso: $capabilitiesResponse"
+                }
+                else {
+                    $writer.WriteLine('{"execute":"quit"}')
+                    $writer.Flush()
+                    $qmpQuitSent = $true
+                    $qmpDetail = 'QMP qmp_capabilities confirmado e quit enviado.'
+                }
+            }
         }
-        $client.Dispose()
-    } catch { }
-
-    if (-not $Process.HasExited -and -not $Process.WaitForExit([math]::Max(5000, $TimeoutSeconds * 1000))) {
-        try { $Process.Kill() } catch { }
-        $null = $Process.WaitForExit(5000)
+        else {
+            $qmpDetail = "QMP não aceitou conexão na porta $QmpPort."
+        }
     }
-    $exited = $Process.HasExited
+    catch {
+        $qmpDetail = "Falha ao negociar QMP: $($_.Exception.Message)"
+    }
+    finally {
+        if ($writer) { try { $writer.Dispose() } catch { } }
+        if ($reader) { try { $reader.Dispose() } catch { } }
+        if ($stream) { try { $stream.Dispose() } catch { } }
+        if ($client) { try { $client.Dispose() } catch { } }
+    }
+
+    $forcedKill = $false
+    try {
+        if (-not $Process.HasExited -and -not $Process.WaitForExit([math]::Max(5000, $TimeoutSeconds * 1000))) {
+            try { $Process.Kill() } catch { }
+            $forcedKill = $true
+            $null = $Process.WaitForExit(5000)
+        }
+    }
+    catch {
+        $qmpDetail = "$qmpDetail Falha ao aguardar QEMU: $($_.Exception.Message)"
+    }
+    $exited = $false
+    try { $exited = $Process.HasExited } catch { }
+    $qmpShutdownSucceeded = $qmpCapabilitiesSucceeded -and $qmpQuitSent -and $exited -and -not $forcedKill
     $Process.Dispose()
-    return $exited
+    return [pscustomobject]@{
+        Exited = $exited
+        QmpCapabilitiesSucceeded = $qmpCapabilitiesSucceeded
+        QmpQuitSent = $qmpQuitSent
+        QmpShutdownSucceeded = $qmpShutdownSucceeded
+        ForcedKill = $forcedKill
+        QmpDetail = $qmpDetail
+    }
 }
 
 function Get-QemuBenchmarkLines {

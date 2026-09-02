@@ -39,6 +39,14 @@ for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
     $metrics = $null
     $stability = $null
     $stopped = $false
+    $stopResult = [pscustomobject]@{
+        Exited = $false
+        QmpCapabilitiesSucceeded = $false
+        QmpQuitSent = $false
+        QmpShutdownSucceeded = $false
+        ForcedKill = $false
+        QmpDetail = 'not-attempted'
+    }
     try {
         $process = Start-QemuBenchmarkProcess -Executable $paths.Qemu -Arguments $arguments -WorkingDirectory $repositoryRoot
         $processId = $process.Id
@@ -57,7 +65,8 @@ for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
     }
     finally {
         if ($process) {
-            $stopped = Stop-QemuBenchmarkProcess -Process $process -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+            $stopResult = Stop-QemuBenchmarkProcess -Process $process -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+            $stopped = $stopResult.Exited
             $process = $null
         }
     }
@@ -70,6 +79,11 @@ for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
         bootSeconds = if ($milestones) { $milestones.bootSeconds } else { $null }
         adbToBootSeconds = if ($milestones) { $milestones.adbToBootSeconds } else { $null }
         stopped = $stopped
+        qmpCapabilitiesSucceeded = $stopResult.QmpCapabilitiesSucceeded
+        qmpQuitSent = $stopResult.QmpQuitSent
+        qmpShutdownSucceeded = $stopResult.QmpShutdownSucceeded
+        forcedKill = $stopResult.ForcedKill
+        qmpDetail = $stopResult.QmpDetail
         app = $launch
         hostIdle = $hostIdle
         hostWorkload = $hostWorkload
@@ -78,7 +92,7 @@ for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
     }
     if ($iteration -lt $Iterations) { Start-Sleep -Seconds 2 }
 }
-$successful = @($runs | Where-Object { $_.booted -and $_.stopped -and $_.guest.identityMatches -and $_.app.launchSucceeded -and $_.app.activityRunning -and $_.stability.stable })
+$successful = @($runs | Where-Object { $_.booted -and $_.stopped -and $_.qmpShutdownSucceeded -and $_.guest.identityMatches -and $_.app.launchSucceeded -and $_.app.activityRunning -and $_.stability.stable })
 $bootValues = @($runs | Where-Object { $null -ne $_.bootSeconds } | ForEach-Object { [double]$_.bootSeconds })
 $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')

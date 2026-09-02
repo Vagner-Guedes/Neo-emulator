@@ -36,6 +36,14 @@ $hostIdle = $null
 $hostWorkload = $null
 $stability = $null
 $stopped = $false
+$stopResult = [pscustomobject]@{
+    Exited = $false
+    QmpCapabilitiesSucceeded = $false
+    QmpQuitSent = $false
+    QmpShutdownSucceeded = $false
+    ForcedKill = $false
+    QmpDetail = 'not-attempted'
+}
 try {
     $milestones = Wait-QemuBenchmarkMilestones -AdbPath $paths.Adb -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
     if ($milestones.booted) {
@@ -52,7 +60,8 @@ try {
 }
 finally {
     if ($process) {
-        $stopped = Stop-QemuBenchmarkProcess -Process $process -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+        $stopResult = Stop-QemuBenchmarkProcess -Process $process -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+        $stopped = $stopResult.Exited
         $process = $null
     }
 }
@@ -60,13 +69,13 @@ $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     backend = 'qemu-android-x86'
     acceleration = 'whpx'
-    qemu = [ordered]@{ executable = $paths.Qemu; processId = $processId; disk = $paths.Disk; gpu = $config.android.qemu.gpu; stopped = $stopped }
+    qemu = [ordered]@{ executable = $paths.Qemu; processId = $processId; disk = $paths.Disk; gpu = $config.android.qemu.gpu; stopped = $stopped; qmpCapabilitiesSucceeded = $stopResult.QmpCapabilitiesSucceeded; qmpQuitSent = $stopResult.QmpQuitSent; qmpShutdownSucceeded = $stopResult.QmpShutdownSucceeded; forcedKill = $stopResult.ForcedKill; qmpDetail = $stopResult.QmpDetail }
     adb = [ordered]@{ serial = $serial; transport = $config.android.adb.transport; ready = $milestones.adbReady; readySeconds = $milestones.adbReadySeconds; booted = $milestones.booted; bootSeconds = $milestones.bootSeconds; adbToBootSeconds = $milestones.adbToBootSeconds }
     app = $launch
     host = [ordered]@{ idle = $hostIdle; neonewsWorkload = $hostWorkload }
     guest = $metrics
     stability = $stability
-    status = if ($milestones.booted -and $launch.launchSucceeded -and $launch.activityRunning -and $stability.stable -and $stopped) { 'baseline-collected' } elseif (-not $milestones.booted) { 'boot-timeout' } elseif (-not $stopped) { 'shutdown-failed' } else { 'neonews-or-stability-failed' }
+    status = if ($milestones.booted -and $launch.launchSucceeded -and $launch.activityRunning -and $stability.stable -and $stopResult.QmpShutdownSucceeded) { 'baseline-collected' } elseif (-not $milestones.booted) { 'boot-timeout' } elseif (-not $stopped -or -not $stopResult.QmpShutdownSucceeded) { 'shutdown-not-confirmed' } else { 'neonews-or-stability-failed' }
 }
 $json = $result | ConvertTo-Json -Depth 12
 if ($ReportPath) {

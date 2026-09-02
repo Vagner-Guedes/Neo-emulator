@@ -55,6 +55,8 @@ continua exigindo origem/licenca por componente.
 
 O checklist final agora exige evidencia Native Bridge com janela minima de 600 segundos, identidade do manifesto do APK e exit codes zero nos comandos criticos de instalacao, launch e probes. A estabilidade integrada tambem exige observacao explicita de conteudo real do NeoNews em reproducao no mesmo executavel publicado. No ambiente atual, o checklist permanece `not-approved` porque QEMU/ADB, guest Android, Native Bridge, WebView e RHVoice nao estao provisionados.
 
+Os relatorios de benchmark so podem aprovar o gate de desligamento quando registram a negociacao QMP, o envio de `quit`, a saida do processo e `forcedKill=false` em todas as execucoes.
+
 ## Contrato do runtime
 
 O arquivo [`config/runtime.json`](../config/runtime.json) usa:

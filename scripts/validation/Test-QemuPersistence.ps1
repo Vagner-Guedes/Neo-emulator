@@ -31,6 +31,22 @@ $firstProcess = $null
 $secondProcess = $null
 $firstStopped = $false
 $secondStopped = $false
+$firstStopResult = [pscustomobject]@{
+    Exited = $false
+    QmpCapabilitiesSucceeded = $false
+    QmpQuitSent = $false
+    QmpShutdownSucceeded = $false
+    ForcedKill = $false
+    QmpDetail = 'not-attempted'
+}
+$secondStopResult = [pscustomobject]@{
+    Exited = $false
+    QmpCapabilitiesSucceeded = $false
+    QmpQuitSent = $false
+    QmpShutdownSucceeded = $false
+    ForcedKill = $false
+    QmpDetail = 'not-attempted'
+}
 $firstBooted = $false
 $secondBooted = $false
 $readBack = ''
@@ -44,19 +60,21 @@ try {
     $push = & $paths.Adb -s $serial push $markerFile $GuestPath 2>&1
     $pushCode = $LASTEXITCODE
     if ($pushCode -ne 0) { throw "Não foi possível gravar o marcador no guest: $(($push | Out-String).Trim())" }
-    $firstStopped = Stop-QemuBenchmarkProcess -Process $firstProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+    $firstStopResult = Stop-QemuBenchmarkProcess -Process $firstProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+    $firstStopped = $firstStopResult.Exited
     $firstProcess = $null
     if (-not $firstStopped) { throw 'O primeiro processo QEMU não encerrou.' }
 
     $secondProcess = Start-QemuBenchmarkProcess -Executable $paths.Qemu -Arguments $arguments -WorkingDirectory $repositoryRoot
     $secondBooted = Wait-QemuBenchmarkBoot -AdbPath $paths.Adb -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
     if ($secondBooted) { $readBack = (Invoke-QemuBenchmarkAdb -AdbPath $paths.Adb -Serial $serial -Arguments @('shell', 'cat', $GuestPath)).Text }
-    $secondStopped = Stop-QemuBenchmarkProcess -Process $secondProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+    $secondStopResult = Stop-QemuBenchmarkProcess -Process $secondProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
+    $secondStopped = $secondStopResult.Exited
     $secondProcess = $null
 }
 finally {
-    if ($firstProcess) { try { $firstStopped = Stop-QemuBenchmarkProcess -Process $firstProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds) } catch { } }
-    if ($secondProcess) { try { $secondStopped = Stop-QemuBenchmarkProcess -Process $secondProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds) } catch { } }
+    if ($firstProcess) { try { $firstStopResult = Stop-QemuBenchmarkProcess -Process $firstProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds); $firstStopped = $firstStopResult.Exited } catch { } }
+    if ($secondProcess) { try { $secondStopResult = Stop-QemuBenchmarkProcess -Process $secondProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds); $secondStopped = $secondStopResult.Exited } catch { } }
     Remove-Item -LiteralPath $markerFile -Force -ErrorAction SilentlyContinue
 }
 
@@ -71,10 +89,16 @@ $result = [ordered]@{
     guestPath = $GuestPath
     firstBooted = $firstBooted
     firstShutdownSucceeded = $firstStopped
+    firstQmpShutdownSucceeded = $firstStopResult.QmpShutdownSucceeded
+    firstForcedKill = $firstStopResult.ForcedKill
+    firstQmpDetail = $firstStopResult.QmpDetail
     secondBooted = $secondBooted
     secondShutdownSucceeded = $secondStopped
+    secondQmpShutdownSucceeded = $secondStopResult.QmpShutdownSucceeded
+    secondForcedKill = $secondStopResult.ForcedKill
+    secondQmpDetail = $secondStopResult.QmpDetail
     markerPersisted = $persisted
-    status = if ($persisted -and $firstStopped -and $secondStopped) { 'validated' } else { 'not-validated' }
+    status = if ($persisted -and $firstStopped -and $secondStopped -and $firstStopResult.QmpShutdownSucceeded -and $secondStopResult.QmpShutdownSucceeded) { 'validated' } else { 'not-validated' }
 }
 $json = $result | ConvertTo-Json -Depth 10
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
