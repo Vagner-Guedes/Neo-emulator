@@ -24,7 +24,7 @@ O projeto agora possui o caminho de runtime preparado para a homologação funci
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown e limite de tentativas | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
 | Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
-| Regressão | `Test-RuntimeRepository.ps1` | 18 scripts, JSON e ignore checks aprovados |
+| Regressão | `Test-RuntimeRepository.ps1` | 24 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; APK externo copiado sem alteração (58.954.286 bytes) |

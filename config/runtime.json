@@ -104,7 +104,7 @@
       "audioInput": true,
       "audioOutput": true,
       "profile": "signage-landscape",
-      "benchmarkScript": "scripts/benchmark/Measure-AndroidRuntime.ps1"
+      "benchmarkScript": "scripts/benchmark/Measure-QemuAndroidRuntime.ps1"
     },
     "kiosk": {
       "displaySize": "1920x1080",
