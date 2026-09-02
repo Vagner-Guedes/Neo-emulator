@@ -84,8 +84,8 @@ public sealed class KioskService
             if (windowRequired && !windowCaptured)
             {
                 throw new RuntimeOperationException(
-                    "NÃ£o foi possÃ­vel localizar a janela grÃ¡fica do Android.",
-                    $"Backend={_backend.Name}; PID={_backend.ProcessId}; a janela principal do processo nÃ£o foi encontrada.");
+                    "Não foi possível localizar a janela gráfica do Android.",
+                    $"Backend={_backend.Name}; PID={_backend.ProcessId}; a janela principal do processo não foi encontrada.");
             }
             IsActive = true;
             progress?.Report(new RuntimeProgress("Kiosk ativo", "Android em modo imersivo.", 100));

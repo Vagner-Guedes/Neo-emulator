@@ -16,7 +16,7 @@ Consulte [`docs/FINAL-REPORT.md`](docs/FINAL-REPORT.md) para evidências e pend�
 
 Forneça o APK em `packages/neonews/neonews.apk` e execute os validadores:
 
-Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do repositório; a publicação o copia automaticamente para `packages/neonews/neonews.apk`, e o botão “Iniciar sistema” tenta instalá-lo antes de abrir a atividade.
+Também é aceito colocar o arquivo fornecido como `app.apk` na raiz do repositório para execução local; a publicação não copia nem redistribui esse binário. Depois de publicar, o operador deve provisioná-lo separadamente em `packages/neonews/neonews.apk`; o botão “Iniciar sistema” tenta instalá-lo antes de abrir a atividade.
 
 ```powershell
 .\scripts\validation\Test-NativeBridge.ps1

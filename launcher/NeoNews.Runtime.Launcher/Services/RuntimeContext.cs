@@ -79,8 +79,8 @@ public sealed class RuntimeContext
         if (File.Exists(configured)) return configured;
 
         // Development convenience: the supplied proprietary APK may be placed
-        // at the repository root as app.apk. The publish script copies it to
-        // the configured distribution path when it is present.
+        // at the repository root as app.apk. Publication never copies it;
+        // the operator must provision it separately in the destination.
         var rootApk = Path.Combine(RootDirectory, "app.apk");
         return File.Exists(rootApk) ? rootApk : configured;
     }

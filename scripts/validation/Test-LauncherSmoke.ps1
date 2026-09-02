@@ -25,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace($ExecutablePath)) {
     $ExecutablePath = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 }
 if ([string]::IsNullOrWhiteSpace($ExecutablePath) -or -not (Test-Path -LiteralPath $ExecutablePath)) {
-    throw "NeoNewsRuntime.exe nÃ£o encontrado. Informe -ExecutablePath ou publique o runtime antes do smoke test."
+    throw "NeoNewsRuntime.exe não encontrado. Informe -ExecutablePath ou publique o runtime antes do smoke test."
 }
 $ExecutablePath = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $workingDirectory = Split-Path -Parent $ExecutablePath
@@ -168,4 +168,4 @@ $reportDirectory = Split-Path -Parent $reportFullPath
 if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
 Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
 $json
-if ($result.status -ne 'validated') { throw "Smoke test do launcher nÃ£o validado: status=$($result.status). Consulte $reportFullPath." }
+if ($result.status -ne 'validated') { throw "Smoke test do launcher não validado: status=$($result.status). Consulte $reportFullPath." }

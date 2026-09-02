@@ -45,32 +45,15 @@ Copy-Item -Path (Join-Path $repositoryRoot "docs\*") -Destination (Join-Path $ou
 Copy-Item -Path (Join-Path $repositoryRoot "README.md") -Destination $outputPath -Force
 
 # Runtime binaries and guest images are intentionally external to the EXE.
-# Copy only local, explicitly provisioned directories; never download or
-# synthesize third-party components during publication.
+# Copy only the local runtime directories required by the portable layout;
+# never download, synthesize, or copy application/component packages during
+# publication. The operator provisions those packages separately in the
+# destination directory after checking their license and provenance.
 foreach ($runtimeDirectory in @("qemu", "android", "adb")) {
     $sourceDirectory = Join-Path $repositoryRoot ("runtime\" + $runtimeDirectory)
     $destinationDirectory = Join-Path $outputPath ("runtime\" + $runtimeDirectory)
     if (Test-Path -LiteralPath $sourceDirectory) {
         Copy-Item -LiteralPath $sourceDirectory -Destination $destinationDirectory -Recurse -Force
-    }
-}
-$apkCandidates = @(
-    (Join-Path $repositoryRoot "packages\neonews\neonews.apk"),
-    (Join-Path $repositoryRoot "app.apk")
-)
-$sourceApk = $apkCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if ($sourceApk) {
-    Copy-Item -LiteralPath $sourceApk -Destination (Join-Path $outputPath "packages\neonews\neonews.apk") -Force
-    Write-Host "APK NeoNews incluído em $outputPath\packages\neonews\neonews.apk"
-}
-
-foreach ($packageDirectory in @("webview", "tts", "nativebridge")) {
-    $sourceDirectory = Join-Path $repositoryRoot ("packages\" + $packageDirectory)
-    $destinationDirectory = Join-Path $outputPath ("packages\" + $packageDirectory)
-    if (Test-Path -LiteralPath $sourceDirectory) {
-        Get-ChildItem -LiteralPath $sourceDirectory -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.Extension -in @(".apk", ".zip", ".dll", ".so") } |
-            Copy-Item -Destination $destinationDirectory -Force
     }
 }
 Write-Host "NeoNewsRuntime publicado em $outputPath"

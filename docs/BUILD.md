@@ -33,7 +33,7 @@ dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.cspr
 
 Também é possível executar `scripts/build/Publish-NeoNewsRuntime.ps1`. O diretório de distribuição contém `NeoNewsRuntime.exe`, `config/runtime.json`, `runtime/qemu`, `runtime/android`, `runtime/adb`, `runtime/state`, `packages/`, `logs/`, `reports/` e `docs/`; o PDB pode ser mantido para diagnóstico. QEMU, ADB, a imagem Android e o disco persistente não são embutidos no executável e são copiados somente quando já existem localmente.
 
-Quando `app.apk` existir na raiz do repositório (ou `packages/neonews/neonews.apk` já existir), o script de publicação o inclui na distribuição. O comando `--start` também instala automaticamente esse APK autorizado quando o pacote ainda não estiver presente no Android.
+O script de publicação não copia APKs, Native Bridge, WebView, RHVoice ou outros pacotes externos. O operador deve provisionar esses arquivos separadamente no diretório `packages/` da distribuição, após confirmar origem, licença e hash. Quando o APK autorizado estiver em `packages/neonews/neonews.apk`, o comando `--start` instala-o automaticamente se o pacote ainda não estiver presente no Android.
 
 O diagnóstico só marca `installSucceeded=true` quando observou `adb install -r`
 retornar `Success`; iniciar um APK já instalado pode comprovar estabilidade e

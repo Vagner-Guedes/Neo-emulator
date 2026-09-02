@@ -34,7 +34,7 @@ falhar.
 | Regressão | `Test-RuntimeRepository.ps1` | 28 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
-| Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; APK externo copiado sem alteração (58.954.286 bytes) |
+| Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |
 | Checklist | `Test-HomologationChecklist.ps1` | 30 gates agregados; pendências nunca viram aprovação |
 
 ## Contrato do runtime
@@ -50,7 +50,7 @@ O arquivo [`config/runtime.json`](../config/runtime.json) usa:
 - Native Bridge obrigatório;
 - WebView `119.0.6045.193` e RHVoice `pt-BR` obrigatórios no fluxo comercial.
 
-O provisionamento é separado da execução normal. [`Provision-QemuAndroidRuntime.ps1`](../scripts/provision/Provision-QemuAndroidRuntime.ps1) valida componentes locais, registra hashes e não baixa binários. O build copia apenas componentes locais explicitamente existentes; nenhum binário proprietário é incorporado ao executável ou versionado.
+O provisionamento é separado da execução normal. [`Provision-QemuAndroidRuntime.ps1`](../scripts/provision/Provision-QemuAndroidRuntime.ps1) valida componentes locais, registra hashes e não baixa binários. O build copia somente os diretórios de runtime necessários; APK, Native Bridge, WebView, RHVoice e outros pacotes externos devem ser provisionados separadamente e não são incorporados ao executável ou versionados.
 
 ## Homologação pendente
 
