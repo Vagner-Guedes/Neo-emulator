@@ -79,6 +79,8 @@ $runtimeControllerPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Lau
 $runtimeControllerSource = if (Test-Path -LiteralPath $runtimeControllerPath) { Get-Content -LiteralPath $runtimeControllerPath -Raw -Encoding utf8 } else { '' }
 $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRuntime.ps1'
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
+$componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1'
+$componentProvisioningSource = if (Test-Path -LiteralPath $componentProvisioningPath) { Get-Content -LiteralPath $componentProvisioningPath -Raw -Encoding utf8 } else { '' }
 $launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
 $launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
 $contractChecks = [ordered]@{
@@ -100,7 +102,8 @@ $contractChecks = [ordered]@{
     normalBootRequiresProvisioningState = $launcherSourceText -match 'Provisionamento local ainda' -and $launcherSourceText -match 'DiskFingerprint'
     provisioningPreservesStrongDiskHash = $launcherSourceText -match 'Keep it intact' -and $launcherSourceText -match 'ImageHash'
     provisioningRejectsWeakOrMissingHash = $launcherSourceText -match 'IsSha256' -and $launcherSourceText -match 'SHA-256 forte'
-    componentProvisioningMergesState = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1') -Raw -Encoding utf8) -match 'existingState\.provenance' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1') -Raw -Encoding utf8) -match 'existingState\.imageHash'
+    componentProvisioningMergesState = $componentProvisioningSource -match 'existingState\.provenance' -and $componentProvisioningSource -match 'existingState\.imageHash'
+    componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
 }
 foreach ($check in $contractChecks.GetEnumerator()) {

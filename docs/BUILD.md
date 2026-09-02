@@ -50,7 +50,9 @@ detectar mudanças entre boots; estado sem SHA-256/proveniência é rejeitado.
 
 Com o guest online, `scripts/provision/Install-GuestComponents.ps1` faz a
 instalação opt-in desses componentes com `adb install -r`, sem uninstall ou
-limpeza de dados. A síntese RHVoice continua exigindo um teste real separado.
+limpeza de dados. O script exige o estado base com SHA-256 e provenance antes
+de instalar qualquer componente, e preserva esses campos ao atualizá-lo. A
+síntese RHVoice continua exigindo um teste real separado.
 
 Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.
 

@@ -28,6 +28,18 @@ function Resolve-ConfiguredPath {
     return [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot ($ConfiguredPath -replace '/', '\')))
 }
 
+$statePath = Resolve-ConfiguredPath $config.android.provisioning.statePath
+if (-not (Test-Path -LiteralPath $statePath)) {
+    throw "Estado base de provisionamento não encontrado: $statePath. Execute Provision-QemuAndroidRuntime.ps1 antes de instalar componentes."
+}
+try { $existingState = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json }
+catch { throw "O estado de provisionamento existente não pôde ser lido: $statePath. $($_.Exception.Message)" }
+$existingImageHash = [string]$existingState.imageHash
+$existingProvenance = if ($existingState.provenance) { @($existingState.provenance.PSObject.Properties) } else { @() }
+if ($existingImageHash -notmatch '^[0-9a-fA-F]{64}$' -or $existingProvenance.Count -eq 0) {
+    throw "O estado base de provisionamento é incompleto ou não possui SHA-256/proveniência fortes: $statePath. Reexecute Provision-QemuAndroidRuntime.ps1."
+}
+
 function Invoke-Adb {
     param([string[]]$Arguments)
     $output = & $script:adbPath @Arguments 2>&1
@@ -128,18 +140,11 @@ if ($SetRhVoiceDefault) {
     }
 }
 
-$statePath = Resolve-ConfiguredPath $config.android.provisioning.statePath
 $stateDirectory = Split-Path -Parent $statePath
 if (-not (Test-Path -LiteralPath $stateDirectory)) { New-Item -ItemType Directory -Path $stateDirectory -Force | Out-Null }
 $reportFullPath = if ([System.IO.Path]::IsPathRooted($ReportPath)) { $ReportPath } else { Join-Path $repositoryRoot $ReportPath }
 $reportDirectory = Split-Path -Parent $reportFullPath
 if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
-
-$existingState = $null
-if (Test-Path -LiteralPath $statePath) {
-    try { $existingState = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json }
-    catch { throw "O estado de provisionamento existente não pôde ser lido: $statePath. $($_.Exception.Message)" }
-}
 
 $provenance = [ordered]@{}
 if ($existingState -and $existingState.provenance) {
