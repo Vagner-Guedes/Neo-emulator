@@ -73,6 +73,16 @@ $origins = [ordered]@{
     webView = $WebViewOrigin
     tts = $TtsOrigin
 }
+$requiredOriginNames = @('qemu', 'adb', 'disk')
+if ($RequireInstallerImage) { $requiredOriginNames += 'installerImage' }
+if ($RequireNativeBridge) { $requiredOriginNames += 'nativeBridge' }
+if ($RequireWebView) { $requiredOriginNames += 'webView' }
+if ($RequireTts) { $requiredOriginNames += 'tts' }
+foreach ($requiredOriginName in $requiredOriginNames) {
+    if ([string]::IsNullOrWhiteSpace([string]$origins[$requiredOriginName])) {
+        throw "Informe -$requiredOriginName`Origin para registrar a origem/licença do componente provisionado."
+    }
+}
 $provenance = [ordered]@{}
 foreach ($name in $paths.Keys) {
     $hasFile = $fileRecords.Contains($name)

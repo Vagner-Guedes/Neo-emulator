@@ -43,7 +43,7 @@ ABI, mas não falsifica a evidência de uma atualização.
 
 Os limites principais ficam em `timeouts` dentro de `config/runtime.json` (`adbSeconds`, `bootSeconds`, `neoNewsStartSeconds`, `installSeconds`, `emulatorStopSeconds`, `qemuShutdownSeconds`, `adbRetrySeconds` e `nativeBridgeStabilitySeconds`) e podem ser ajustados sem recompilar o launcher.
 
-O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes em `runtime/state/provisioning.json` e não baixa componentes. Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis; o boot normal não instala APKs desconhecidos.
+O provisionamento é explícito e offline: `scripts/provision/Provision-QemuAndroidRuntime.ps1` valida QEMU, ADB, a imagem Android e o qcow2 local, registra hashes e origens em `runtime/state/provisioning.json` e não baixa componentes. Informe `-QemuOrigin`, `-AdbOrigin` e, quando aplicável, `-AndroidImageOrigin`; Native Bridge, WebView e RHVoice também precisam ser fornecidos localmente e legalmente redistribuíveis. O boot normal não instala APKs desconhecidos.
 
 O boot normal exige que esse `provisioning.json` já exista; ele não cria um
 registro de provisionamento incompleto. O SHA-256 forte registrado no

@@ -22,14 +22,18 @@ O disco não é recriado durante o boot nem durante a atualização do launcher.
 
 ## Provisionamento
 
-Ao instalar Native Bridge, WebView ou RHVoice, informe uma origem/licenca
-verificavel nos tres parametros `*Origin`; o script rejeita componentes sem
-essa proveniencia registrada e nunca baixa binarios.
+Ao provisionar a base, informe origens verificáveis para QEMU e ADB (e para a
+imagem quando ela for exigida); ao instalar Native Bridge, WebView ou RHVoice,
+informe também os respectivos parâmetros `*Origin`. Os scripts rejeitam
+componentes sem essa proveniência registrada e nunca baixam binários.
 
 Execute:
 
 ```powershell
-.\scripts\provision\Provision-QemuAndroidRuntime.ps1 -RequireInstallerImage
+.\scripts\provision\Provision-QemuAndroidRuntime.ps1 -RequireInstallerImage `
+  -QemuOrigin "<origem aprovada/licenca do QEMU>" `
+  -AdbOrigin "<origem aprovada/licenca do ADB>" `
+  -AndroidImageOrigin "<origem aprovada/licenca da imagem Android-x86>"
 ```
 
 O script apenas valida arquivos locais e salva hashes no estado de provisionamento. Ele não baixa uma ISO, QEMU, Native Bridge, WebView ou TTS.

@@ -11,7 +11,10 @@ Consulte [`docs/FINAL-REPORT.md`](docs/FINAL-REPORT.md) para evidências e pend�
 ## Primeira execução
 
 ```powershell
-.\scripts\provision\Provision-QemuAndroidRuntime.ps1 -RequireInstallerImage
+.\scripts\provision\Provision-QemuAndroidRuntime.ps1 -RequireInstallerImage `
+  -QemuOrigin "<origem aprovada/licenca do QEMU>" `
+  -AdbOrigin "<origem aprovada/licenca do ADB>" `
+  -AndroidImageOrigin "<origem aprovada/licenca da imagem Android-x86>"
 ```
 
 Forneça o APK em `packages/neonews/neonews.apk` e execute os validadores:

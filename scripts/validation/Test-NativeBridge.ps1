@@ -27,9 +27,13 @@ if ($activityName.StartsWith('.')) { $activityName = $activityName.Substring(1) 
 if ($activityName.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $activityName = $activityName.Substring($packageName.Length + 1) }
 $activity = "$packageName/.$activityName"
 
+function Invoke-AdbResult([string[]]$Arguments) {
+    $output = & $adbPath @Arguments 2>&1
+    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+}
+
 function Invoke-Adb([string[]]$Arguments) {
-    $output = & $adbPath @Arguments 2>&1 | Out-String
-    return $output.Trim()
+    return (Invoke-AdbResult $Arguments).Text
 }
 
 function Test-ActivityRunning([string]$Dump) {
@@ -45,28 +49,39 @@ function Test-ActivityRunning([string]$Dump) {
     }).Count -gt 0
 }
 
-$null = Invoke-Adb @('start-server')
-$null = Invoke-Adb @('connect', $serial)
+$serverResult = Invoke-AdbResult @('start-server')
+if ($serverResult.ExitCode -ne 0) { throw "ADB start-server falhou: $($serverResult.Text)" }
+$null = Invoke-AdbResult @('connect', $serial)
 $deadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
 $state = ''
 $boot = ''
 while ((Get-Date).ToUniversalTime() -lt $deadline) {
     if ($serial -match ':') { $null = Invoke-Adb @('connect', $serial) }
-    $state = Invoke-Adb @('-s', $serial, 'get-state')
-    if ($state -eq 'device') {
-        $boot = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'sys.boot_completed')
-        if ($boot -eq '1') { break }
+    $stateResult = Invoke-AdbResult @('-s', $serial, 'get-state')
+    $state = $stateResult.Text
+    if ($stateResult.ExitCode -eq 0 -and $state -eq 'device') {
+        $bootResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'sys.boot_completed')
+        $boot = $bootResult.Text
+        if ($bootResult.ExitCode -eq 0 -and $boot -eq '1') { break }
     }
     Start-Sleep -Seconds 2
 }
 if ($state -ne 'device' -or $boot -ne '1') { throw "ADB não ficou pronto. serial=$serial state=$state boot=$boot" }
 
-$property = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'ro.dalvik.vm.native.bridge')
-$guestAbi = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abi')
-$guestAbiList = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abilist')
-$abi2 = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abi2')
-$release = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'ro.build.version.release')
-$apiLevel = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'ro.build.version.sdk')
+$propertyResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.dalvik.vm.native.bridge')
+$guestAbiResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abi')
+$guestAbiListResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abilist')
+$abi2Result = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abi2')
+$releaseResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.build.version.release')
+$apiLevelResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.build.version.sdk')
+$property = $propertyResult.Text
+$guestAbi = $guestAbiResult.Text
+$guestAbiList = $guestAbiListResult.Text
+$abi2 = $abi2Result.Text
+$release = $releaseResult.Text
+$apiLevel = $apiLevelResult.Text
+$propertyExitCodes = @($propertyResult, $guestAbiResult, $guestAbiListResult, $abi2Result, $releaseResult, $apiLevelResult) | ForEach-Object { [int]$_.ExitCode }
+$guestPropertiesReadable = @($propertyExitCodes | Where-Object { $_ -ne 0 }).Count -eq 0
 $guestIdentityMatches = $release -eq [string]$config.android.release -and $apiLevel -eq [string]$config.android.apiLevel
 $bridgeReady = -not [string]::IsNullOrWhiteSpace($property) -and $property -ne '0' -and ($guestAbi -in @('x86', 'x86_64')) -and $guestAbiList -match '(?i)(^|,)(x86|x86_64)(,|$)'
 
@@ -85,41 +100,53 @@ if (Test-Path -LiteralPath $ApkPath) {
 $installOutput = ''
 $installSucceeded = $false
 if (Test-Path -LiteralPath $ApkPath) {
-    $installOutput = Invoke-Adb @('-s', $serial, 'install', '-r', $ApkPath)
-    $installExitCode = $LASTEXITCODE
+    $installResult = Invoke-AdbResult @('-s', $serial, 'install', '-r', $ApkPath)
+    $installOutput = $installResult.Text
+    $installExitCode = $installResult.ExitCode
     $installSucceeded = $installExitCode -eq 0 -and $installOutput -match '(?im)\bSuccess\b'
 }
-$packageDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'package', $packageName)
+$packageDumpResult = Invoke-AdbResult @('-s', $serial, 'shell', 'dumpsys', 'package', $packageName)
+$packageDump = $packageDumpResult.Text
+$packageDumpExitCode = $packageDumpResult.ExitCode
 $primaryCpuAbi = if ($packageDump -match 'primaryCpuAbi=([^\s]+)') { $Matches[1] } else { $null }
 $preferredApkAbi = if ($config.android.nativeBridge.preferredAbi) { [string]$config.android.nativeBridge.preferredAbi } else { [string]$config.android.preferredApkAbi }
 $selectedApkAbi = if ($primaryCpuAbi -and $apkAbis -contains $primaryCpuAbi -and $primaryCpuAbi -eq $preferredApkAbi) { $primaryCpuAbi } else { $null }
 $launchOutput = ''
 $launchSucceeded = $false
 if ($installSucceeded -or $packageDump -match "Package \[$([regex]::Escape($packageName))\]") {
-    $launchOutput = Invoke-Adb @('-s', $serial, 'shell', 'am', 'start', '-W', '-n', $activity)
-    $launchExitCode = $LASTEXITCODE
+    $launchResult = Invoke-AdbResult @('-s', $serial, 'shell', 'am', 'start', '-W', '-n', $activity)
+    $launchOutput = $launchResult.Text
+    $launchExitCode = $launchResult.ExitCode
     $launchSucceeded = $launchExitCode -eq 0 -and $launchOutput -notmatch '(?im)(Error:|Exception|does not exist)'
 }
 Start-Sleep -Seconds ([math]::Max(1, $StabilitySeconds))
-$activityDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'activity', 'activities')
-$activityRunning = Test-ActivityRunning $activityDump
-$logcat = Invoke-Adb @('-s', $serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '240')
+$activityDumpResult = Invoke-AdbResult @('-s', $serial, 'shell', 'dumpsys', 'activity', 'activities')
+$activityDump = $activityDumpResult.Text
+$activityDumpExitCode = $activityDumpResult.ExitCode
+$activityRunning = $activityDumpExitCode -eq 0 -and (Test-ActivityRunning $activityDump)
+$logcatResult = Invoke-AdbResult @('-s', $serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '240')
+$logcat = $logcatResult.Text
+$logcatExitCode = $logcatResult.ExitCode
 $relevantLogcat = @($logcat -split "`r?`n" | Where-Object { $_ -match 'com\.in9midia\.neonews\.player|AndroidRuntime|linker|native bridge|SIGSEGV|FATAL|dex2oat|chromium|WebView' })
 $failurePattern = 'UnsatisfiedLinkError|linker.*(error|fail)|SIGSEGV|FATAL EXCEPTION|dex2oat.*(error|fail)|zygote.*(error|fail)|chromium.*(error|fail)|WebView.*(error|fail)'
 $initialErrors = @($relevantLogcat | Where-Object { $_ -match $failurePattern })
-$runtimeStable = $guestIdentityMatches -and $bridgeReady -and $installSucceeded -and $selectedApkAbi -and $launchSucceeded -and $activityRunning -and $initialErrors.Count -eq 0
+$runtimeStable = $guestPropertiesReadable -and $guestIdentityMatches -and $bridgeReady -and $installSucceeded -and $packageDumpExitCode -eq 0 -and $selectedApkAbi -and $launchSucceeded -and $activityRunning -and $logcatExitCode -eq 0 -and $initialErrors.Count -eq 0
 
 $restartResults = New-Object System.Collections.Generic.List[object]
 for ($restart = 1; $restart -le [math]::Max(0, $RestartCount) -and $runtimeStable; $restart++) {
-    $rebootOutput = Invoke-Adb @('-s', $serial, 'shell', 'reboot')
+    $rebootResult = Invoke-AdbResult @('-s', $serial, 'shell', 'reboot')
+    $rebootOutput = $rebootResult.Text
+    $rebootExitCode = $rebootResult.ExitCode
     $rebootBooted = $false
     $rebootDeadline = (Get-Date).ToUniversalTime().AddSeconds($TimeoutSeconds)
     do {
         if ($serial -match ':') { $null = Invoke-Adb @('connect', $serial) }
-        $rebootState = Invoke-Adb @('-s', $serial, 'get-state')
-        if ($rebootState -eq 'device') {
-            $rebootBoot = Invoke-Adb @('-s', $serial, 'shell', 'getprop', 'sys.boot_completed')
-            if ($rebootBoot -eq '1') { $rebootBooted = $true; break }
+        $rebootStateResult = Invoke-AdbResult @('-s', $serial, 'get-state')
+        $rebootState = $rebootStateResult.Text
+        if ($rebootStateResult.ExitCode -eq 0 -and $rebootState -eq 'device') {
+            $rebootBootResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'sys.boot_completed')
+            $rebootBoot = $rebootBootResult.Text
+            if ($rebootBootResult.ExitCode -eq 0 -and $rebootBoot -eq '1') { $rebootBooted = $true; break }
         }
         Start-Sleep -Seconds 2
     } while ((Get-Date).ToUniversalTime() -lt $rebootDeadline)
@@ -129,25 +156,33 @@ for ($restart = 1; $restart -le [math]::Max(0, $RestartCount) -and $runtimeStabl
     $relaunchSucceeded = $false
     $relaunchActivityRunning = $false
     $relaunchErrors = @()
+    $relaunchActivityDumpExitCode = $null
+    $relaunchLogcatExitCode = $null
     if ($rebootBooted) {
-        $relaunchOutput = Invoke-Adb @('-s', $serial, 'shell', 'am', 'start', '-W', '-n', $activity)
-        $relaunchExitCode = $LASTEXITCODE
+        $relaunchResult = Invoke-AdbResult @('-s', $serial, 'shell', 'am', 'start', '-W', '-n', $activity)
+        $relaunchOutput = $relaunchResult.Text
+        $relaunchExitCode = $relaunchResult.ExitCode
         $relaunchSucceeded = $relaunchExitCode -eq 0 -and $relaunchOutput -notmatch '(?im)(Error:|Exception|does not exist)'
         Start-Sleep -Seconds ([math]::Max(1, $StabilitySeconds))
-        $relaunchActivityDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'activity', 'activities')
-        $relaunchActivityRunning = Test-ActivityRunning $relaunchActivityDump
-        $relaunchLogcat = Invoke-Adb @('-s', $serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '240')
-        $relaunchErrors = @($relaunchLogcat -split "`r?`n" | Where-Object { $_ -match $failurePattern })
+        $relaunchActivityDumpResult = Invoke-AdbResult @('-s', $serial, 'shell', 'dumpsys', 'activity', 'activities')
+        $relaunchActivityDumpExitCode = $relaunchActivityDumpResult.ExitCode
+        $relaunchActivityRunning = $relaunchActivityDumpExitCode -eq 0 -and (Test-ActivityRunning $relaunchActivityDumpResult.Text)
+        $relaunchLogcatResult = Invoke-AdbResult @('-s', $serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '240')
+        $relaunchLogcatExitCode = $relaunchLogcatResult.ExitCode
+        $relaunchErrors = @($relaunchLogcatResult.Text -split "`r?`n" | Where-Object { $_ -match $failurePattern })
     }
     $restartResults.Add([ordered]@{
         iteration = $restart
         rebootOutput = $rebootOutput
+        rebootExitCode = $rebootExitCode
         booted = $rebootBooted
         launchSucceeded = $relaunchSucceeded
         launchExitCode = if ($null -ne $relaunchExitCode) { [int]$relaunchExitCode } else { $null }
         activityRunning = $relaunchActivityRunning
+        activityDumpExitCode = $relaunchActivityDumpExitCode
+        logcatExitCode = $relaunchLogcatExitCode
         relevantErrors = $relaunchErrors
-        stable = $rebootBooted -and $relaunchSucceeded -and $relaunchActivityRunning -and $relaunchErrors.Count -eq 0
+        stable = $rebootExitCode -eq 0 -and $rebootBooted -and $relaunchSucceeded -and $relaunchActivityDumpExitCode -eq 0 -and $relaunchActivityRunning -and $relaunchLogcatExitCode -eq 0 -and $relaunchErrors.Count -eq 0
     })
 }
 $restartStable = @($restartResults | Where-Object { -not $_.stable }).Count -eq 0
@@ -173,8 +208,12 @@ $report = [ordered]@{
     activityRunning = $activityRunning
     runtimeStable = $runtimeStable
     stabilitySeconds = $StabilitySeconds
+    guestPropertyExitCodes = $propertyExitCodes
     installExitCode = if ($null -ne $installExitCode) { [int]$installExitCode } else { $null }
+    packageDumpExitCode = if ($null -ne $packageDumpExitCode) { [int]$packageDumpExitCode } else { $null }
     launchExitCode = if ($null -ne $launchExitCode) { [int]$launchExitCode } else { $null }
+    activityDumpExitCode = $activityDumpExitCode
+    logcatExitCode = $logcatExitCode
     restartCount = [math]::Max(0, $RestartCount)
     restartResults = @($restartResults)
     installOutput = $installOutput

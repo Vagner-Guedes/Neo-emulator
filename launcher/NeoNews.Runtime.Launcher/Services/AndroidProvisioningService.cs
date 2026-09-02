@@ -88,11 +88,13 @@ public sealed class AndroidProvisioningService
 
         foreach (var componentName in new[] { "qemu", "adb", "disk" })
         {
-            if (!state.Provenance.TryGetValue(componentName, out var component) || !IsSha256(component.Sha256))
+            if (!state.Provenance.TryGetValue(componentName, out var component) ||
+                !IsSha256(component.Sha256) ||
+                string.IsNullOrWhiteSpace(component.Origin))
             {
                 throw new RuntimeOperationException(
-                    "O registro de provisionamento não possui hashes fortes dos componentes-base.",
-                    $"Entrada ausente ou inválida: provenance.{componentName}; estado={_context.ResolveProvisioningStatePath()}.");
+                    "O registro de provisionamento não possui hash e proveniência fortes dos componentes-base.",
+                    $"Entrada ausente, sem SHA-256 ou sem origem: provenance.{componentName}; estado={_context.ResolveProvisioningStatePath()}.");
             }
         }
 
