@@ -110,6 +110,8 @@ disco persistente.
   -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `
   -PathWithSpaces
 ```
+O smoke usa timeout padrão de 90 segundos para acomodar o cold start da
+publicação self-contained single-file; a execução normal continua sem console.
 
 Quando `-ReportPath` não é informado, o smoke grava em
 `reports/launcher-smoke.json` ao lado do executável publicado. Execute o

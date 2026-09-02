@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [string]$ExecutablePath,
-    [int]$StartupTimeoutSeconds = 20,
+    # A self-contained single-file publish can spend several seconds
+    # extracting its native payload on the first launch. Keep this bounded
+    # but long enough for a cold-start smoke test.
+    [int]$StartupTimeoutSeconds = 90,
     [string]$ReportPath,
     [switch]$PathWithSpaces,
     [switch]$NoConsoleObserved,
