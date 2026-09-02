@@ -26,6 +26,7 @@ O projeto agora possui o caminho de runtime preparado para a homologação funci
 | Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
 | Regressão | `Test-RuntimeRepository.ps1` | 18 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
+| Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; APK externo copiado sem alteração (58.954.286 bytes) |
 
 ## Contrato do runtime
 
