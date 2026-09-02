@@ -155,6 +155,11 @@ $contractChecks = [ordered]@{
     diagnosticsIncludesNeoNewsActivity = $launcherSourceText -match 'packageName = _neoNews\.PackageName' -and $launcherSourceText -match 'activity = _neoNews\.ActivityName' -and $launcherSourceText -match 'versionCode = neoNewsVersionCode' -and $launcherSourceText -match 'primaryCpuAbi'
     diagnosticsIncludesApkIdentity = $launcherSourceText -match 'apkMetadata\?\.PackageName' -and $launcherSourceText -match 'apkMetadata\?\.VersionName' -and $launcherSourceText -match 'apkMetadata\?\.VersionCode'
     apkPreinstallIdentityValidation = $launcherSourceText -match 'ApkManifestService\.Read\(apkPath\)' -and $launcherSourceText -match 'metadata\.PackageName\.Equals\(PackageName' -and $launcherSourceText -match 'metadata\.VersionCode'
+    apkPreinstallAbiValidation = $launcherSourceText -match 'ReadApkAbis\(apkPath\)' -and $launcherSourceText -match 'apkAbis\.Contains\(preferredAbi' -and $launcherSourceText -match 'containsGuestAbi'
+    nativeBridgeProbeDefinesPreferredAbi = $nativeBridgeValidationSource.Contains('$preferredApkAbi')
+    nativeBridgeProbeRejectsMissingPreferredAbi = $nativeBridgeValidationSource.Contains('Nenhuma')
+    nativeBridgeProbeRejectsGuestAbi = $nativeBridgeValidationSource.Contains("'x86', 'x86_64'")
+    nativeBridgeProbePreflightAbi = $nativeBridgeValidationSource.Contains('$preferredApkAbi') -and $nativeBridgeValidationSource.Contains('Nenhuma') -and $nativeBridgeValidationSource.Contains("'x86', 'x86_64'")
     diagnosticsIncludesProvisioningState = $launcherSourceText -match 'SafeProvisioningStateAsync' -and $launcherSourceText -match 'imageHash = provisioningState\.ImageHash' -and $launcherSourceText -match 'diskFingerprint = provisioningState\.DiskFingerprint'
     diagnosticsCliExitsAfterCollection = $launcherSourceText -match 'exitAfterDiagnostics' -and $launcherSourceText -match 'RequestExit\(\)'
     diagnosticsScriptUsesCanonicalLauncher = $diagnosticsScriptSource -match "ArgumentList '--diagnostics'" -and $diagnosticsScriptSource -match 'schema.*identidade'

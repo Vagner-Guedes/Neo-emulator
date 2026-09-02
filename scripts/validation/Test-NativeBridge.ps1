@@ -102,6 +102,13 @@ if (Test-Path -LiteralPath $ApkPath) {
     }
     finally { $archive.Dispose() }
 }
+$preferredApkAbi = if ($config.android.nativeBridge.preferredAbi) { [string]$config.android.nativeBridge.preferredAbi } else { [string]$config.android.preferredApkAbi }
+if ($apkAbis.Count -eq 0 -or ($preferredApkAbi -and $apkAbis -notcontains $preferredApkAbi)) {
+    throw "O APK oficial não contém a ABI ARM autorizada '$preferredApkAbi'. ABIs encontradas: $($apkAbis -join ', '). Nenhuma instalação foi tentada."
+}
+if (@($apkAbis | Where-Object { $_ -in @('x86', 'x86_64') }).Count -gt 0) {
+    throw "O APK oficial contém ABI x86/x86_64, que não é permitida no pacote ARM. ABIs encontradas: $($apkAbis -join ', '). Nenhuma instalação foi tentada."
+}
 
 $installOutput = ''
 $installSucceeded = $false
@@ -115,7 +122,6 @@ $packageDumpResult = Invoke-AdbResult @('-s', $serial, 'shell', 'dumpsys', 'pack
 $packageDump = $packageDumpResult.Text
 $packageDumpExitCode = $packageDumpResult.ExitCode
 $primaryCpuAbi = if ($packageDump -match 'primaryCpuAbi=([^\s]+)') { $Matches[1] } else { $null }
-$preferredApkAbi = if ($config.android.nativeBridge.preferredAbi) { [string]$config.android.nativeBridge.preferredAbi } else { [string]$config.android.preferredApkAbi }
 $selectedApkAbi = if ($primaryCpuAbi -and $apkAbis -contains $primaryCpuAbi -and $primaryCpuAbi -eq $preferredApkAbi) { $primaryCpuAbi } else { $null }
 $launchOutput = ''
 $launchSucceeded = $false

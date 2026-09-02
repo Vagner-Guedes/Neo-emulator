@@ -138,6 +138,37 @@ public sealed class NeoNewsService
                 $"versionCode encontrado={metadata.VersionCode?.ToString() ?? "<ausente>"}; esperado={_context.Config.NeoNews.VersionCode}; APK={apkPath}.");
         }
 
+        IReadOnlyList<string> apkAbis;
+        try
+        {
+            apkAbis = NativeBridgeValidationService.ReadApkAbis(apkPath);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException)
+        {
+            throw new RuntimeOperationException(
+                "As ABIs do APK NeoNews não puderam ser lidas.",
+                $"Não foi possível inspecionar as bibliotecas nativas do APK {apkPath}: {exception.Message}",
+                exception);
+        }
+
+        var preferredAbi = string.IsNullOrWhiteSpace(_context.Config.Android.NativeBridge.PreferredAbi)
+            ? _context.Config.Android.PreferredApkAbi
+            : _context.Config.Android.NativeBridge.PreferredAbi;
+        if (!string.IsNullOrWhiteSpace(preferredAbi) && !apkAbis.Contains(preferredAbi, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "O APK NeoNews não contém a ABI ARM autorizada.",
+                $"ABIs encontradas={string.Join(", ", apkAbis)}; preferida={preferredAbi}; APK={apkPath}.");
+        }
+
+        var containsGuestAbi = apkAbis.Any(abi => abi.Equals("x86", StringComparison.OrdinalIgnoreCase) || abi.Equals("x86_64", StringComparison.OrdinalIgnoreCase));
+        if (containsGuestAbi)
+        {
+            throw new RuntimeOperationException(
+                "O APK NeoNews contém uma ABI nativa do guest.",
+                $"ABIs encontradas={string.Join(", ", apkAbis)}; o pacote oficial ARM não pode conter x86/x86_64; APK={apkPath}.");
+        }
+
         var expected = _context.Config.NeoNews.SigningCertificateSha256;
         if (string.IsNullOrWhiteSpace(expected)) return;
         var result = ApkSignatureService.Validate(apkPath, expected);
