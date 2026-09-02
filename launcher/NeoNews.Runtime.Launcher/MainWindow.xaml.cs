@@ -1,9 +1,15 @@
+using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using NeoNews.Runtime.Launcher.Models;
 using NeoNews.Runtime.Launcher.Services;
 using NeoNews.Runtime.Launcher.ViewModels;
+using NeoNews.Runtime.Launcher.Views;
+using WpfUserControl = System.Windows.Controls.UserControl;
 
 namespace NeoNews.Runtime.Launcher;
 
@@ -13,7 +19,9 @@ public partial class MainWindow : Window
     private readonly RuntimeViewModel _viewModel;
     private readonly RuntimeController _controller;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly DispatcherTimer _clockTimer;
     private readonly HotkeyService _hotkeyService = new(HotKeyId);
+    private readonly Dictionary<string, WpfUserControl> _pages = new(StringComparer.OrdinalIgnoreCase);
     private HwndSource? _source;
     private bool _allowClose;
 
@@ -27,11 +35,24 @@ public partial class MainWindow : Window
         _viewModel.ExitRequested += (_, _) => RequestApplicationExit();
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         _refreshTimer.Tick += async (_, _) => await _viewModel.RefreshAsync();
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clockTimer.Tick += (_, _) => _viewModel.Tick();
+        BuildPages();
         _controller.Logs.Info("launcher", "Janela principal construída.");
     }
 
     public RuntimeViewModel ViewModel => _viewModel;
     public bool SuppressErrors { get; set; }
+
+    private void BuildPages()
+    {
+        _pages["Home"] = new HomeView { DataContext = _viewModel };
+        _pages["Runtime"] = new RuntimeView { DataContext = _viewModel };
+        _pages["NeoNews"] = new NeoNewsView { DataContext = _viewModel };
+        _pages["Diagnostics"] = new DiagnosticsView { DataContext = _viewModel };
+        _pages["Settings"] = new SettingsView { DataContext = _viewModel };
+        PageHost.Content = _pages["Home"];
+    }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -39,20 +60,44 @@ public partial class MainWindow : Window
         _source = (HwndSource)PresentationSource.FromVisual(this)!;
         _source.AddHook(WindowHook);
         if (!_hotkeyService.Register(_source.Handle, _controller.Context.Config.Runtime.Hotkey))
-        {
             _controller.Logs.Warning("launcher", $"Hotkey inválida ou indisponível: {_controller.Context.Config.Runtime.Hotkey}");
-        }
         _refreshTimer.Start();
+        _clockTimer.Start();
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(async () => await _viewModel.RefreshAsync()));
     }
 
-    private async void Settings_Click(object sender, RoutedEventArgs e)
+    private void Navigation_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton button || button.Tag is not string pageName) return;
+        foreach (var item in new[] { NavHome, NavRuntime, NavNeoNews, NavDiagnostics, NavSettings })
+            item.IsChecked = ReferenceEquals(item, button);
+        if (_pages.TryGetValue(pageName, out var page)) PageHost.Content = page;
+    }
+
+    public void OpenSettingsDialog()
     {
         var window = new SettingsWindow(_viewModel) { Owner = this };
         window.ShowDialog();
         RefreshHotkey();
-        await _viewModel.RefreshAsync();
+        _ = _viewModel.RefreshAsync();
     }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            return;
+        }
+        try { DragMove(); } catch (InvalidOperationException) { }
+    }
+
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void MinimizePanel_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void Maximize_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
+    private void ToggleMaximize() => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     public void RefreshHotkey()
     {
@@ -60,10 +105,7 @@ public partial class MainWindow : Window
             _controller.Logs.Warning("launcher", $"Hotkey inválida ou indisponível: {_controller.Context.Config.Runtime.Hotkey}");
     }
 
-    private void ViewModel_ErrorRequested(object? sender, ErrorInfo error)
-    {
-        ShowError(error);
-    }
+    private void ViewModel_ErrorRequested(object? sender, ErrorInfo error) => ShowError(error);
 
     public void ShowError(ErrorInfo error)
     {
@@ -134,7 +176,7 @@ public partial class MainWindow : Window
 
     public void AllowClose() => _allowClose = true;
 
-    private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (!_allowClose)
         {
@@ -146,6 +188,7 @@ public partial class MainWindow : Window
         {
             _controller.Logs.Info("launcher", "Janela autorizada a fechar.");
             _refreshTimer.Stop();
+            _clockTimer.Stop();
             _hotkeyService.Dispose();
         }
     }
@@ -155,5 +198,4 @@ public partial class MainWindow : Window
         if (System.Windows.Application.Current is App app) app.RequestExit();
         else System.Windows.Application.Current.Shutdown();
     }
-
 }

@@ -183,6 +183,19 @@ public sealed class RuntimeController : IAsyncDisposable
         });
     }
 
+    public async Task RestartNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        await WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
+        {
+            await EnsureAndroidAsync(progress, cancellationToken);
+            await _neoNews.RestartAsync(progress, cancellationToken);
+            if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
+            await _supervisor.StartAsync();
+            _state.Set(RuntimeState.Running);
+            await RefreshSnapshotAsync(cancellationToken);
+        });
+    }
+
     public async Task InstallNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
         await WithOperationAsync(RuntimeState.Preparing, async () =>
