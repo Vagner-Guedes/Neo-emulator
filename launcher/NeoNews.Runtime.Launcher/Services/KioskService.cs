@@ -37,6 +37,30 @@ public sealed class KioskService
 
     public bool IsActive { get; private set; }
 
+    public async Task<bool> IsGuestConfigurationAppliedAsync(CancellationToken cancellationToken = default)
+    {
+        var kiosk = _context.Config.Android.Kiosk;
+        var policy = await _adb.GetSettingAsync("global", "policy_control", cancellationToken);
+        var timeout = await _adb.GetSettingAsync("system", "screen_off_timeout", cancellationToken);
+        var stayAwake = await _adb.GetSettingAsync("global", "stay_on_while_plugged_in", cancellationToken);
+        var screensaver = await _adb.GetSettingAsync("secure", "screensaver_enabled", cancellationToken);
+        var rotation = await _adb.GetSettingAsync("system", "user_rotation", cancellationToken);
+        var size = await _adb.GetDisplaySizeAsync(cancellationToken);
+        var density = await _adb.GetDisplayDensityAsync(cancellationToken);
+        var windowRequired = _context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
+            ? _context.Config.Android.Qemu.ShowWindow
+            : _context.Config.Android.Emulator.ShowWindow;
+        var windowReady = !windowRequired || (_windowCaptured && IsWindow(_windowHandle));
+        return windowReady &&
+               policy.Contains(kiosk.ImmersivePolicy, StringComparison.OrdinalIgnoreCase) &&
+               timeout.Trim().Equals(kiosk.ScreenOffTimeoutMs.ToString(), StringComparison.OrdinalIgnoreCase) &&
+               stayAwake.Trim().Equals(kiosk.StayAwakePluggedIn.ToString(), StringComparison.OrdinalIgnoreCase) &&
+               screensaver.Trim().Equals("0", StringComparison.OrdinalIgnoreCase) &&
+               rotation.Trim().Equals(ResolveRotation(kiosk.Orientation).ToString(), StringComparison.OrdinalIgnoreCase) &&
+               size.Contains(kiosk.DisplaySize, StringComparison.OrdinalIgnoreCase) &&
+               density.Contains(kiosk.DisplayDensity.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
     public async Task EnterAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
         var kiosk = _context.Config.Android.Kiosk;
@@ -50,7 +74,16 @@ public sealed class KioskService
         await _adb.PutSettingAsync("system", "user_rotation", ResolveRotation(kiosk.Orientation).ToString(), cancellationToken);
         await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
 
-        CaptureAndMaximizeEmulatorWindow();
+        var windowCaptured = CaptureAndMaximizeEmulatorWindow();
+        var windowRequired = _context.Config.Android.Backend.Equals("qemu-android-x86", StringComparison.OrdinalIgnoreCase)
+            ? _context.Config.Android.Qemu.ShowWindow
+            : _context.Config.Android.Emulator.ShowWindow;
+        if (windowRequired && !windowCaptured)
+        {
+            throw new RuntimeOperationException(
+                "NÃ£o foi possÃ­vel localizar a janela grÃ¡fica do Android.",
+                $"Backend={_backend.Name}; PID={_backend.ProcessId}; a janela principal do processo nÃ£o foi encontrada.");
+        }
         IsActive = true;
         progress?.Report(new RuntimeProgress("Kiosk ativo", "Android em modo imersivo.", 100));
     }
@@ -104,14 +137,14 @@ public sealed class KioskService
     private async Task RestoreDisplayAsync(string? size, string? density, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(size))
-            await _adb.ExecuteAsync(["shell", "wm", "size", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+            await _adb.ResetDisplaySizeAsync(cancellationToken);
         else
-            await _adb.ExecuteAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken);
+            await _adb.SetDisplaySizeAsync(size, cancellationToken);
 
         if (string.IsNullOrWhiteSpace(density))
-            await _adb.ExecuteAsync(["shell", "wm", "density", "reset"], TimeSpan.FromSeconds(20), cancellationToken);
+            await _adb.ResetDisplayDensityAsync(cancellationToken);
         else
-            await _adb.ExecuteAsync(["shell", "wm", "density", density], TimeSpan.FromSeconds(20), cancellationToken);
+            await _adb.SetDisplayDensityAsync(density, cancellationToken);
     }
 
     private Task ResetDisplayAsync(CancellationToken cancellationToken) =>
@@ -141,10 +174,10 @@ public sealed class KioskService
         string? DisplaySize,
         string? DisplayDensity);
 
-    private void CaptureAndMaximizeEmulatorWindow()
+    private bool CaptureAndMaximizeEmulatorWindow()
     {
         var handle = _backend.WindowHandle;
-        if (handle == IntPtr.Zero) return;
+        if (handle == IntPtr.Zero) return false;
 
         _windowHandle = handle;
         _originalStyle = GetWindowLongPtr(handle, GwlStyle);
@@ -159,6 +192,7 @@ public sealed class KioskService
         SetWindowPos(handle, HwndTopmost, bounds.Left, bounds.Top, bounds.Width, bounds.Height, SwpShowWindow);
         ShowWindow(handle, SwShow);
         SetForegroundWindow(handle);
+        return true;
     }
 
     private void RestoreEmulatorWindow()
@@ -188,6 +222,9 @@ public sealed class KioskService
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RECT

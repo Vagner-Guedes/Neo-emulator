@@ -254,12 +254,17 @@ public sealed class AdbService
 
     public async Task StartActivityAsync(string packageName, string activityName, CancellationToken cancellationToken = default)
     {
-        var result = await ExecuteAsync(["shell", "am", "start", "-W", "-n", $"{packageName}/{activityName}"], TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.NeoNewsStartSeconds)), cancellationToken);
+        var componentActivity = activityName.StartsWith(".", StringComparison.Ordinal) ||
+                                activityName.StartsWith(packageName + ".", StringComparison.Ordinal)
+            ? activityName
+            : $".{activityName}";
+        var component = $"{packageName}/{componentActivity}";
+        var result = await ExecuteAsync(["shell", "am", "start", "-W", "-n", component], TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.NeoNewsStartSeconds)), cancellationToken);
         if (!result.Succeeded)
         {
             throw new RuntimeOperationException(
                 "Não foi possível abrir o NeoNews.",
-                $"Comando: adb -s {Serial} shell am start -W -n {packageName}/{activityName}\nExit code: {result.ExitCode}\nstderr: {result.StandardError}");
+                $"Comando: adb -s {Serial} shell am start -W -n {component}\nExit code: {result.ExitCode}\nstderr: {result.StandardError}");
         }
 
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.NeoNewsStartSeconds));
@@ -269,7 +274,7 @@ public sealed class AdbService
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
-        throw new RuntimeOperationException("O NeoNews não confirmou a atividade em execução.", $"Activity esperada: {packageName}/{activityName}");
+        throw new RuntimeOperationException("O NeoNews não confirmou a atividade em execução.", $"Activity esperada: {component}");
     }
 
     public Task ForceStopAsync(string packageName, CancellationToken cancellationToken = default) => StopPackageAsync(packageName, cancellationToken);
@@ -303,6 +308,18 @@ public sealed class AdbService
         await ExecuteCheckedAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken, "wm size");
         await ExecuteCheckedAsync(["shell", "wm", "density", density.ToString()], TimeSpan.FromSeconds(20), cancellationToken, "wm density");
     }
+
+    public Task ResetDisplaySizeAsync(CancellationToken cancellationToken = default) =>
+        ExecuteCheckedAsync(["shell", "wm", "size", "reset"], TimeSpan.FromSeconds(20), cancellationToken, "wm size reset");
+
+    public Task ResetDisplayDensityAsync(CancellationToken cancellationToken = default) =>
+        ExecuteCheckedAsync(["shell", "wm", "density", "reset"], TimeSpan.FromSeconds(20), cancellationToken, "wm density reset");
+
+    public Task SetDisplaySizeAsync(string size, CancellationToken cancellationToken = default) =>
+        ExecuteCheckedAsync(["shell", "wm", "size", size], TimeSpan.FromSeconds(20), cancellationToken, "wm size restore");
+
+    public Task SetDisplayDensityAsync(string density, CancellationToken cancellationToken = default) =>
+        ExecuteCheckedAsync(["shell", "wm", "density", density], TimeSpan.FromSeconds(20), cancellationToken, "wm density restore");
 
     public Task<string> GetDisplaySizeAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "size"], TimeSpan.FromSeconds(20), cancellationToken);
     public Task<string> GetDisplayDensityAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "density"], TimeSpan.FromSeconds(20), cancellationToken);

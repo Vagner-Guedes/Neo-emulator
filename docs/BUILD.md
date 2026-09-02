@@ -52,13 +52,17 @@ backend não é contado como aprovação.
 
 ```powershell
 .\scripts\validation\Test-LauncherSmoke.ps1 `
-  -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe
+  -ExecutablePath .\dist\NeoNewsRuntime\NeoNewsRuntime.exe `
+  -PathWithSpaces
 .\scripts\validation\Test-HomologationChecklist.ps1
 ```
 
-Os switches `-TrayObserved` e `-HotkeyObserved` só devem ser usados depois da
-confirmação visual correspondente no executável publicado; eles registram
-evidência manual e não simulam essa observação.
+Os switches `-NoConsoleObserved`, `-QemuNoConsoleObserved`, `-TrayObserved`,
+`-HotkeyObserved`, `-KioskObserved`, `-WatchdogActivityObserved`,
+`-WatchdogQemuObserved`, `-WindowsRestartObserved` e
+`-UpdatePreservationObserved` só devem ser usados depois da confirmação
+correspondente no executável/runtime publicado; eles registram evidência
+manual e não simulam essa observação.
 
 O ícone `launcher/NeoNews.Runtime.Launcher/Assets/NeoNewsRuntime.ico` é embutido no `.exe`. Para recriá-lo após uma alteração visual, execute `scripts/build/New-NeoNewsRuntimeIcon.ps1` antes da publicação.
 

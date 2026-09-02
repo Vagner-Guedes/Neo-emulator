@@ -126,9 +126,12 @@ try {
                     }
 
                     $activity = [string]$config.neonews.launchActivity
-                    $launch = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'am', 'start', '-W', '-n', "$packageName/$activity")
+                    if ($activity -match '/') { $activity = ($activity -split '/')[-1] }
+                    if ($activity.StartsWith('.')) { $activity = $activity.Substring(1) }
+                    if ($activity.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $activity = $activity.Substring($packageName.Length + 1) }
+                    $launch = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'am', 'start', '-W', '-n', "$packageName/.$activity")
                     $activityDump = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'dumpsys', 'activity', 'activities')
-                    if ($activityDump -match [regex]::Escape("$packageName/$activity")) {
+                    if ($activityDump -match [regex]::Escape("$packageName/.$activity") -or $activityDump -match [regex]::Escape("$packageName/$packageName.$activity")) {
                         $event.status = 'healthy'
                         $event.detail = 'atividade operacional em primeiro plano'
                         $attemptEvents += [pscustomobject]$event

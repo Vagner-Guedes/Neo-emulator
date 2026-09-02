@@ -60,9 +60,12 @@ public sealed class DiagnosticsService
         var primaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_neoNews.PackageName, cancellationToken), cancellationToken) ?? string.Empty : string.Empty;
         var webViewPrimaryCpuAbi = adbOnline ? await SafeNullableAsync(() => _adb.GetPrimaryCpuAbiAsync(_context.Config.WebView.Provider, cancellationToken), cancellationToken) : null;
         var validatedAbi = _getAbiCompatibility?.Invoke();
+        // Never infer the selected APK ABI from configuration. It is evidence
+        // only when package-manager output (or the full Native Bridge check)
+        // observed a primaryCpuAbi in the APK's actual ABI set.
         var selectedApkAbi = validatedAbi?.SelectedApkAbi ?? (!string.IsNullOrWhiteSpace(primaryCpuAbi) && apkAbis.Contains(primaryCpuAbi, StringComparer.OrdinalIgnoreCase)
             ? primaryCpuAbi
-            : apkAbis.FirstOrDefault(abi => abi.Equals(_context.Config.Android.NativeBridge.PreferredAbi, StringComparison.OrdinalIgnoreCase)));
+            : null);
         var guest = adbOnline ? await GetGuestDiagnosticsAsync(cancellationToken) : GuestDiagnostics.Empty;
         var memory = adbOnline ? LimitLines(await SafeAsync(() => _adb.GetMemoryDumpAsync(cancellationToken), cancellationToken), 80) : [];
         var graphics = adbOnline ? LimitLines(await SafeAsync(() => _adb.GetGraphicsDumpAsync(cancellationToken), cancellationToken), 80) : [];
@@ -146,9 +149,11 @@ public sealed class DiagnosticsService
                 apkAbis,
                 signature = apkSignature,
                 selectedApkAbi,
-                installSucceeded = validatedAbi?.InstallSucceeded ?? (neoNews?.Installed ?? false),
+                // Package presence is not proof that this diagnostic run
+                // performed or validated adb install -r.
+                installSucceeded = validatedAbi?.InstallSucceeded ?? false,
                 primaryCpuAbi = validatedAbi?.PrimaryCpuAbi ?? primaryCpuAbi,
-                launchSucceeded = validatedAbi?.LaunchSucceeded ?? (neoNews?.Running ?? false),
+                launchSucceeded = validatedAbi?.LaunchSucceeded ?? false,
                 runtimeStable = validatedAbi?.RuntimeStable ?? false
             },
             webView = new
@@ -176,7 +181,7 @@ public sealed class DiagnosticsService
                     .Where(line => line.Contains("rhvoice", StringComparison.OrdinalIgnoreCase) || line.Contains("tts", StringComparison.OrdinalIgnoreCase))
                     .ToArray()
             },
-            watchdog = new { active = _supervisor.IsActive },
+            watchdog = new { active = _supervisor.IsActive, nativeBridgeStructuralError = _supervisor.HasNativeBridgeStructuralError },
             startup = new { registered = startupRegistered, valid = startupValid, executable = Environment.ProcessPath },
             memory,
             graphics,
@@ -281,9 +286,9 @@ public sealed class DiagnosticsService
     private IReadOnlyList<string> ReadApkAbis()
     {
         var path = _context.ResolveApkPath();
-        if (!File.Exists(path)) return _context.Config.NeoNews.SupportedApkAbis;
+        if (!File.Exists(path)) return [];
         try { return NativeBridgeValidationService.ReadApkAbis(path); }
-        catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial de ABIs do APK: {exception.Message}"); return _context.Config.NeoNews.SupportedApkAbis; }
+        catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial de ABIs do APK: {exception.Message}"); return []; }
     }
 
     private ApkSignatureValidationResult? ReadApkSignature()

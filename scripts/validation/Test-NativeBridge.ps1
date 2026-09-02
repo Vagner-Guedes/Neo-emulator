@@ -24,7 +24,7 @@ $activityName = [string]$config.neonews.launchActivity
 if ($activityName -match '/') { $activityName = ($activityName -split '/')[-1] }
 if ($activityName.StartsWith('.')) { $activityName = $activityName.Substring(1) }
 if ($activityName.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $activityName = $activityName.Substring($packageName.Length + 1) }
-$activity = "$packageName/$activityName"
+$activity = "$packageName/.$activityName"
 
 function Invoke-Adb([string[]]$Arguments) {
     $output = & $adbPath @Arguments 2>&1 | Out-String
@@ -80,6 +80,7 @@ if (Test-Path -LiteralPath $ApkPath) {
 }
 $packageDump = Invoke-Adb @('-s', $serial, 'shell', 'dumpsys', 'package', $packageName)
 $primaryCpuAbi = if ($packageDump -match 'primaryCpuAbi=([^\s]+)') { $Matches[1] } else { $null }
+$selectedApkAbi = if ($primaryCpuAbi -and $apkAbis -contains $primaryCpuAbi) { $primaryCpuAbi } else { $null }
 $launchOutput = ''
 $launchSucceeded = $false
 if ($installSucceeded -or $packageDump -match "Package \[$([regex]::Escape($packageName))\]") {
@@ -149,7 +150,7 @@ $report = [ordered]@{
     nativeBridgeAbi2 = $abi2
     nativeBridgeReady = $bridgeReady
     apkAbis = $apkAbis
-    selectedApkAbi = $primaryCpuAbi
+    selectedApkAbi = $selectedApkAbi
     installSucceeded = $installSucceeded
     primaryCpuAbi = $primaryCpuAbi
     launchSucceeded = $launchSucceeded

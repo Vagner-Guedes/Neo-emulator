@@ -46,7 +46,7 @@ public sealed class RuntimeContext
         var configured = ResolvePath(Path.Combine(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.AdbRelativePath));
         if (File.Exists(configured)) return configured;
         return Config.Android.Tooling.AllowEnvironmentFallback
-            ? FindToolInRoots("adb.exe", Config.Android.Tooling.AdbRelativePath)
+            ? FindToolInRoots("adb.exe", Config.Android.Tooling.AdbRelativePath, Path.Combine("platform-tools", "adb.exe"))
             : configured;
     }
 
@@ -69,7 +69,7 @@ public sealed class RuntimeContext
         var configured = ResolvePath(Path.Combine(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.EmulatorRelativePath));
         if (File.Exists(configured)) return configured;
         return Config.Android.Tooling.AllowEnvironmentFallback
-            ? FindToolInRoots("emulator.exe", Config.Android.Tooling.EmulatorRelativePath)
+            ? FindToolInRoots("emulator.exe", Config.Android.Tooling.EmulatorRelativePath, Path.Combine("emulator", "emulator.exe"))
             : configured;
     }
 
@@ -116,7 +116,7 @@ public sealed class RuntimeContext
         File.WriteAllText(configPath, migratedJson);
     }
 
-    private string FindToolInRoots(string executableName, string relativePath)
+    private string FindToolInRoots(string executableName, params string[] relativePaths)
     {
         if (Config.Android.Tooling.AllowEnvironmentFallback)
         {
@@ -128,8 +128,11 @@ public sealed class RuntimeContext
             };
             foreach (var root in roots.Where(path => !string.IsNullOrWhiteSpace(path)))
             {
-                var candidate = Path.Combine(root!, relativePath.Replace('/', Path.DirectorySeparatorChar));
-                if (File.Exists(candidate)) return candidate;
+                foreach (var relativePath in relativePaths)
+                {
+                    var candidate = Path.Combine(root!, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(candidate)) return candidate;
+                }
             }
         }
 

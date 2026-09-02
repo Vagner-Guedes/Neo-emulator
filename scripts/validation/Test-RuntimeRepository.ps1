@@ -72,7 +72,27 @@ $requiredPaths = @(
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })
+$contractErrors = @()
+$qemuSourcePath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\QemuAndroidRuntimeBackend.cs'
+$qemuSource = if (Test-Path -LiteralPath $qemuSourcePath) { Get-Content -LiteralPath $qemuSourcePath -Raw -Encoding utf8 } else { '' }
+$launcherSources = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher') -Filter '*.cs' -Recurse -ErrorAction SilentlyContinue)
+$launcherSourceText = (($launcherSources | Get-Content -Raw -Encoding utf8) -join "`n")
+$contractChecks = [ordered]@{
+    qemuBackend = $qemuSource -match 'class QemuAndroidRuntimeBackend'
+    whpxRequired = $qemuSource -match 'CheckWhpx' -and $qemuSource -match '"-accel"'
+    qmpShutdown = $qemuSource -match 'RequestQmpShutdownAsync' -and $qemuSource -match 'qmp_capabilities' -and $qemuSource -match '"quit"'
+    persistentQcow2 = [string]$configObject.android.qemu.disk -match '(?i)\.qcow2$' -and $qemuSource -match 'format=qcow2'
+    noSilentTcg = -not [bool]$configObject.android.qemu.allowTcgForDiagnostics -and $qemuSource -match 'AllowTcgForDiagnostics'
+    noQemuEmuKill = $launcherSourceText -notmatch '(?i)adb\s+emu\s+kill'
+    noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)'
+    portableRuntimePaths = [string]$configObject.android.qemu.executable -match '(?i)^runtime[\\/]' -and [string]$configObject.android.qemu.disk -match '(?i)^runtime[\\/]'
+    qemuEnvironmentFallbackDisabled = -not [bool]$configObject.android.tooling.allowEnvironmentFallback
+}
+foreach ($check in $contractChecks.GetEnumerator()) {
+    if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
+}
 $appIgnored = $false
+$trackedProprietary = @()
 Push-Location $RepositoryRoot
 try {
     $ignoreResults = foreach ($candidate in @(
@@ -88,6 +108,7 @@ try {
         $LASTEXITCODE -eq 0
     }
     $appIgnored = $ignoreResults -notcontains $false
+    $trackedProprietary = @(git ls-files -- @('app.apk', 'NeoNews.apk', 'packages/neonews/neonews.apk', 'packages/webview/webview.apk', 'packages/tts/rhvoice.apk', 'packages/nativebridge/nativebridge.apk'))
 } finally {
     Pop-Location
 }
@@ -99,8 +120,11 @@ $result = [ordered]@{
     configValid = $configValid
     configError = $configError
     missingRequiredPaths = $missingPaths
+    contractChecks = $contractChecks
+    contractErrors = $contractErrors
     proprietaryApkIgnored = $appIgnored
-    status = if ($scriptErrors.Count -eq 0 -and $configValid -and $missingPaths.Count -eq 0 -and $appIgnored) { 'passed' } else { 'failed' }
+    proprietaryArtifactsTracked = $trackedProprietary
+    status = if ($scriptErrors.Count -eq 0 -and $configValid -and $missingPaths.Count -eq 0 -and $contractErrors.Count -eq 0 -and $appIgnored -and $trackedProprietary.Count -eq 0) { 'passed' } else { 'failed' }
 }
 
 $json = $result | ConvertTo-Json -Depth 8

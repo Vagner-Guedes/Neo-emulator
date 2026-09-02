@@ -49,7 +49,7 @@ public sealed class AndroidProvisioningService
         var missing = new List<string>();
         if (!File.Exists(qemu)) missing.Add($"QEMU: {qemu}");
         if (!File.Exists(disk)) missing.Add($"disco Android persistente: {disk}");
-        if (!File.Exists(adb) && !_context.Config.Android.Tooling.AllowEnvironmentFallback) missing.Add($"ADB: {adb}");
+        if (!File.Exists(adb)) missing.Add($"ADB: {adb}");
         if (missing.Count > 0)
         {
             throw new RuntimeOperationException(

@@ -83,6 +83,7 @@ if (-not $Serial) {
     }
 }
 
+$packageName = [string]$config.neonews.packageName
 if (-not $Activity) {
     $Activity = $config.neonews.launchActivity
 }
@@ -90,6 +91,11 @@ if (-not $Activity) {
 if (-not $Activity) {
     $Activity = 'com.in9midia.neonews.player.TerminalActivity'
 }
+$Activity = [string]$Activity
+if ($Activity -match '/') { $Activity = ($Activity -split '/')[-1] }
+if ($Activity.StartsWith('.')) { $Activity = $Activity.Substring(1) }
+if ($Activity.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $Activity = $Activity.Substring($packageName.Length + 1) }
+$activityComponent = "$packageName/.$Activity"
 
 $startedProcess = $null
 if ($StartEmulator) {
@@ -116,7 +122,6 @@ if ($StartEmulator) {
 }
 
 $booted = Wait-ForBoot -AdbPath $adbPath -DeviceSerial $Serial
-$packageName = [string]$config.neonews.packageName
 $packagePath = ''
 $installedVersion = $null
 $launchResult = $null
@@ -132,7 +137,7 @@ if ($booted) {
         }
 
         if ($Launch) {
-            $launchResult = Invoke-AdbCommand -AdbPath $adbPath -DeviceSerial $Serial -Arguments @('shell', 'am', 'start', '-W', '-n', "$packageName/$Activity")
+            $launchResult = Invoke-AdbCommand -AdbPath $adbPath -DeviceSerial $Serial -Arguments @('shell', 'am', 'start', '-W', '-n', $activityComponent)
             $activityDump = Invoke-AdbCommand -AdbPath $adbPath -DeviceSerial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities')
             $resumedMatch = [regex]::Match($activityDump, 'mResumedActivity:.*?([^\s/]+/[^\s}]+)')
             if ($resumedMatch.Success) {
@@ -152,7 +157,7 @@ $result = [ordered]@{
     packageName = $packageName
     expectedVersion = [string]$config.neonews.versionName
     installedVersion = $installedVersion
-    launchActivity = "$packageName/$Activity"
+    launchActivity = $activityComponent
     packagePath = $packagePath
     launchRequested = [bool]$Launch
     launchResult = $launchResult

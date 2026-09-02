@@ -45,8 +45,10 @@ function Get-NeoNewsState {
     }
 
     $activityDump = Invoke-Adb -AdbPath $AdbPath -Arguments @('shell', 'dumpsys', 'activity', 'activities')
-    $expectedActivity = "$PackageName/$ActivityName"
-    $activityPresent = $activityDump -match [regex]::Escape($expectedActivity)
+    $expectedActivity = "$PackageName/.$ActivityName"
+    $fullyQualifiedActivity = "$PackageName/$PackageName.$ActivityName"
+    $activityPresent = $activityDump -match [regex]::Escape($expectedActivity) -or
+                       $activityDump -match [regex]::Escape($fullyQualifiedActivity)
     if ($activityPresent) {
         return [pscustomobject]@{ status = 'healthy'; detail = $expectedActivity; activity = $expectedActivity }
     }
@@ -69,6 +71,10 @@ if (-not (Test-Path -LiteralPath $adbPath)) {
 
 $packageName = [string]$config.neonews.packageName
 $activityName = [string]$config.neonews.launchActivity
+if ($activityName -match '/') { $activityName = ($activityName -split '/')[-1] }
+if ($activityName.StartsWith('.')) { $activityName = $activityName.Substring(1) }
+if ($activityName.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $activityName = $activityName.Substring($packageName.Length + 1) }
+$activityComponent = "$packageName/.$activityName"
 if ($activityName -match '/') {
     $activityName = $activityName.Split('/')[-1]
 }
@@ -102,7 +108,7 @@ do {
 
     if ($health.status -eq 'activity-lost' -and $LaunchOnActivityLoss) {
         $restartAttempted = $true
-        $restartResult = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'am', 'start', '-W', '-n', "$packageName/$activityName")
+        $restartResult = Invoke-Adb -AdbPath $adbPath -Arguments @('shell', 'am', 'start', '-W', '-n', $activityComponent)
         $health = Get-NeoNewsState -AdbPath $adbPath -PackageName $packageName -ActivityName $activityName
     }
 
@@ -111,7 +117,7 @@ do {
         serial = $Serial
         iteration = $iteration
         packageName = $packageName
-        activity = "$packageName/$activityName"
+        activity = $activityComponent
         status = $health.status
         detail = $health.detail
         restartAttempted = $restartAttempted

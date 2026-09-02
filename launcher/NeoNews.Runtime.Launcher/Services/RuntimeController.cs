@@ -28,15 +28,20 @@ public sealed class RuntimeController : IAsyncDisposable
         _runner = new ProcessRunnerService(_logs);
         _scripts = new ScriptExecutionService(context, _runner);
         _adb = new AdbService(context, _runner, _logs);
-        _backend = context.Config.Android.Backend.Equals("android-sdk-emulator", StringComparison.OrdinalIgnoreCase)
-            ? new EmulatorService(context, _runner, _logs, _adb)
-            : new QemuAndroidRuntimeBackend(context, _runner, _logs);
+        _backend = context.Config.Android.Backend.ToLowerInvariant() switch
+        {
+            "android-sdk-emulator" => new EmulatorService(context, _runner, _logs, _adb),
+            "qemu-android-x86" => new QemuAndroidRuntimeBackend(context, _runner, _logs),
+            _ => throw new RuntimeOperationException(
+                "O backend Android configurado não é suportado.",
+                $"Backend recebido: '{context.Config.Android.Backend}'. Valores aceitos: qemu-android-x86 ou android-sdk-emulator.")
+        };
         _provisioning = new AndroidProvisioningService(context, _logs);
         _nativeBridge = new NativeBridgeValidationService(context, _adb);
         _neoNews = new NeoNewsService(context, _adb);
         _kiosk = new KioskService(context, _adb, _backend);
         _startup = new StartupService(context, _runner);
-        _supervisor = new WatchdogService(context, _neoNews, _adb, _backend, _logs);
+        _supervisor = new WatchdogService(context, _neoNews, _adb, _backend, _nativeBridge, _kiosk, _logs);
         _diagnostics = new DiagnosticsService(context, _adb, _backend, _runner, _neoNews, _supervisor, _startup, _logs, () => _lastAbiCompatibility);
         _state.Changed += (_, state) => StateChanged?.Invoke(this, state);
         Snapshot = new RuntimeSnapshot(RuntimeState.Stopped, "Offline", "Não verificado", "Pendente", "Não instalado", "Inativo", "Não verificado", "Offline", false, false, false);
@@ -68,7 +73,9 @@ public sealed class RuntimeController : IAsyncDisposable
         if (booted)
         {
             var bridge = await SafeNativeBridgeAsync(cancellationToken);
-            if (bridge is not null) nativeBridgeState = bridge.Ready ? NativeBridgeState.Ready : NativeBridgeState.Unavailable;
+            if (bridge is not null) nativeBridgeState = _supervisor.HasNativeBridgeStructuralError
+                ? NativeBridgeState.Error
+                : bridge.Ready ? NativeBridgeState.Ready : NativeBridgeState.Unavailable;
             var neoStatus = await SafeNeoNewsAsync(cancellationToken);
             if (neoStatus is not null)
             {
