@@ -176,6 +176,31 @@ public sealed class RuntimeController : IAsyncDisposable
 
     public Task StartNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) => StartSystemAsync(progress, cancellationToken);
 
+    public async Task StartAutostartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        if (_context.Config.Startup.StartNeoNews)
+        {
+            await StartSystemAsync(progress, cancellationToken);
+            return;
+        }
+
+        await StartAndroidAsync(progress, cancellationToken);
+        try
+        {
+            if (_context.Config.Startup.AutoKiosk)
+            {
+                await EnterKioskAsync(progress, cancellationToken);
+            }
+            await StartSupervisorIfEnabledAsync();
+            await RefreshSnapshotAsync(cancellationToken);
+        }
+        catch
+        {
+            await CleanupFailedStartAsync();
+            throw;
+        }
+    }
+
     public Task StopSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
         WithOperationAsync(RuntimeState.Stopping, () => StopSystemCoreAsync(progress, cancellationToken));
 

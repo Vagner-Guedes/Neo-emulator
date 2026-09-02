@@ -54,7 +54,7 @@ function Assert-QemuBenchmarkProvisionedRuntime {
     }
     try { $state = Get-Content -LiteralPath $Paths.ProvisioningState -Raw -Encoding utf8 | ConvertFrom-Json }
     catch { throw "O estado de provisionamento não pôde ser lido: $($Paths.ProvisioningState). $($_.Exception.Message)" }
-    if ([string]$state.androidImageVersion -and [string]$state.androidImageVersion -ne [string]$Config.android.release) {
+    if ([string]::IsNullOrWhiteSpace([string]$state.androidImageVersion) -or [string]$state.androidImageVersion -ne [string]$Config.android.release) {
         throw "A release do estado de provisionamento diverge da configuração: registrada=$($state.androidImageVersion); esperada=$($Config.android.release)."
     }
     if ([string]$state.imageHash -notmatch '^[0-9a-fA-F]{64}$') {

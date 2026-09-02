@@ -68,7 +68,7 @@ public sealed class AndroidProvisioningService
                 "Execute scripts/provision/Provision-QemuAndroidRuntime.ps1 com os componentes locais aprovados antes do boot normal.");
         }
 
-        if (!string.IsNullOrWhiteSpace(state.AndroidImageVersion) &&
+        if (string.IsNullOrWhiteSpace(state.AndroidImageVersion) ||
             !state.AndroidImageVersion.Equals(_context.Config.Android.Release, StringComparison.OrdinalIgnoreCase))
         {
             throw new RuntimeOperationException(

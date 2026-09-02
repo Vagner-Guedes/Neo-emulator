@@ -168,6 +168,7 @@ $contractChecks = [ordered]@{
     provisioningPreservesStrongDiskHash = $launcherSourceText -match 'Keep it intact' -and $launcherSourceText -match 'ImageHash'
     mutableQcow2FingerprintDoesNotBlockBoot = $launcherSourceText -match 'valid guest write into a' -and $launcherSourceText -match 'state\.DiskFingerprint = fingerprint'
     provisioningRejectsWeakOrMissingHash = $launcherSourceText -match 'IsSha256' -and $launcherSourceText -match 'SHA-256 forte'
+    provisioningRequiresExactImageRelease = $launcherSourceText -match 'string\.IsNullOrWhiteSpace\(state\.AndroidImageVersion\)' -and $qemuBenchmarkCommonSource -match 'IsNullOrWhiteSpace\(\[string\]\$state\.androidImageVersion\)' -and $componentProvisioningSource -match 'existingState\.androidImageVersion'
     provisioningRevalidatesBaseBinaryHashes = $launcherSourceText -match 'foreach \(var componentName' -and $launcherSourceText -match 'ComputeSha256Async\(qemu' -and $launcherSourceText -match 'ComputeSha256Async\(adb'
     provisioningRevalidatesAndroidImageHash = $launcherSourceText -match 'ComputeSha256Async\(image' -and $launcherSourceText -match 'Provenance\["installerImage"\]' -and $launcherSourceText -match 'registeredImageHash'
     provisioningRejectsEmptyBaseFiles = $launcherSourceText -match 'HasContent\(qemu\)' -and $qemuSource -match 'HasContent\(executable\)' -and $baseProvisioningSource -match 'Test-NonEmptyFile' -and $componentProvisioningSource -match 'Test-NonEmptyFile'
@@ -177,6 +178,7 @@ $contractChecks = [ordered]@{
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'installerImage' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"
     componentProvisioningRequiresOrigin = $componentProvisioningSource -match 'requestedOrigins' -and $componentProvisioningSource -match 'requestedComponent.*Origin' -and $componentProvisioningSource -match 'InstallNativeBridge'
+    componentProvisioningRequiresBaseOrigins = $componentProvisioningSource -match 'record\.origin' -and $componentProvisioningSource -match 'provenance do componente-base'
     baseProvisioningRequiresOrigin = $baseProvisioningSource -match 'requiredOriginNames' -and $baseProvisioningSource -match 'origins\[\$requiredOriginName\]' -and $launcherSourceText -match 'string\.IsNullOrWhiteSpace\(component\.Origin\)'
     noProprietaryBinaryPublication = $publishSource -notmatch '(?i)\$sourceApk|Copy-Item[^\r\n]*(app\.apk|neonews\.apk|webview\.apk|rhvoice\.apk|nativebridge\.)'
     publishPreservesPersistentDisk = $publishSource -match 'persistentDiskTargetPath' -and $publishSource -match 'Preservando disco persistente existente' -and $publishSource -match 'OrdinalIgnoreCase'
@@ -198,6 +200,7 @@ $contractChecks = [ordered]@{
 $contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'ShouldLog\(ref _lastAdbOfflineLog\)' -and $launcherSourceText -match 'cooldownSeconds = Math\.Max\(15'
 $contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'
 $contractChecks['checklistReportInvalidatesAtStart'] = $checklistSource -match 'Initialize-ValidationReport' -and $checklistSource -match 'Test-ReportFresh'
+$contractChecks['autostartHonorsKioskWhenNeoNewsDisabled'] = $launcherSourceText -match 'StartAutostartAsync' -and $launcherSourceText -match 'Startup\.StartNeoNews' -and $launcherSourceText -match 'Startup\.AutoKiosk' -and $launcherSourceText -match 'StartSupervisorIfEnabledAsync'
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }

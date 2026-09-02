@@ -46,6 +46,10 @@ if ($existingImageHash -notmatch '^[0-9a-fA-F]{64}$' -or $existingProvenance.Cou
     throw "O estado base de provisionamento é incompleto ou não possui SHA-256/proveniência fortes: $statePath. Reexecute Provision-QemuAndroidRuntime.ps1."
 }
 
+if ([string]::IsNullOrWhiteSpace([string]$existingState.androidImageVersion) -or [string]$existingState.androidImageVersion -ne [string]$config.android.release) {
+    throw "A release Android do estado base diverge da configuracao: registrada=$($existingState.androidImageVersion); esperada=$($config.android.release)."
+}
+
 $requestedOrigins = [ordered]@{
     nativeBridge = $NativeBridgeOrigin
     webView = $WebViewOrigin
@@ -69,7 +73,7 @@ $basePaths = [ordered]@{
 }
 foreach ($baseName in $basePaths.Keys) {
     $record = $existingState.provenance.$baseName
-    if ($null -eq $record -or [string]$record.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+    if ($null -eq $record -or [string]$record.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or [string]::IsNullOrWhiteSpace([string]$record.origin)) {
         throw "A provenance do componente-base '$baseName' não possui hash SHA-256 forte: $statePath."
     }
     if (-not (Test-NonEmptyFile $basePaths[$baseName])) {

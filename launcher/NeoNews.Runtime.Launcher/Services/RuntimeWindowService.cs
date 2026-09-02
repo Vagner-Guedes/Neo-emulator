@@ -19,7 +19,7 @@ internal static class RuntimeWindowService
             var length = GetWindowTextLength(hWnd);
             var text = new StringBuilder(Math.Max(1, length + 1));
             _ = GetWindowText(hWnd, text, text.Capacity);
-            if (length == 0 || text.ToString().Contains(title, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(title) && length > 0 && text.ToString().Contains(title, StringComparison.OrdinalIgnoreCase))
             {
                 result = hWnd;
                 return false;

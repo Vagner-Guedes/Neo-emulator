@@ -243,9 +243,7 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
         RuntimeCommand.Restart => RunAsync("Reiniciar sistema", (p, ct) => _controller.RestartSystemAsync(p, ct)),
         RuntimeCommand.Kiosk => RunAsync("Ativar kiosk", (p, ct) => _controller.EnterKioskAsync(p, ct)),
         RuntimeCommand.ExitKiosk => RunAsync("Sair do kiosk", (_, ct) => _controller.ExitKioskAsync(ct)),
-        RuntimeCommand.Autostart => RunAsync("Inicialização automática", (p, ct) => _controller.Context.Config.Startup.StartNeoNews
-            ? _controller.StartSystemAsync(p, ct)
-            : _controller.StartAndroidAsync(p, ct)),
+        RuntimeCommand.Autostart => RunAsync("Inicialização automática", (p, ct) => _controller.StartAutostartAsync(p, ct)),
         RuntimeCommand.Diagnostics => CollectDiagnosticsAsync(),
         RuntimeCommand.Install => RunAsync("Instalar / atualizar", (_, ct) => _controller.InstallNeoNewsAsync(null, ct)),
         RuntimeCommand.Exit => ExitAsync(),
