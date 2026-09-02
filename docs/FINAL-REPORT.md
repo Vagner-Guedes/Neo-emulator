@@ -30,7 +30,7 @@ falhar.
 | Kiosk | serviço existente usa o contrato do backend, valida geometria/estilo da janela e restaura configurações | compilado |
 | Watchdog | distingue activity perdida, ADB offline e backend morto; cooldown, limite de tentativas e bloqueio de loop de reinstalação | compilado |
 | Zero-console | QEMU/ADB iniciados por `ProcessStartInfo` invisível; GUI Android permitida | smoke test do launcher aprovado |
-| Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos |
+| Build | SDK local .NET 8.0.30, `Release` | 0 erros, 0 avisos; publicação atual verificada |
 | Regressão | `Test-RuntimeRepository.ps1` | 30 scripts, JSON e ignore checks aprovados |
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
@@ -40,7 +40,9 @@ falhar.
 
 ## Verificacao local desta rodada
 
-A publicacao de verificacao `dist/NeoNewsRuntime-final-13` foi gerada depois do build Release e passou pelo smoke do executavel publicado. Foram observados janela WPF responsiva, single-instance, `--exit`, caminho com espacos e ausencia de processos residuais. A coleta fresca `--diagnostics` tambem terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponivel e os arquivos externos ausentes.
+A publicação de verificação `dist/NeoNewsRuntime-current` foi gerada depois do build Release e passou pelo smoke do executável publicado. O relatório registrou janela WPF responsiva, single-instance, CLI, `--exit`, caminho com espaços e ausência de processos residuais; os campos manuais de console, tray e hotkey foram registrados explicitamente. A coleta fresca `--diagnostics` também terminou com exit code 0 e registrou o backend/serial configurados, WHPX disponível e os arquivos externos ausentes.
+
+Os probes `Test-WebViewProvider.ps1` e `Test-TtsProvider.ps1` agora usam por padrão os nomes de relatório consumidos pelo checklist (`webview-provider.json` e `tts-provider.json`), e invalidam esses arquivos antes de qualquer pré-voo.
 
 O launcher le o AndroidManifest AXML do APK antes do `adb install -r` e rejeita package, versionName ou versionCode divergentes. O parser foi exercitado contra o `app.apk` local e encontrou `com.in9midia.neonews.player`, `9.0.3` e `522`.
 

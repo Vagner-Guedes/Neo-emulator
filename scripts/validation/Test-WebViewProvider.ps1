@@ -4,7 +4,7 @@ param(
     [string]$Serial,
     [int]$BootTimeoutSeconds = 180,
     [string]$ContentUrl,
-    [string]$ReportPath
+    [string]$ReportPath = 'reports/webview-provider.json'
 )
 
 $ErrorActionPreference = 'Stop'

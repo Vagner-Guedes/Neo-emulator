@@ -3,7 +3,7 @@ param(
     [string]$ConfigPath,
     [string]$Serial,
     [int]$BootTimeoutSeconds = 180,
-    [string]$ReportPath
+    [string]$ReportPath = 'reports/tts-provider.json'
 )
 
 $ErrorActionPreference = 'Stop'

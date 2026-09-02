@@ -201,6 +201,9 @@ $contractChecks['watchdogLogsWithCooldown'] = $launcherSourceText -match 'Should
 $contractChecks['stabilityRunnerStopsOnStartFailure'] = $integratedStabilitySource -match 'startCommandExitCode -ne 0' -and $integratedStabilitySource -match 'comando --start falhou'
 $contractChecks['checklistReportInvalidatesAtStart'] = $checklistSource -match 'Initialize-ValidationReport' -and $checklistSource -match 'Test-ReportFresh'
 $contractChecks['autostartHonorsKioskWhenNeoNewsDisabled'] = $launcherSourceText -match 'StartAutostartAsync' -and $launcherSourceText -match 'Startup\.StartNeoNews' -and $launcherSourceText -match 'Startup\.AutoKiosk' -and $launcherSourceText -match 'StartSupervisorIfEnabledAsync'
+$contractChecks['webViewProviderHasChecklistReportDefault'] = $webViewProviderSource.Contains("[string]`$ReportPath = 'reports/webview-provider.json'") -and $checklistSource.Contains("Read-Report 'webview-provider.json'")
+$contractChecks['ttsProviderHasChecklistReportDefault'] = $ttsProviderSource.Contains("[string]`$ReportPath = 'reports/tts-provider.json'") -and $checklistSource.Contains("Read-Report 'tts-provider.json'")
+$contractChecks['qemuBaselineHasReportDefault'] = $measureSource.Contains("[string]`$ReportPath") -and $measureSource.Contains("qemu-baseline.json")
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }
