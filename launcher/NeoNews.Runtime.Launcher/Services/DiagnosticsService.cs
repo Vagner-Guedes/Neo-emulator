@@ -50,6 +50,21 @@ public sealed class DiagnosticsService
         var qemuVersion = await GetQemuVersionAsync(cancellationToken);
         var integrity = await GetRequiredFileIntegrityAsync(cancellationToken);
         var neoNews = adbOnline ? await SafeNeoNewsAsync(cancellationToken) : null;
+        var neoNewsVersionCode = adbOnline ? await SafeNullableIntAsync(() => _adb.GetPackageVersionCodeAsync(_neoNews.PackageName, cancellationToken), cancellationToken) : null;
+        object? neoNewsReport = neoNews is null
+            ? null
+            : new
+            {
+                packageName = _neoNews.PackageName,
+                activity = _neoNews.ActivityName,
+                installed = neoNews.Installed,
+                running = neoNews.Running,
+                version = neoNews.Version,
+                versionCode = neoNewsVersionCode,
+                expectedVersion = _context.Config.NeoNews.VersionName,
+                expectedVersionCode = _context.Config.NeoNews.VersionCode,
+                detail = neoNews.Detail
+            };
         var webViewDump = adbOnline ? await SafeAsync(() => _adb.GetWebViewDumpAsync(cancellationToken), cancellationToken) : string.Empty;
         var webViewVersion = adbOnline ? await GetWebViewVersionAsync(cancellationToken) : null;
         var packages = adbOnline ? await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken) : string.Empty;
@@ -143,7 +158,7 @@ public sealed class DiagnosticsService
                     rotation = guest.UserRotation
                 }
             },
-            neoNews = neoNews,
+            neoNews = neoNewsReport,
             abiCompatibility = new
             {
                 guestAbi = validatedAbi?.GuestAbi ?? nativeBridge?.GuestAbi,
@@ -323,6 +338,13 @@ public sealed class DiagnosticsService
     }
 
     private async Task<string?> SafeNullableAsync(Func<Task<string?>> operation, CancellationToken cancellationToken)
+    {
+        try { return await operation(); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial: {exception.Message}"); return null; }
+    }
+
+    private async Task<int?> SafeNullableIntAsync(Func<Task<int?>> operation, CancellationToken cancellationToken)
     {
         try { return await operation(); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

@@ -102,6 +102,7 @@ $contractChecks = [ordered]@{
     existingInstallCanReachStabilityGate = $launcherSourceText -match 'guest\.Ready\s+&&\s+selected\s+is\s+not\s+null\s+&&\s+launched'
     existingInstalledPackageCanStartOffline = $launcherSourceText -match 'var installationRequired = !status\.Installed \|\| versionMismatch' -and $launcherSourceText -match 'if \(installationRequired\)' -and $launcherSourceText -match 'ValidateAuthorizedApk\(apkPath\)'
     activityGateRequiresForegroundState = $launcherSourceText -match 'mResumedActivity' -and $launcherSourceText -match 'mFocusedActivity' -and $launcherSourceText -match 'IsActivityRunningAsync'
+    diagnosticsIncludesNeoNewsActivity = $launcherSourceText -match 'packageName = _neoNews\.PackageName' -and $launcherSourceText -match 'activity = _neoNews\.ActivityName' -and $launcherSourceText -match 'versionCode = neoNewsVersionCode'
     arm32NativeBridgeAbiIsRequired = $launcherSourceText -match 'PreferredAbi' -and $launcherSourceText -match 'primary\.Equals\(preferredAbi'
     kioskRestoresGuestStateOnFailedEntry = $launcherSourceText -match 'capturedHere' -and $launcherSourceText -match 'RestoreGuestStateAsync'
     kioskValidatesWindowGeometry = $launcherSourceText -match 'IsKioskWindowApplied' -and $launcherSourceText -match 'GetWindowRect'
