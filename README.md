@@ -58,10 +58,12 @@ o guest (DNS, HTTP/HTTPS, playlist, reprodução, cache e perda reversível da
 NIC); a renderização do conteúdo proprietário do NeoNews continua sendo uma
 etapa de homologação separada.
 
-O launcher WPF pode ser compilado com o SDK local .NET 8:
+O launcher WPF pode ser compilado com o SDK local .NET 8 (ou com o `dotnet` global quando ele tiver um SDK instalado):
 
 ```powershell
-dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj --configuration Release
+$dotnet = Join-Path $env:LOCALAPPDATA 'NeoNewsRuntime\dotnet-sdk\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnet)) { $dotnet = (Get-Command dotnet -ErrorAction Stop).Source }
+& $dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj --configuration Release
 ```
 
 ## Executando o Runtime

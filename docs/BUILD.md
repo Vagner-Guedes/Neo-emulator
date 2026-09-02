@@ -12,7 +12,9 @@
 Na raiz do repositório:
 
 ```powershell
-dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj --configuration Release
+$dotnet = Join-Path $env:LOCALAPPDATA 'NeoNewsRuntime\dotnet-sdk\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnet)) { $dotnet = (Get-Command dotnet -ErrorAction Stop).Source }
+& $dotnet build .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj --configuration Release
 ```
 
 O projeto tem `OutputType=WinExe`, portanto o launcher não é uma aplicação de console.
@@ -20,7 +22,9 @@ O projeto tem `OutputType=WinExe`, portanto o launcher não é uma aplicação d
 ## Publicação distribuível
 
 ```powershell
-dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj `
+$dotnet = Join-Path $env:LOCALAPPDATA 'NeoNewsRuntime\dotnet-sdk\dotnet.exe'
+if (-not (Test-Path -LiteralPath $dotnet)) { $dotnet = (Get-Command dotnet -ErrorAction Stop).Source }
+& $dotnet publish .\launcher\NeoNews.Runtime.Launcher\NeoNews.Runtime.Launcher.csproj `
   --configuration Release `
   --runtime win-x64 `
   --self-contained true `
