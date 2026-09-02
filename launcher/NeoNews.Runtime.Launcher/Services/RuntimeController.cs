@@ -105,6 +105,14 @@ public sealed class RuntimeController : IAsyncDisposable
         var startupRegistered = await _startup.IsRegisteredAsync(cancellationToken);
         var startupValid = startupRegistered && await _startup.ValidateAsync(Environment.ProcessPath ?? string.Empty, cancellationToken);
         var adbState = _adb.State;
+        var internetState = InternetRuntimeState.Unknown;
+        if (booted)
+        {
+            var routeTable = await SafeAsync(() => _adb.ShellAsync(["ip", "route"], cancellationToken: cancellationToken), cancellationToken);
+            internetState = routeTable.Contains("default", StringComparison.OrdinalIgnoreCase)
+                ? InternetRuntimeState.Online
+                : InternetRuntimeState.Offline;
+        }
         Snapshot = new RuntimeSnapshot(
             State,
             androidState switch { AndroidGuestState.Online => "Online", AndroidGuestState.Booting => "Iniciando", _ => "Offline" },
@@ -124,6 +132,9 @@ public sealed class RuntimeController : IAsyncDisposable
             NeoNewsState = !packageInstalled ? NeoNewsRuntimeState.NotInstalled : neoRunning ? NeoNewsRuntimeState.Running : NeoNewsRuntimeState.Installed,
             WebViewState = webViewState,
             TtsState = ttsState,
+            WatchdogState = _supervisor.IsActive ? WatchdogRuntimeState.Active : WatchdogRuntimeState.Inactive,
+            StartupState = startupValid ? StartupRuntimeState.Active : StartupRuntimeState.Inactive,
+            InternetState = internetState,
             KioskActive = _kiosk.IsActive
         };
         SnapshotChanged?.Invoke(this, Snapshot);

@@ -64,6 +64,25 @@ public enum TtsRuntimeState
     Ready
 }
 
+public enum WatchdogRuntimeState
+{
+    Inactive,
+    Active
+}
+
+public enum StartupRuntimeState
+{
+    Inactive,
+    Active
+}
+
+public enum InternetRuntimeState
+{
+    Unknown,
+    Offline,
+    Online
+}
+
 public sealed record RuntimeProgress(string Phase, string Detail, double? Percent = null);
 
 public sealed record RuntimeSnapshot(
@@ -87,6 +106,9 @@ public sealed record RuntimeSnapshot(
     public NeoNewsRuntimeState NeoNewsState { get; init; } = NeoNewsRuntimeState.NotInstalled;
     public WebViewRuntimeState WebViewState { get; init; } = WebViewRuntimeState.Unknown;
     public TtsRuntimeState TtsState { get; init; } = TtsRuntimeState.Unknown;
+    public WatchdogRuntimeState WatchdogState { get; init; } = WatchdogRuntimeState.Inactive;
+    public StartupRuntimeState StartupState { get; init; } = StartupRuntimeState.Inactive;
+    public InternetRuntimeState InternetState { get; init; } = InternetRuntimeState.Unknown;
     public bool KioskActive { get; init; }
 }
 
