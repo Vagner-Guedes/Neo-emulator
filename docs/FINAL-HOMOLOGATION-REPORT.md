@@ -185,7 +185,8 @@ BLOCKED / NOT PRODUCTION READY** e não deve receber tag de produção.
 | `20b984c` | Registro anterior do probe DHCP/ADB | já existente no branch |
 | `f38b410` | Checkpoint do diagnóstico ADB TCP e causa-raiz API 25 | pushed para `origin/codex/neonews-runtime-homologation` |
 | `16001d7` | Relatório final V1 com resultado bloqueado | pushed para `origin/codex/neonews-runtime-homologation` |
+| `aae18a4` | Registro da proveniência final do relatório | pushed para `origin/codex/neonews-runtime-homologation` |
 
-O commit `16001d7` foi publicado antes do handoff. A verificação final desta
-rodada confirma a branch correta, o push no remoto e a exclusão dos PNGs staged
-do commit técnico.
+Os commits `16001d7` e `aae18a4` foram publicados antes do handoff. A
+verificação final desta rodada confirma a branch correta, o push no remoto e a
+exclusão dos PNGs staged do commit técnico.
