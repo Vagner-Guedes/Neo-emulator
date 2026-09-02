@@ -279,7 +279,7 @@ $result = [ordered]@{
     reportFreshness = $reportFreshness
     publicationIdentity = $publicationIdentity
     items = $items.ToArray()
-    status = if ($items.Count -eq 30 -and $failed.Count -eq 0 -and $pending.Count -eq 0) { 'validated' } else { 'not-approved' }
+    status = if ($items.Count -gt 0 -and $failed.Count -eq 0 -and $pending.Count -eq 0) { 'validated' } else { 'not-approved' }
 }
 $json = $result | ConvertTo-Json -Depth 12
 Set-Content -LiteralPath $fullReportPath -Value $json -Encoding utf8

@@ -35,7 +35,7 @@ falhar.
 | Launcher | `NeoNewsRuntime.exe --show` e `--exit` | janela WPF criada, handle válido, 0 processos residuais |
 | Diagnóstico | `NeoNewsRuntime.exe --diagnostics` | relatório ampliado com integridade, WHPX, ABI, guest, memória, gráficos e logcat filtrado |
 | Publicação | `Publish-NeoNewsRuntime.ps1` em diretório de verificação | layout portátil criado; pacotes proprietários não são copiados nem incorporados |
-| Checklist | `Test-HomologationChecklist.ps1` | 30 gates agregados; pendências nunca viram aprovação |
+| Checklist | `Test-HomologationChecklist.ps1` | 31 gates agregados; pendências nunca viram aprovação |
 | Estabilidade integrada | `Test-RuntimeStability.ps1` | runner de 600 s para backend, ADB, NeoNews, watchdog, kiosk, WebView, TTS, conteudo real e logcat; pendente sem guest |
 
 ## Verificacao local desta rodada

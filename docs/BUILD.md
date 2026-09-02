@@ -62,7 +62,7 @@ síntese RHVoice continua exigindo um teste real separado.
 Para validar o repositório sem o APK, execute `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\validation\Test-RuntimeRepository.ps1`. O script verifica o parse dos scripts, o JSON, os caminhos obrigatórios e se o APK proprietário está fora do Git.
 
 Depois de gerar os relatórios live, execute `Test-HomologationChecklist.ps1`.
-Ele agrega exatamente 30 gates da especificação e retorna código diferente de
+Ele agrega 31 gates da especificação e retorna código diferente de
 zero enquanto houver evidência pendente ou falha. Relatórios ausentes ficam
 pendentes; relatórios inválidos ou com mais de 24 horas ficam em falha e não
 são contados como aprovação. O limite pode ser ajustado com
