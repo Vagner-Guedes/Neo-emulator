@@ -112,6 +112,7 @@ $contractChecks = [ordered]@{
     qmpShutdown = $qemuSource -match 'RequestQmpShutdownAsync' -and $qemuSource -match 'qmp_capabilities' -and $qemuSource -match '"quit"'
     persistentQcow2 = [string]$configObject.android.qemu.disk -match '(?i)\.qcow2$' -and $qemuSource -match 'format=qcow2'
     qemuRequiresProvisionedAndroidImage = $qemuSource -match 'ResolveAndroidImagePath' -and $qemuSource -match 'androidImage' -and $qemuSource -match 'Imagem Android-x86'
+    whpxProbesHypervisorCapability = $qemuSource -match 'WHvGetCapability' -and $qemuSource -match 'WhvCapabilityCodeHypervisorPresent' -and $qemuSource -match 'HypervisorPresent'
     noSilentTcg = -not [bool]$configObject.android.qemu.allowTcgForDiagnostics -and $qemuSource -match 'AllowTcgForDiagnostics'
     noQemuEmuKill = $launcherSourceText -notmatch '(?i)adb\s+emu\s+kill'
     noAutomaticDestructiveGuestOperation = $launcherSourceText -notmatch '(?i)(pm\s+clear|adb\s+uninstall|factory\s+reset|format\s+userdata)' -and $webViewContentSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $ttsSynthesisSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall' -and $networkMediaSource -notmatch '(?i)if\s*\(\s*-not\s+\$KeepProbe\s*\).*uninstall'

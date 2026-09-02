@@ -9,6 +9,7 @@ public sealed record WhpxStatus(bool Available, string Details);
 
 public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
 {
+    private const int WhvCapabilityCodeHypervisorPresent = 0;
     private readonly RuntimeContext _context;
     private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
@@ -183,8 +184,34 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
         if (!Environment.Is64BitOperatingSystem) return new WhpxStatus(false, "O sistema operacional não é x64.");
         if (!NativeLibrary.TryLoad("WinHvPlatform.dll", out var handle))
             return new WhpxStatus(false, "WinHvPlatform.dll não pôde ser carregada; o recurso Windows Hypervisor Platform pode estar ausente.");
-        NativeLibrary.Free(handle);
-        return new WhpxStatus(true, "WinHvPlatform.dll carregada; o QEMU será iniciado com -accel whpx.");
+        try
+        {
+            var hresult = WHvGetCapability(
+                WhvCapabilityCodeHypervisorPresent,
+                out var hypervisorPresent,
+                sizeof(uint),
+                out var writtenSize);
+            if (hresult != 0 || writtenSize < sizeof(uint) || hypervisorPresent == 0)
+            {
+                return new WhpxStatus(
+                    false,
+                    $"WHvGetCapability(HypervisorPresent) falhou ou retornou ausente; HRESULT=0x{hresult:X8}; escrito={writtenSize}; hypervisorPresent={hypervisorPresent}. Virtualização pode estar desabilitada no firmware ou o recurso Windows Hypervisor Platform pode estar ausente.");
+            }
+
+            return new WhpxStatus(true, "WHvGetCapability confirmou HypervisorPresent; o QEMU será iniciado com -accel whpx.");
+        }
+        catch (DllNotFoundException exception)
+        {
+            return new WhpxStatus(false, $"A API WHPX não pôde ser carregada: {exception.Message}");
+        }
+        catch (EntryPointNotFoundException exception)
+        {
+            return new WhpxStatus(false, $"A API WHvGetCapability não está disponível: {exception.Message}");
+        }
+        finally
+        {
+            NativeLibrary.Free(handle);
+        }
     }
 
     private async Task RequestQmpShutdownAsync(CancellationToken cancellationToken)
@@ -222,4 +249,7 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
     }
+
+    [DllImport("WinHvPlatform.dll", ExactSpelling = true)]
+    private static extern int WHvGetCapability(int capabilityCode, out uint capabilityBuffer, uint capabilityBufferSizeInBytes, out uint writtenSizeInBytes);
 }
