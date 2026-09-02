@@ -86,8 +86,39 @@ function Invoke-QemuBenchmarkAdb {
         [string[]]$Arguments
     )
 
-    $raw = & $AdbPath -s $Serial @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # Windows PowerShell 5.1 surfaces native stderr as an ErrorRecord. An
+        # adb daemon banner or an offline-device diagnostic is expected input
+        # to the evidence collector, not a terminating PowerShell exception.
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& $AdbPath -s $Serial @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    [pscustomobject]@{
+        ExitCode = $exitCode
+        Text = (($raw | Out-String).Trim())
+    }
+}
+
+function Invoke-QemuBenchmarkAdbHost {
+    param(
+        [string]$AdbPath,
+        [string[]]$Arguments
+    )
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& $AdbPath @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     [pscustomobject]@{
         ExitCode = $exitCode
         Text = (($raw | Out-String).Trim())
@@ -112,12 +143,12 @@ function Wait-QemuBenchmarkMilestones {
     )
 
     $startedAt = Get-Date
-    $null = & $AdbPath start-server 2>&1
+    $null = Invoke-QemuBenchmarkAdbHost -AdbPath $AdbPath -Arguments @('start-server')
     $deadline = $startedAt.AddSeconds($TimeoutSeconds)
     $adbReadyAt = $null
     $bootedAt = $null
     do {
-        if ($Serial -match ':') { $null = & $AdbPath connect $Serial 2>&1 }
+        if ($Serial -match ':') { $null = Invoke-QemuBenchmarkAdbHost -AdbPath $AdbPath -Arguments @('connect', $Serial) }
         $state = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state')
         if ($state.Text -match '(?im)^device$') {
             if ($null -eq $adbReadyAt) { $adbReadyAt = Get-Date }
@@ -169,7 +200,11 @@ function New-QemuBenchmarkArguments {
     $arguments.Add($(if ($qemu.machine) { [string]$qemu.machine } else { 'pc' }))
     $arguments.Add('-accel')
     $arguments.Add('whpx')
-    $qemuExecutableDirectory = Split-Path -Parent $Executable
+    $qemuExecutable = [string]$qemu.executable
+    if (-not [System.IO.Path]::IsPathRooted($qemuExecutable)) {
+        $qemuExecutable = [System.IO.Path]::GetFullPath((Join-Path $RepositoryRoot ($qemuExecutable -replace '/', '\')))
+    }
+    $qemuExecutableDirectory = Split-Path -Parent $qemuExecutable
     $qemuShareDirectory = Join-Path $qemuExecutableDirectory 'share'
     $arguments.Add('-L')
     $arguments.Add($qemuShareDirectory)
