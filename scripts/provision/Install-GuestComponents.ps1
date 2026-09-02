@@ -171,9 +171,19 @@ if ($InstallWebView) {
 }
 if ($InstallTts) { $components.Add((Install-Component 'RHVoice' (Resolve-ConfiguredPath $config.android.provisioning.ttsPackagePath) $TtsOrigin)) }
 
-$packages = (Invoke-Adb @('-s', $Serial, 'shell', 'pm', 'list', 'packages')).Text
-$webViewDump = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'package', [string]$config.webView.provider)).Text
+$packagesResult = Invoke-Adb @('-s', $Serial, 'shell', 'pm', 'list', 'packages')
+$webViewDumpResult = Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'webviewupdate')
+$webViewPackageDumpResult = Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'package', [string]$config.webView.provider)
+$packages = $packagesResult.Text
+$webViewDump = $webViewPackageDumpResult.Text
+$webViewUpdateDump = $webViewDumpResult.Text
 $webViewVersionMatch = [regex]::Match($webViewDump, 'versionName=([^\s]+)')
+$webViewPackagePresent = $packagesResult.ExitCode -eq 0 -and $packages -match [regex]::Escape("package:$([string]$config.webView.provider)")
+$webViewProviderActive = $webViewDumpResult.ExitCode -eq 0 -and @($webViewUpdateDump -split "`r?`n" | Where-Object { $_ -match '(?i)Current WebView package' -and $_ -match [regex]::Escape([string]$config.webView.provider) }).Count -gt 0
+$webViewVersionMatches = $webViewPackageDumpResult.ExitCode -eq 0 -and $webViewVersionMatch.Success -and $webViewVersionMatch.Groups[1].Value -eq [string]$config.webView.homologatedVersion
+if ($InstallWebView -and (-not $webViewPackagePresent -or -not $webViewProviderActive -or -not $webViewVersionMatches)) {
+    throw "O WebView instalado não corresponde ao provider/versão homologados: packagePresent=$webViewPackagePresent; providerActive=$webViewProviderActive; version=$($webViewVersionMatch.Groups[1].Value); expected=$($config.webView.homologatedVersion)."
+}
 $rhvoicePackages = @($packages -split "`r?`n" | Where-Object { $_ -match '(?i)rhvoice' } | ForEach-Object { $_ -replace '^package:', '' })
 $defaultEngine = (Invoke-Adb @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')).Text
 $defaultChanged = $false
@@ -213,6 +223,7 @@ $state = [ordered]@{
     androidImageVersion = $config.android.release
     nativeBridgeStatus = if (-not $InstallNativeBridge) { 'unchanged' } elseif ([string]::IsNullOrWhiteSpace($NativeBridgeOrigin)) { 'installed-local-origin-missing-pending-runtime-test' } else { 'installed-local-origin-recorded-pending-runtime-test' }
     webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { '' }
+    webViewProvider = [ordered]@{ packagePresent = $webViewPackagePresent; providerActive = $webViewProviderActive; versionMatches = $webViewVersionMatches; packageDumpExitCode = $webViewPackageDumpResult.ExitCode; webViewUpdateExitCode = $webViewDumpResult.ExitCode }
     ttsStatus = if ($rhvoicePackages.Count -gt 0 -and $defaultEngine -match '(?i)rhvoice') { 'selected-local-pending-synthesis-test' } elseif ($rhvoicePackages.Count -gt 0) { 'installed-local-not-selected' } else { 'missing' }
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
@@ -220,7 +231,7 @@ $state = [ordered]@{
     diskFingerprint = if ($existingState) { [string]$existingState.diskFingerprint } else { '' }
     files = @($existingFiles + @($components))
     provenance = $provenance
-    guest = [ordered]@{ serial = $Serial; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
+    guest = [ordered]@{ serial = $Serial; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngine = $defaultEngine; defaultChanged = $defaultChanged }
 }
 $stateJson = $state | ConvertTo-Json -Depth 10
 $temporaryStatePath = "$statePath.tmp"
