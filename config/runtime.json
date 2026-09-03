@@ -36,16 +36,16 @@
     "preferredAvd": "",
     "fallbackAvds": [],
     "abiValidation": {
-      "status": "pending-native-bridge-validation",
+      "status": "blocked-native-bridge-artifact",
       "apkAbis": [
         "arm64-v8a",
         "armeabi-v7a"
       ],
       "x86InstallResult": "INSTALL_FAILED_NO_MATCHING_ABIS",
-      "x86NativeBridge": "not-yet-tested",
+      "x86NativeBridge": "blocked-native-bridge-artifact",
       "arm32LegacyInstallResult": "system_server_watchdog_during_dexopt",
       "validated": false,
-      "report": "docs/ABI-ETAPA-3.md"
+      "report": "docs/NATIVE-BRIDGE-NEONEWS-HOMOLOGATION.md"
     },
     "tooling": {
       "sdkRoot": "runtime",
@@ -90,7 +90,7 @@
       "required": true,
       "preferredAbi": "armeabi-v7a",
       "property": "ro.dalvik.vm.native.bridge",
-      "status": "unknown"
+      "status": "missing"
     },
     "provisioning": {
       "statePath": "runtime/state/provisioning.json",
@@ -149,7 +149,7 @@
     "versionName": "9.0.3",
     "versionCode": 522,
     "launchActivity": "com.in9midia.neonews.player.TerminalActivity",
-    "integrationStatus": "blocked-abi",
+    "integrationStatus": "blocked-native-bridge-artifact",
     "validationScript": "scripts/runtime/Start-NeoNews.ps1",
     "supportedApkAbis": [
       "arm64-v8a",
