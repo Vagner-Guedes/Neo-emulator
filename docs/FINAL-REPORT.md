@@ -19,7 +19,7 @@
 | Relógio | Sincronizado com Windows pelo launcher e watchdog |
 | RHVoice | Engine padrão, idioma/voz pt-BR e síntese real aprovados |
 | NeoNews Verbalizar | PASS observado via `RHVoiceService` e saída de áudio |
-| WebView 119 | BLOCKED: provider exato ausente |
+| WebView 119 | BLOCKED: guest aceita `com.android.webview`, mas o build oficial 119 parou com `BUILD_HOST_RESOURCE_REQUIRED` |
 | Conteúdo Power BI | BLOCKED por erro Chromium observado |
 | 600 s / três ciclos / zero-touch | Ainda não homologados |
 

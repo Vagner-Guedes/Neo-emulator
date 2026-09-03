@@ -43,7 +43,7 @@ foram concluídas.
 | RHVoice pt-BR | PASS observado / protegido | Engine padrão RHVoice; idioma e voz persistiram após reboot; síntese real aprovada. |
 | Idioma Android | PASS observado | `persist.sys.locale=pt-BR` e `system_locales=pt-BR`, confirmados após reboot. |
 | Horário Android = Windows | PASS por política | `America/Sao_Paulo`; sincronização host→guest implementada e validada com desvio de 0–3 s. |
-| WebView 119 | BLOCKED | `com.google.android.webview`/`119.0.6045.193` ausente; provider efetivo não homologado. |
+| WebView 119 | BLOCKED | O guest aceita `com.android.webview`, mas só possui 52.0.2743.100; o build oficial 119 foi bloqueado por recursos do host. |
 | Conteúdo Power BI | BLOCKED | Erro Chromium legado observado: `Unexpected token .` na página Power BI. |
 | Debloat | NOT EXECUTED | Nenhum uninstall, `pm clear`, remoção de arquivo ou alteração de engine. |
 | Superuser silencioso | Configuração PASS / toast não reprovado | Política NeoNews allow permanente, `notification=false`; recomenda-se repetir prova visual em ciclo limpo. |
@@ -115,7 +115,28 @@ registrou:
 
 Evidência primária: `reports/neonews-verbalize-live.json`.
 
-## WebView: bloqueio exato
+## Meta Chromium 119 — preflight atual
+
+A auditoria confirmou que o guest AOSP/API25 aceita `com.android.webview` pelo
+recurso `framework-res.apk:res/xml/config_webview_packages.xml`. O provider
+atual permanece preinstalado em `/system/app/webview/webview.apk`, versão
+52.0.2743.100, com ABI `x86_64`/`x86`; ele não foi modificado.
+
+A tag oficial Chromium `119.0.6045.193` resolve para o commit
+`baf84c2d246a45577b7ddd2b8d8d2e2cf36e12e2`. Para este guest, o target
+planejado é `system_webview_apk` com package `com.android.webview`; Trichrome
+não será usado.
+
+O build foi interrompido antes do checkout por falta de recursos no host:
+7,87 GiB de RAM disponíveis contra o mínimo oficial de 8 GB e 69,74 GB livres
+contra o mínimo oficial de 100 GB. O WSL2 existe, mas não possui distribuição
+Linux instalada. Resultado obrigatório: **`BUILD_HOST_RESOURCE_REQUIRED`**.
+
+Evidência detalhada: `reports/webview-build-preflight.json` e
+[`docs/WEBVIEW-ETAPA-4.md`](WEBVIEW-ETAPA-4.md). Nenhum `depot_tools`, hook,
+checkout Chromium, APK de terceiro ou mirror foi usado.
+
+## Histórico da estratégia anterior: WebView Google
 
 Arquivo esperado pelo provisionamento: `packages/webview/webview.apk`
 Package esperado: `com.google.android.webview`
@@ -134,9 +155,10 @@ provider efetivo, assinatura, ABI, versão e conteúdo real não forem validados
 
 ## Próximos passos para liberar o V1
 
-1. Fornecer uma origem oficial/licenciada para o APK WebView exato e registrar
-   tamanho/SHA-256.
-2. Instalar o WebView no mesmo qcow2 de prova e validar provider efetivo,
+1. Liberar os recursos do host e disponibilizar WSL2 Ubuntu ou host Linux;
+   depois fazer checkout oficial da tag e construir `system_webview_apk`.
+2. Registrar o APK produzido, tamanho/SHA-256, assinatura, versionCode e ABI;
+   integrar no mesmo qcow2 de prova e validar provider efetivo,
    JavaScript, HTTPS e a página Power BI do NeoNews.
 3. Rerodar Native Bridge, RHVoice e `VERBALIZAR` no mesmo ciclo limpo.
 4. Executar 600 s com conteúdo real, watchdog e kiosk ativos.
