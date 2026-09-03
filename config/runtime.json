@@ -63,7 +63,7 @@
     },
     "qemu": {
       "executable": "runtime/qemu/qemu-system-x86_64.exe",
-      "disk": "runtime/android/neonews-api25.qcow2",
+      "disk": "runtime/android/adb-tcp-provisioned-api25.qcow2",
       "androidImage": "runtime/android/android-x86-7.1-r5.iso",
       "acceleration": "whpx",
       "gpu": "std",

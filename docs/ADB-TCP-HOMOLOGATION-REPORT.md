@@ -1,21 +1,29 @@
 # Relatório específico — homologação ADB TCP
 
-**Data da execução:** 02/09/2026
-**Backend:** `IAndroidRuntimeBackend` / `QemuAndroidRuntimeBackend`
+**Execução:** 02–03/09/2026
+**Backend:** `QemuAndroidRuntimeBackend` / QEMU + WHPX
 **Guest:** Android-x86 7.1-r5, Android 7.1.2, API 25
-**Resultado:** **BLOQUEADO**
+**Resultado do gate ADB TCP:** **PASS**
 
-## Escopo e critério
+## Escopo e gates
 
-Foi investigado somente o transporte ADB TCP entre Windows e Android-x86 no
-backend QEMU/WHPX. Não foram executados debloat, NeoNews, WebView, HLS/cache,
-Native Bridge, RHVoice ou qualquer alteração de pacote, voz ou APK.
+Esta meta tratou exclusivamente do transporte ADB TCP entre Windows e
+Android-x86. Não foram executados debloat, Native Bridge, NeoNews, WebView,
+kiosk, mídia ou qualquer alteração de pacote, APK, voz ou engine TTS.
 
-O critério de aprovação era uma sessão live em que `adb devices -l` exibisse o
-serial configurado como `device`. O estado `offline` nunca foi promovido para
-`device`.
+| Gate | Estado nesta meta |
+| --- | --- |
+| ADB TCP | **PASS** |
+| Native Bridge | BLOQUEADO — próxima etapa |
+| NeoNews | BLOQUEADO — próxima etapa |
+| WebView | BLOQUEADO — próxima etapa |
+| RHVoice/TTS | BLOQUEADO — protegido e fora do escopo |
 
-## Identidade observada
+O critério foi observado ao vivo em três ciclos: `adb devices -l` exibindo
+`device` e `adb -s 127.0.0.1:5556 shell getprop sys.boot_completed` retornando
+`1`. O estado `offline` nunca foi promovido automaticamente.
+
+## Componentes e artefatos
 
 | Item | Valor |
 | --- | --- |
@@ -23,256 +31,137 @@ serial configurado como `device`. O estado `offline` nunca foi promovido para
 | SHA-256 QEMU | `47D57A6072E0BB3BD98F87926EB129EB1736DFE818C67B3B81EF7CE4EDD0B3CD` |
 | ADB | 1.0.41 / 37.0.1-15733141 |
 | SHA-256 ADB | `B4A6B455702684652CCCF7B46258B29E653538904359A58FD4931CF3EF286B3F` |
-| ISO | `android-x86-7.1-r5.iso` |
+| ISO oficial | `runtime/android/android-x86-7.1-r5.iso` |
 | SHA-256 ISO | `43EF7D7A44C2765BD35E2ED9C441FCEDA43741F152BB6384BCEC16EDCE0EAA25` |
-| Rede QEMU | `10.0.2.0/24`, DHCP anunciado em `10.0.2.15` |
-| Forwarding | `127.0.0.1:5556 -> 10.0.2.15:5555` |
+| qcow2 vazio inicial | `runtime/android/adb-tcp-clean-api25.qcow2` |
+| SHA-256 qcow2 vazio | `E80C945307D0738D449E58062253EEECF7A0F9C3F1A49ED6BACEDE39463014D2` |
+| qcow2 baseline limpo pós-instalação | SHA-256 `9904FDC74E79FDDA8FC08B5E5797729DD21F0FCA61CF59A68613BEFC5AF0DB95` |
+| qcow2 provisionado usado no PASS | `runtime/android/adb-tcp-provisioned-api25.qcow2` |
+| SHA-256 qcow2 provisionado registrado | `E9B71CDB61B0523BD86CA451EAEB279A8EBE3B496EAF7AF4E66005B087E78303` |
+| QEMU user-mode | `10.0.2.0/24`, guest esperado `10.0.2.15` |
+| Host forwarding | `127.0.0.1:5556 -> 10.0.2.15:5555` |
 | NIC | `e1000` |
-| QMP | `127.0.0.1:4445` |
+| QMP do backend | `127.0.0.1:4445` |
 
-O comando efetivo do backend está em
-[`QemuAndroidRuntimeBackend.cs`](../launcher/NeoNews.Runtime.Launcher/Services/QemuAndroidRuntimeBackend.cs:111)
-e contém `-netdev user`, `dhcpstart`, `hostfwd`, `-device e1000` e QMP. A
-política ADB permanece estrita em
-[`AdbService.cs`](../launcher/NeoNews.Runtime.Launcher/Services/AdbService.cs:132):
-somente o texto `device` é aceito como online.
+O qcow2 vazio, o baseline limpo e a ISO original foram preservados. O
+`qemu-img check` do artefato provisionado terminou com `No errors were found
+on the image`; o estado de corrupção/dirty flag também permaneceu falso.
 
-## Evidência live
+## Diagnóstico experimental
 
-### Boot normal com a linha de produção
-
-No guest:
+No baseline original, o guest apresentava:
 
 ```text
-ro.build.version.release = 7.1.2
-ro.build.version.sdk = 25
-ro.product.cpu.abilist = x86_64,x86,armeabi-v7a,armeabi,arm64-v8a
-persist.adb.tcp.port = 5555
-service.adb.tcp.port = vazio
-ro.adb.secure = vazio
-sys.usb.config = adb
+cat /proc/sys/net/ipv6/bindv6only -> 0
+/proc/net/tcp                    -> sem listener IPv4
+/proc/net/tcp6                   -> :::5555 LISTEN
+wifi_eth                         -> sem IPv4 automático
+ip route                         -> sem rota padrão
+adb devices -l                   -> 127.0.0.1:5556 offline
 ```
 
-O guest criou `wifi_eth` com link `UP/LOWER_UP`, mas sem IPv4 e sem rota:
+Com configuração temporária de `wifi_eth=10.0.2.15/24` e rota via
+`10.0.2.2`, o ping ao gateway passou. O teste independente obrigatório também
+passou: um listener IPv4 puro no guest recebeu exatamente
+`NEONEWS-ADB-PROBE` enviado do Windows pelo `hostfwd`. Isso comprova a entrega
+IPv4 do QEMU e elimina hostfwd/NAT como causa do bloqueio.
+
+O adbd da imagem continua criando seu listener TCP em AF_INET6. O caminho
+mínimo por `bindv6only` não era necessário (`0`) e `adbd -a` foi rejeitado pelo
+binário (`invalid option -- a`). Desabilitar IPv6 também não produziu fallback
+IPv4. O bloqueio restante era o listener IPv6 do adbd combinado com o destino
+IPv4 do hostfwd.
+
+Não foi definido `ro.kernel.qemu=1` e não foi utilizado QEMUD.
+
+## Correção persistente
+
+Foi criada uma variante controlada, separada da ISO e do baseline:
+
+1. Em `/system/etc/init.sh`, depois da criação de `wifi_eth`, foram mantidas
+   as linhas de rede:
+
+   ```text
+   ifconfig wifi_eth 10.0.2.15 netmask 255.255.255.0 up
+   ip route replace default via 10.0.2.2 dev wifi_eth
+   setprop net.dns1 10.0.2.3
+   ```
+
+2. A linha 61 do artefato provisionado inicia
+   `/system/bin/neonews-adb-relay-start.sh` após a configuração de DNS.
+
+3. O startup controlado define `service.adb.tcp.port` e
+   `persist.adb.tcp.port` como `5556`, reinicia o adbd e inicia o relay local.
+   O adbd escuta `:::5556`; o relay escuta IPv4 `0.0.0.0:5555` e encaminha
+   bytes bidirecionalmente para `::1:5556`, sem alterar o payload ADB.
+
+4. O relay é código próprio versionado em
+   [`scripts/adb/AdbIpv4Relay.java`](../scripts/adb/AdbIpv4Relay.java) e usa
+   somente classes padrão disponíveis no Android-x86. O DEX foi reproduzido
+   por [`Build-AdbIpv4Relay.ps1`](../scripts/adb/Build-AdbIpv4Relay.ps1), tem
+   3.248 bytes, SHA-256
+   `D682DBE7E4F9A0C81DFBBD86948CF0C4780D92C79E0F9E392A9BF9D96ABF4D32` e
+   MD5 `AFF81994F571E6F85EF42754FC3DA5C5`.
+
+5. O guest persistente contém `/system/bin/adb-relay.dex` e
+   `/system/bin/neonews-adb-relay-start.sh`. A configuração versionada aponta
+   `config/runtime.json` para `runtime/android/adb-tcp-provisioned-api25.qcow2`;
+   o backend continua usando QEMU/WHPX, `e1000`, user-mode networking e
+   forwarding IPv4.
+
+O BusyBox `nc` não foi usado como relay porque a implementação da imagem não
+suporta o destino IPv6 necessário. O relay local é iniciado automaticamente,
+sem console, e sobrevive ao reboot do guest.
+
+## Evidência live — três ciclos consecutivos
+
+Cada ciclo foi iniciado do host com o qcow2 provisionado sem `-snapshot`,
+aguardou `device`, confirmou `boot_completed=1` e foi encerrado com `quit` via
+QMP. Não houve `forcedKill`.
+
+| Ciclo | QEMU → `device` | `device` → `boot_completed` | ADB | IPv4/rota | DNS | bindv6only | relay | forcedKill |
+| ---: | ---: | ---: | --- | --- | --- | ---: | --- | --- |
+| 1 | 31,26 s | 1,79 s | `device` | OK | `10.0.2.3` | `0` | OK | `false` |
+| 2 | 32,22 s | 1,21 s | `device` | OK | `10.0.2.3` | `0` | OK | `false` |
+| 3 | 31,14 s | 3,58 s | `device` | OK | `10.0.2.3` | `0` | OK | `false` |
+
+Saída observada no host:
 
 ```text
-wifi_eth: fe80::5054:ff:fe12:3456/64
-ip route: vazio
-tcp6 :::5555 LISTEN
+List of devices attached
+127.0.0.1:5568  device product:android_x86_64 model:Standard_PC__i440FX___PIIX__1996_ device:x86_64
+
+adb -s 127.0.0.1:5568 get-state
+device
+
+adb -s 127.0.0.1:5568 shell getprop sys.boot_completed
+1
 ```
 
-No host, há somente o ADB local do repositório. Após reiniciar o servidor ADB:
+Após o último ciclo, QEMU foi encerrado via QMP e não ficou processo QEMU
+órfão. O servidor ADB pode ser encerrado pelo operador quando a sessão de
+diagnóstico terminar.
 
-```text
-adb connect 127.0.0.1:5556  -> falha/offline
-adb devices -l               -> 127.0.0.1:5556 offline
-adb -s 127.0.0.1:5556 get-state -> device offline
-```
+## Integração ao backend
 
-Um probe TCP independente conseguiu abrir `127.0.0.1:5556`, mas o envio de um
-CNXN ADB não recebeu bytes de resposta em três segundos. Isso prova somente que
-o frontend TCP do `hostfwd` aceitou a conexão; não prova que o QEMU conseguiu
-entregar a conexão ao socket do guest nem que o protocolo ADB esteja funcionando.
+O `QemuAndroidRuntimeBackend` já constrói o forwarding configurado e mantém
+`-no-reboot`, QMP e a política estrita de `AdbService`: somente `device` é
+estado online. A integração desta meta consistiu em apontar o disco aprovado
+no `config/runtime.json` para a variante provisionada; não houve fallback para
+`offline` nem mascaramento por estado estático.
 
-### Controles de rede
+O código-fonte do launcher não foi recompilado nesta máquina porque há apenas
+o runtime .NET 8 instalado, sem .NET SDK. A prova live foi feita diretamente
+com o mesmo comando QEMU, o mesmo artefato configurado e o mesmo `adb.exe` que
+o backend usa; a recompilação deve ser feita no ambiente de build antes da
+publicação do executável.
 
-Foi aplicada somente em memória, numa sessão de diagnóstico, a configuração:
+## Rollback e limites
 
-```text
-ifconfig wifi_eth 10.0.2.15 netmask 255.255.255.0 up
-ip route add default via 10.0.2.2 dev wifi_eth
-ping -c 1 10.0.2.2 -> 1 transmitido, 1 recebido, 0% perda
-```
+O rollback é selecionar novamente o qcow2 original no `runtime.json` ou
+regenerar um artefato a partir do baseline limpo e da ISO oficial. Nenhum
+arquivo de voz, pacote TTS/RHVoice, APK ou política de debloat foi tocado.
 
-Isso prova que a NIC, a rede user-mode do QEMU e o gateway funcionam quando o
-guest recebe IPv4. Mesmo assim, o `adbd` continuou em `tcp6 :::5555`, o probe
-CNXN continuou sem resposta e o estado ADB continuou `offline`.
-
-Também foram testados boots diretos com os initrd/kernel oficiais:
-
-```text
-ip=10.0.2.15::10.0.2.2:255.255.255.0::wifi_eth:none
-net.ifnames=0 ip=10.0.2.15::10.0.2.2:255.255.255.0::eth0:none
-```
-
-Nos dois casos o resultado live voltou a ser `wifi_eth` sem IPv4/rota. A
-interface é criada/renomeada depois da fase em que o `ip=` do kernel é tratado;
-alterar apenas o nome esperado (`eth0`) não corrige o problema.
-
-## Causa raiz
-
-### Causa primária — inicialização de rede do guest
-
-O `/system/etc/init.sh` da imagem foi lido no console root. O trecho relevante
-(linhas 42–58) procura `wlan0`, pode criar/remover `virt_wifi`, renomeia a
-interface para `wifi_eth` e executa `ifconfig wifi_eth up`. Ele não atribui
-IPv4, não adiciona rota e não inicia cliente DHCP.
-
-Os controles adicionais confirmaram:
-
-```text
-/system/bin/dhcpcd -> inexistente
-/system/bin/dhcpd  -> inexistente
-netcfg             -> inexistente
-dhcp.wifi_eth.*    -> vazio
-```
-
-O servidor DHCP do QEMU só responde a um cliente DHCP no guest; anunciar
-`dhcpstart=10.0.2.15` não configura sozinho a interface Android.
-
-### Causa secundária — serviço/socket do adbd
-
-O `/init.usb.rc` define:
-
-```text
-service adbd /sbin/adbd --root_seclabel=u:r:su:s0
-    disabled
-    socket adbd stream 660 system system
-```
-
-O serviço é ativado por triggers USB e o listener observado foi exclusivamente
-`tcp6 :::5555`; `/proc/net/tcp` permaneceu vazio. Depois que a conectividade
-IPv4 foi criada manualmente, ainda não houve handshake CNXN. O trace interno do
-`adbd`, habilitado somente em sessão `-snapshot`, registrou após o `adb connect`:
-
-```text
-transport: server_socket_thread() starting
-server: trying to get new connection from 5555
-```
-
-Não apareceu o evento seguinte `server: new connection`. Assim, a conexão que
-o host consegue abrir é o frontend TCP do QEMU; ela não chega ao listener IPv6
-do guest através do destino IPv4 `10.0.2.15:5555`. Isso é um bloqueio de família
-de socket/encaminhamento, não um problema de autenticação RSA: o `adbd` não
-recebe o CNXN para iniciar o desafio.
-
-O controle foi repetido com um bootstrap QMP que configurou IPv4, rota,
-`service.adb.tcp.port=5555` e reiniciou o serviço. O resultado permaneceu
-`offline`, tanto com `hostfwd` para `10.0.2.15` quanto com o destino implícito
-do QEMU. O próprio binário também rejeitou a tentativa de forçar o modo
-abrangente:
-
-```text
-/sbin/adbd -a -> invalid option -- a
-```
-
-Num boot direto com `ipv6.disable=1`, o `/proc/net/tcp6` deixou de existir e o
-`adbd` não abriu listener IPv4 após `start adbd`; portanto essa imagem não
-oferece fallback IPv4 por argumento de boot simples.
-
-### Prova no nível do protocolo
-
-Com `wifi_eth=10.0.2.15/24`, rota via `10.0.2.2` e `adbd` ouvindo em
-`:::5555`, um cliente bruto enviou um pacote ADB `CNXN` para o forwarding
-`127.0.0.1:5572` com payload `host::\0`, comprimento 7 e checksum 562. O
-frontend TCP conectou, mas a leitura permaneceu em zero bytes durante cinco
-segundos. O trace do guest não registrou `server: new connection`. O mesmo
-resultado ocorreu quando o `adbd` foi parado pelo `init` e iniciado diretamente
-como `/sbin/adbd`, sem `--root_seclabel`.
-
-O trace do `adb` 37.0.1 confirmou a sequência: `host:connect` recebeu `OKAY`
-do servidor local, abriu o transporte e esperou a resposta de quatro bytes do
-guest por dez segundos; terminou com `failed to connect` e o inventário ficou
-`127.0.0.1:5572 offline`. Portanto, a porta host aberta e o transporte ADB
-registrado não equivalem a uma entrega bem-sucedida ao socket do guest.
-
-No boot normal, `ro.kernel.qemu` ficou vazio. Isso é compatível com o caminho
-TCP `server_socket_thread` do ADB Android 7.1; o caminho QEMUD só é selecionado
-quando essa propriedade é `1`. O código de referência está no
-[AOSP system/core da série Android 7.1.2](https://android.googlesource.com/platform/system/core/%2B/e323976e747c28b78b5e1be565317f500e0f5c06/adb/transport_local.cpp).
-
-## Hipóteses eliminadas
-
-| Hipótese | Evidência contra |
-| --- | --- |
-| `hostfwd` aponta para o destino errado | Forwarding TCP abre; probes com destino explícito e controles repetidos não obtêm CNXN. |
-| NIC/QEMU sem link | `wifi_eth` fica `UP/LOWER_UP`; ping ao gateway funciona após IPv4 manual. |
-| DHCP do QEMU indisponível | O bloqueio é a ausência de cliente/configuração IPv4 no guest, não a oferta do servidor. |
-| ADB errado ou múltiplo no host | Caminho único conhecido, uma instância do servidor e hash/versionamento registrados. |
-| RSA como causa primária | Sem resposta CNXN; teste anterior também usou chave host correspondente e permaneceu offline. |
-| Apenas `eth0`/`net.ifnames` | Ambos os boots estáticos foram ignorados e produziram `wifi_eth` sem endereço. |
-| Firewall IPv4 do guest | `iptables -L INPUT -n -v` mostrou `policy ACCEPT` e regras `ACCEPT` para todo o tráfego. |
-| Bootstrap QMP como correção | IPv4/rota e `adbd running` foram obtidos manualmente, mas o estado host continuou `offline`. |
-| `adbd -a` como correção | O binário respondeu `invalid option -- a`. |
-| Desabilitar IPv6 para obter IPv4 | O boot `ipv6.disable=1` ficou sem listener após iniciar o `adbd`. |
-| Relay BusyBox IPv4→IPv6 | Com `adbd` movido para `:::5556`, `busybox nc -l -p 5555 -e busybox nc ...` não produziu CNXN; o teste direto `busybox nc -w 3 ::1 5556` retornou apenas o usage do BusyBox, indicando que essa implementação não fornece o relay IPv6 necessário. O host permaneceu `offline`. |
-| Modelo da NIC `e1000` | Um boot isolado com `virtio-net-pci` (modelo usado pelo launcher upstream consultado) reproduziu `wifi_eth` sem IPv4; após IPv4/rota manual, `adb devices -l` continuou `offline`. |
-| Forwarding IPv6 do QEMU | O QEMU 11.1.0 rejeitou os formatos `hostfwd=tcp:[::1]:...-[::]:5555` e `...-[fe80::...]:5555` com `Bad host address`; não há endpoint IPv6 utilizável por esse caminho. |
-| Argumento `--root_seclabel` do serviço | O `adbd` iniciado diretamente como `/sbin/adbd` também abriu `:::5555` e não respondeu ao CNXN bruto. |
-| Incompatibilidade do protocolo ADB do host | O CNXN bruto mínimo e o trace do ADB 37.0.1 chegaram ao transporte, que não devolveu qualquer resposta; não há evidência de falha RSA antes da resposta CNXN. |
-| Entrega host→socket guest | O trace do `adbd` registrou a criação do servidor e `trying to get new connection`, mas nenhum `new connection`; o socket guest continua IPv6 enquanto o destino `hostfwd` é IPv4. |
-
-## Correção e antes/depois
-
-Nenhuma correção intencional foi aplicada ao código, ao `runtime.json`, à ISO,
-ao APK, às vozes ou aos arquivos do guest. Os probes posteriores usaram
-`-snapshot`; a divergência observada no qcow2 após uma sessão live anterior está
-registrada na seção de integridade abaixo. Adicionar apenas `ip=` ao comando
-QEMU não é uma correção válida, pois os probes demonstraram que a interface
-ainda não existe quando essa configuração é processada.
-
-O backend não possui hoje um canal guest independente e confiável para executar
-`ifconfig`/rota e reiniciar `adbd` após a criação de `wifi_eth`. Um workaround
-por teclado/QMP ou um relay host-side mascararia o problema e não seria uma
-homologação ADB TCP reproduzível. Por isso, não foi incorporado.
-
-Como controle adicional, foi tentado um relay dentro do guest: o `adbd` foi
-reiniciado em `:::5556` e o BusyBox `nc` foi colocado para escutar `5555` e
-encaminhar para `::1:5556`. Uma conexão limpa do host ao forwarding QEMU
-`127.0.0.1:5567` continuou em `offline`; o teste direto do `nc` IPv6 devolveu
-somente a tela de uso. Isso não transforma o listener IPv6 do `adbd` em um
-endpoint IPv4 homologável.
-
-Também foi executado um probe isolado com `virtio-net-pci` no lugar da NIC
-`e1000`, mantendo Android, qcow2, NAT e o restante do boot. O resultado de
-`ip addr` foi o mesmo (`wifi_eth` apenas com IPv6); mesmo atribuindo
-`10.0.2.15/24` e a rota `10.0.2.2`, o ADB host continuou `offline`. Por fim,
-os formatos de `hostfwd` IPv6 foram testados no próprio QEMU sem disco: todos
-foram rejeitados pelo parser com `Bad host address`/`Bad guest address`.
-
-O probe de protocolo também foi encerrado sem alteração persistente: o CNXN
-bruto recebeu zero bytes de resposta tanto no serviço iniciado pelo `init`
-quanto no `/sbin/adbd` direto. O trace do guest não registrou aceitação de uma
-conexão no `server_socket_thread`; o trace do cliente registrou dez segundos de
-espera pelo header de resposta antes de declarar a conexão falha.
-
-## Ciclos e limpeza
-
-Os probes foram encerrados por QMP `quit`; a verificação final encontrou:
-
-```text
-QEMU count = 0
-ADB client/server count = 0
-TCP 5037 listeners = 0
-```
-
-Os três ciclos de restart exigidos para um ADB homologado não foram executados:
-o pré-requisito `adb devices -l = device` falhou antes dessa fase. Executá-los
-como se fossem ciclos de estabilidade passaria por cima do gate definido.
-
-## Integridade do qcow2
-
-As sessões posteriores usaram `-snapshot`. Uma sessão live anterior, porém,
-foi iniciada sem `-snapshot` antes desta constatação. O hash registrado antes
-daquela sessão era `6A455FC0D8473F9EDC02294BB3EBD7D95F5E1F1569C7A9100EB68B6CBFA8C3C7`;
-o arquivo atual está em `E4F54E76CDB05C88C5E2506595DCBA42DBDD37CB140AAC0D864558F8ED40C5A6`.
-
-Existem cópias de publicação idênticas entre si, mas com outro hash
-(`F2D73A4A5C36A288A416811D48B1373A0CDD3CA1AAEB0614A8837706C14C8264`), portanto
-elas não foram usadas como restauração automática. A restauração correta exige
-a cópia canônica que corresponda ao hash anterior `6A455F…`; não é seguro
-substituir o qcow2 por uma imagem diferente.
-
-## Native Bridge
-
-**Estado: BLOQUEADO.** Foi apenas observado `ro.dalvik.vm.native.bridge=libnb.so`
-durante a coleta obrigatória de propriedades. A homologação/provisionamento do
-Native Bridge não foi iniciada porque o gate ADB `device` não passou.
-
-## Ação recomendada para desbloqueio
-
-Disponibilizar uma imagem/canal de guest com inicialização de rede IPv4 após a
-criação de `wifi_eth` e com `adbd` TCP comprovadamente respondendo em IPv4, ou
-autorizar uma alteração explícita e auditável no artefato de inicialização do
-guest. Depois disso, repetir a sequência ADB live, obter `device`, executar os
-três ciclos QMP/QEMU e só então avançar para Native Bridge e demais regressões.
+Este PASS altera somente o gate **ADB TCP**. Native Bridge, NeoNews, WebView,
+RHVoice/TTS, kiosk e mídia permanecem sem homologação e não devem ser marcados
+como aprovados por este relatório.
