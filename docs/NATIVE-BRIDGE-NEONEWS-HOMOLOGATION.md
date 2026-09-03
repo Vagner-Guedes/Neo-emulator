@@ -78,3 +78,86 @@ este Android-x86 API 25, sem adicioná-lo ao Git. Depois disso, repetir a
 homologação live no mesmo endpoint `127.0.0.1:5556`, começando pelo inventário
 do bridge. O APK NeoNews oficial não deve ser modificado, recompilado ou
 resinado.
+
+## Investigacao do mecanismo oficial no overlay descartavel
+
+Data da execucao: `2026-09-03T01:52:26Z` a `2026-09-03T01:53:41Z`
+Base: `runtime/android/adb-tcp-provisioned-api25.qcow2`
+Overlay: `runtime/android/nativebridge-investigation-9d0eeccd85174cbd9bf0403e0d345fd6.qcow2`
+SHA-256 do disco aprovado antes/depois: `F4AD7075326D78814128941F66F5FFCE0E93F6A054A11652FCF19020120A343B`
+Resultado do overlay: `BLOCKED_OFFICIAL_ARTIFACT_FETCH`
+
+O overlay qcow2 foi iniciado com QEMU/WHPX e ADB TCP `127.0.0.1:5556`; o
+disco aprovado nao recebeu escrita. O overlay foi mantido localmente como
+evidencia descartavel e nao foi promovido ao runtime.
+
+### Script e artefatos esperados
+
+O arquivo existe no guest:
+
+- caminho: `/system/bin/enable_nativebridge`;
+- tipo: script `/system/bin/sh`;
+- tamanho: `2.199` bytes;
+- SHA-256: `e5b59f57d1dee568e2eee0bab09d84a1480c11bc5364737b193cfd6d53a4f4aa`.
+
+O conteudo do script espera os seguintes artefatos/URLs:
+
+| Condicao do script | Variante | URL literal esperada | Arquivo esperado | Alvos do tradutor |
+|---|---|---|---|---|
+| `uname -m=x86_64`, sem argumento | `7_y` / ARM32 | `http://tinyurl.com/16f0ntql` | `/data/arm/houdini7_y.sfs` | `/system/lib/libhoudini.so`, `/system/bin/houdini` |
+| `uname -m` diferente de `x86_64`, sem argumento | `7_x` / x86 | `http://tinyurl.com/5gp5xo99` | `/data/arm/houdini7_x.sfs` | `/system/lib/libhoudini.so`, `/system/bin/houdini` |
+| argumento `64` | `7_z` / ARM64 | `http://tinyurl.com/yee4xnfw` | `/data/arm/houdini7_z.sfs` | `/system/lib64/libhoudini.so`, `/system/bin/houdini64` |
+
+Como o guest reporta `uname -m=x86_64` e `ro.zygote=zygote64_32`, a primeira
+tentativa requerida para `armeabi-v7a` foi `7_y`; se ela concluisse, o script
+tambem encadearia a tentativa `7_z` para o zygote 64/32. Nenhuma URL foi
+resolvida ou substituida externamente e nenhum mirror foi consultado.
+
+### Execucao e falha
+
+Estado inicial: `persist.sys.nativebridge` vazio, `ro.dalvik.vm.native.bridge=libnb.so`,
+`/system/lib/libhoudini.so` e `/system/lib64/libhoudini.so` com `0` bytes.
+
+1. `adb shell setprop persist.sys.nativebridge 1` terminou com exit `0` e a
+   propriedade foi confirmada como `1`.
+2. `adb shell enable_nativebridge` foi executado. O script terminou em retry;
+   sua saida observada foi:
+
+   ```text
+   /system/bin/enable_nativebridge[41]: cd: /data/arm: Permission denied
+   mount: bad /etc/fstab: No such file or directory
+   wget: bad address 'tinyurl.com'
+   rm: houdini7_y.sfs: No such file or directory
+   ```
+
+   O processo foi interrompido apos o retry para evitar loop indefinido; nao
+   houve instalacao alternativa do artefato.
+3. A execucao ocorreu como `uid=2000(shell)`, portanto o script nao conseguiu
+   acessar `/data/arm`; alem disso, o `wget` nao conseguiu resolver o host
+   `tinyurl.com`. O mecanismo oficial nao obteve o artefato.
+
+Inventario de artefatos baixados:
+
+| Origem | Nome | Tamanho | SHA-256 | Resultado |
+|---|---|---:|---|---|
+| Nenhum download concluido | `houdini7_y.sfs` | N/A | N/A | URL inacessivel (`bad address`) |
+| Nenhum download iniciado | `houdini7_z.sfs` | N/A | N/A | nao alcancado apos falha de `7_y` |
+
+Os arquivos existentes antes/depois permaneceram sem conteudo:
+
+- `/system/lib/libhoudini.so`: `0` bytes,
+  SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
+- `/system/lib64/libhoudini.so`: `0` bytes,
+  SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`;
+- apos rollback, `persist.sys.nativebridge=0` e
+  `ro.dalvik.vm.native.bridge=libnb.so`.
+
+O logcat tambem registrou `Unable to open /system/lib/libhoudini.so` e
+negacoes de acesso ao arquivo pelo processo do aplicativo. A busca filtrada
+incluiu `NativeBridge`, `Houdini`, `linker`, `UnsatisfiedLinkError`, sinais de
+crash e excecoes fatais; nao houve prova de biblioteca ARM carregada.
+
+Por causa da falha do mecanismo oficial, o fluxo parou antes de reboot,
+confirmacao de persistencia, execucao do NeoNews e teste de estabilidade de
+60 segundos. Portanto `primaryCpuAbi=armeabi-v7a` e `TerminalActivity` nao
+foram re-homologados nesta execucao.
