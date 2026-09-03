@@ -73,11 +73,14 @@ public sealed class RuntimeController : IAsyncDisposable
         if (booted)
         {
             var bridge = await SafeNativeBridgeAsync(cancellationToken);
-            if (bridge is not null) nativeBridgeState = _supervisor.HasNativeBridgeStructuralError
-                ? NativeBridgeState.Error
-                : !bridge.Ready ? NativeBridgeState.Unavailable
-                : _lastAbiCompatibility?.RuntimeStable == true ? NativeBridgeState.Ready
-                : NativeBridgeState.Unknown;
+            if (bridge is not null)
+            {
+                nativeBridgeState = _supervisor.HasNativeBridgeStructuralError
+                    ? NativeBridgeState.Error
+                    : !bridge.Ready ? bridge.State
+                    : _lastAbiCompatibility?.RuntimeStable == true ? NativeBridgeState.Ready
+                    : NativeBridgeState.Configured;
+            }
             var neoStatus = await SafeNeoNewsAsync(cancellationToken);
             if (neoStatus is not null)
             {
@@ -547,7 +550,9 @@ public sealed class RuntimeController : IAsyncDisposable
         state.NeoNewsInstalled = true;
         state.NeoNewsRunning = true;
         state.LastError = string.Empty;
-        state.NativeBridgeStatus = bridge.Ready ? "ready" : "unavailable";
+        state.NativeBridgeStatus = _lastAbiCompatibility?.RuntimeStable == true
+            ? "ready"
+            : bridge.State.ToString().ToLowerInvariant();
         state.WebViewVersion = webView.Version;
         state.TtsStatus = tts.Ready ? $"ready:{tts.DefaultEngine}" : "missing-or-not-selected";
         state.NeoNewsVersion = neoNewsVersion ?? string.Empty;

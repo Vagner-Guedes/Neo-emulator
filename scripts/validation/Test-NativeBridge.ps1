@@ -42,6 +42,18 @@ function Invoke-Adb([string[]]$Arguments) {
     return (Invoke-AdbResult $Arguments).Text
 }
 
+function Read-GuestFileEvidence([string]$Path) {
+    $result = Invoke-AdbResult @('-s', $serial, 'shell', 'ls', '-l', $Path)
+    if ($result.ExitCode -ne 0) {
+        return [ordered]@{ path = $Path; exists = $false; length = 0; detail = $result.Text }
+    }
+    $length = 0
+    if ($result.Text -match '(?m)^\S+\s+\S+\s+\S+\s+\S+\s+(?<length>\d+)\s+') {
+        $length = [int64]$Matches['length']
+    }
+    return [ordered]@{ path = $Path; exists = $true; length = $length; detail = $result.Text }
+}
+
 function Read-ApkUInt16([byte[]]$Data, [int]$Offset) {
     if ($Offset -lt 0 -or $Offset + 2 -gt $Data.Length) { throw "Leitura AXML fora dos limites em 0x$('{0:X}' -f $Offset)." }
     return [int]($Data[$Offset] -bor ([int]$Data[$Offset + 1] -shl 8))
@@ -274,21 +286,32 @@ while ((Get-Date).ToUniversalTime() -lt $deadline) {
 if ($state -ne 'device' -or $boot -ne '1') { throw "ADB não ficou pronto. serial=$serial state=$state boot=$boot" }
 
 $propertyResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.dalvik.vm.native.bridge')
+$persistNativeBridgeResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'persist.sys.nativebridge')
 $guestAbiResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abi')
 $guestAbiListResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abilist')
 $abi2Result = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.product.cpu.abi2')
 $releaseResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.build.version.release')
 $apiLevelResult = Invoke-AdbResult @('-s', $serial, 'shell', 'getprop', 'ro.build.version.sdk')
 $property = $propertyResult.Text
+$persistNativeBridge = $persistNativeBridgeResult.Text
 $guestAbi = $guestAbiResult.Text
 $guestAbiList = $guestAbiListResult.Text
 $abi2 = $abi2Result.Text
 $release = $releaseResult.Text
 $apiLevel = $apiLevelResult.Text
-$propertyExitCodes = @($propertyResult, $guestAbiResult, $guestAbiListResult, $abi2Result, $releaseResult, $apiLevelResult) | ForEach-Object { [int]$_.ExitCode }
+$propertyExitCodes = @($propertyResult, $persistNativeBridgeResult, $guestAbiResult, $guestAbiListResult, $abi2Result, $releaseResult, $apiLevelResult) | ForEach-Object { [int]$_.ExitCode }
 $guestPropertiesReadable = @($propertyExitCodes | Where-Object { $_ -ne 0 }).Count -eq 0
 $guestIdentityMatches = $release -eq [string]$config.android.release -and $apiLevel -eq [string]$config.android.apiLevel
-$bridgeReady = -not [string]::IsNullOrWhiteSpace($property) -and $property -ne '0' -and ($guestAbi -in @('x86', 'x86_64')) -and $guestAbiList -match '(?i)(^|,)(x86|x86_64)(,|$)'
+$nativeBridgeFiles = @(
+    Read-GuestFileEvidence '/system/lib/libnb.so'
+    Read-GuestFileEvidence '/system/lib64/libnb.so'
+    Read-GuestFileEvidence '/system/lib/libhoudini.so'
+    Read-GuestFileEvidence '/system/lib64/libhoudini.so'
+)
+$nativeBridgeEnabled = $persistNativeBridge -match '(?i)^(1|true|yes|on)$'
+$libNbReady = @($nativeBridgeFiles | Select-Object -First 2 | Where-Object { $_.exists -and $_.length -gt 0 }).Count -eq 2
+$translatorReady = @($nativeBridgeFiles | Select-Object -Skip 2 | Where-Object { $_.exists -and $_.length -gt 0 }).Count -eq 2
+$bridgeReady = -not [string]::IsNullOrWhiteSpace($property) -and $property -ne '0' -and $nativeBridgeEnabled -and ($guestAbi -in @('x86', 'x86_64')) -and $guestAbiList -match '(?i)(^|,)(x86|x86_64)(,|$)' -and $libNbReady -and $translatorReady
 
 $apkAbis = @()
 if (Test-Path -LiteralPath $ApkPath) {
@@ -321,6 +344,46 @@ if ($apkAbis.Count -eq 0 -or ($preferredApkAbi -and $apkAbis -notcontains $prefe
 }
 if (@($apkAbis | Where-Object { $_ -in @('x86', 'x86_64') }).Count -gt 0) {
     throw "O APK oficial contém ABI x86/x86_64, que não é permitida no pacote ARM. ABIs encontradas: $($apkAbis -join ', '). Nenhuma instalação foi tentada."
+}
+
+if (-not $bridgeReady) {
+    $blockedReport = [ordered]@{
+        timestamp = (Get-Date).ToUniversalTime().ToString('o')
+        status = 'BLOCKED_NATIVE_BRIDGE_ARTIFACT'
+        evidenceState = 'not-validated'
+        transport = 'tcp'
+        serial = $serial
+        androidRelease = $release
+        androidApiLevel = $apiLevel
+        guestIdentityMatches = $guestIdentityMatches
+        guestAbi = $guestAbi
+        guestAbiList = $guestAbiList
+        nativeBridgeProperty = $property
+        persistNativeBridge = $persistNativeBridge
+        nativeBridgeFiles = $nativeBridgeFiles
+        nativeBridgeReady = $false
+        apkAbis = $apkAbis
+        apkPackageName = $apkIdentity.PackageName
+        apkVersionName = $apkIdentity.VersionName
+        apkVersionCode = $apkIdentity.VersionCode
+        apkIdentityMatches = $true
+        apkCertificateSha256 = $actualCertificateSha256
+        apkSignatureMatches = $true
+        selectedApkAbi = $null
+        installSucceeded = $false
+        installOutput = ''
+        primaryCpuAbi = $null
+        launchSucceeded = $false
+        activityRunning = $false
+        runtimeStable = $false
+        restartCount = 0
+        restartResults = @()
+        detail = "Native Bridge structural artifact is missing or disabled; property=$property; persist.sys.nativebridge=$persistNativeBridge; libnbContent=$libNbReady; translatorContent=$translatorReady. No installation was attempted."
+    }
+    $blockedJson = $blockedReport | ConvertTo-Json -Depth 10
+    Set-Content -LiteralPath $fullReportPath -Value $blockedJson -Encoding utf8
+    $blockedJson
+    throw 'BLOCKED_NATIVE_BRIDGE_ARTIFACT: ARM translator is not available in the guest.'
 }
 
 $installOutput = ''

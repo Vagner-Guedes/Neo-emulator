@@ -9,7 +9,19 @@ public sealed record NativeBridgeValidationResult(
     string GuestAbiList,
     string Abi2,
     bool Ready,
-    string Detail);
+    string Detail,
+    string PersistNativeBridge,
+    IReadOnlyList<NativeBridgeFileEvidence> Files,
+    NativeBridgeState State);
+
+public sealed record NativeBridgeFileEvidence(
+    string Path,
+    bool Exists,
+    long Length,
+    string Detail)
+{
+    public bool HasContent => Exists && Length > 0;
+}
 
 public sealed record AbiCompatibilityResult(
     string GuestAbi,
@@ -21,7 +33,8 @@ public sealed record AbiCompatibilityResult(
     bool InstallSucceeded,
     string? PrimaryCpuAbi,
     bool LaunchSucceeded,
-    bool RuntimeStable);
+    bool RuntimeStable,
+    NativeBridgeState NativeBridgeState);
 
 public sealed class NativeBridgeValidationService
 {
@@ -37,18 +50,31 @@ public sealed class NativeBridgeValidationService
     public async Task<NativeBridgeValidationResult> ValidateGuestAsync(CancellationToken cancellationToken = default)
     {
         var property = await _adb.GetPropertyAsync(_context.Config.Android.NativeBridge.Property, cancellationToken);
+        var persistNativeBridge = await _adb.GetPropertyAsync("persist.sys.nativebridge", cancellationToken);
         var abi = await _adb.GetPropertyAsync("ro.product.cpu.abi", cancellationToken);
         var abiList = await _adb.GetPropertyAsync("ro.product.cpu.abilist", cancellationToken);
         var abi2 = await _adb.GetPropertyAsync("ro.product.cpu.abi2", cancellationToken);
+        var files = new[]
+        {
+            await ReadGuestFileAsync("/system/lib/libnb.so", cancellationToken),
+            await ReadGuestFileAsync("/system/lib64/libnb.so", cancellationToken),
+            await ReadGuestFileAsync("/system/lib/libhoudini.so", cancellationToken),
+            await ReadGuestFileAsync("/system/lib64/libhoudini.so", cancellationToken)
+        };
+        var x86Guest = abi.Equals("x86", StringComparison.OrdinalIgnoreCase) || abi.Equals("x86_64", StringComparison.OrdinalIgnoreCase);
+        var abiListHasX86 = abiList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(item => item.Equals("x86", StringComparison.OrdinalIgnoreCase) || item.Equals("x86_64", StringComparison.OrdinalIgnoreCase));
+        var nativeBridgeEnabled = IsTrue(persistNativeBridge);
+        var libNbReady = files[0].HasContent && files[1].HasContent;
+        var translatorReady = files[2].HasContent && files[3].HasContent;
         var ready = !string.IsNullOrWhiteSpace(property) &&
                     !property.Equals("0", StringComparison.OrdinalIgnoreCase) &&
-                    (abi.Equals("x86", StringComparison.OrdinalIgnoreCase) || abi.Equals("x86_64", StringComparison.OrdinalIgnoreCase)) &&
-                    abiList.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                        .Any(item => item.Equals("x86", StringComparison.OrdinalIgnoreCase) || item.Equals("x86_64", StringComparison.OrdinalIgnoreCase));
+                    nativeBridgeEnabled && x86Guest && abiListHasX86 && libNbReady && translatorReady;
+        var state = ready ? NativeBridgeState.Configured : NativeBridgeState.Missing;
         var detail = ready
             ? $"Native Bridge declarado como '{property}' para guest {abi}. A execução do APK ainda precisa ser comprovada."
             : $"Native Bridge não operacional: property='{property}', abi='{abi}', abilist='{abiList}', abi2='{abi2}'.";
-        return new NativeBridgeValidationResult(property, abi, abiList, abi2, ready, detail);
+        return new NativeBridgeValidationResult(property, abi, abiList, abi2, ready, detail, persistNativeBridge, files, state);
     }
 
     public async Task<AbiCompatibilityResult> ValidateInstalledPackageAsync(
@@ -88,8 +114,26 @@ public sealed class NativeBridgeValidationService
             await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.NativeBridgeStabilitySeconds)), cancellationToken);
             stable = await _adb.IsActivityRunningAsync(packageName, activityName, cancellationToken);
         }
-        return new AbiCompatibilityResult(guest.GuestAbi, guest.GuestAbiList, guest.Property, guest.Ready, apkAbis, selected, installSucceeded, primary, launched, stable);
+        var state = stable ? NativeBridgeState.Ready : guest.State;
+        return new AbiCompatibilityResult(guest.GuestAbi, guest.GuestAbiList, guest.Property, guest.Ready, apkAbis, selected, installSucceeded, primary, launched, stable, state);
     }
+
+    private async Task<NativeBridgeFileEvidence> ReadGuestFileAsync(string path, CancellationToken cancellationToken)
+    {
+        var result = await _adb.ShellResultAsync(["ls", "-l", path], TimeSpan.FromSeconds(10), cancellationToken);
+        var output = string.Join(" | ", new[] { result.StandardOutput.Trim(), result.StandardError.Trim() }
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+        if (!result.Succeeded) return new NativeBridgeFileEvidence(path, false, 0, output);
+
+        var match = Regex.Match(result.StandardOutput, @"(?m)^\S+\s+\S+\s+\S+\s+\S+\s+(?<length>\d+)\s+");
+        var length = match.Success && long.TryParse(match.Groups["length"].Value, out var parsed) ? parsed : 0;
+        return new NativeBridgeFileEvidence(path, true, length, output);
+    }
+
+    private static bool IsTrue(string value) => value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
+                                                value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                                                value.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+                                                value.Equals("on", StringComparison.OrdinalIgnoreCase);
 
     public static IReadOnlyList<string> ReadApkAbis(string apkPath)
     {

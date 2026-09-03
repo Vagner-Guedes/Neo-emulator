@@ -37,7 +37,8 @@ public enum AdbRuntimeState
 public enum NativeBridgeState
 {
     Unknown,
-    Unavailable,
+    Missing,
+    Configured,
     Ready,
     Error
 }
@@ -45,7 +46,9 @@ public enum NativeBridgeState
 public enum NeoNewsRuntimeState
 {
     NotInstalled,
+    Installing,
     Installed,
+    Starting,
     Running,
     Error
 }
