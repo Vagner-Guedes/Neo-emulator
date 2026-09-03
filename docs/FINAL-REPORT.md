@@ -1,59 +1,45 @@
-# Relatorio Final - NeoNews Runtime V1
+# Relatório final — NeoNews Runtime V1
 
-**Atualizado em:** 2026-09-03
 **Resultado:** **BLOCKED / NOT PRODUCTION READY**
+**Data:** 2026-09-03
 
-## Resumo
+## Estado medido
 
-O runtime QEMU x86_64 + WHPX com Android-x86 7.1.2/API 25, ADB TCP e rede
-guest foi executado. Em overlay descartavel, o Native Bridge oficial foi
-ativado sem alterar o qcow2 base, persistiu apos reboot e permitiu iniciar o
-APK ARM oficial do NeoNews com `primaryCpuAbi=armeabi-v7a`.
+| Componente | Estado |
+|---|---|
+| Backend | QEMU x86_64 + WHPX |
+| Android | Android-x86 7.1.2 / API 25 |
+| ADB | TCP `127.0.0.1:5556` |
+| Native Bridge | `libnb.so`; ABI ARM32 executada |
+| NeoNews | 9.0.3 / versionCode 522 |
+| ABI selecionada | `armeabi-v7a` (`primaryCpuAbi`) |
+| TerminalActivity | Executada e observada em foreground |
+| Idioma | `pt-BR`, confirmado após reboot |
+| Fuso | `America/Sao_Paulo` |
+| Relógio | Sincronizado com Windows pelo launcher e watchdog |
+| RHVoice | Engine padrão, idioma/voz pt-BR e síntese real aprovados |
+| NeoNews Verbalizar | PASS observado via `RHVoiceService` e saída de áudio |
+| WebView 119 | BLOCKED: provider exato ausente |
+| Conteúdo Power BI | BLOCKED por erro Chromium observado |
+| 600 s / três ciclos / zero-touch | Ainda não homologados |
 
-A homologacao integral continua bloqueada por dois componentes ausentes e por
-um erro de conteudo observado de forma honesta no logcat:
+## Conclusão
 
-- WebView `com.google.android.webview` versao `119.0.6045.193`: ausente;
-- RHVoice pt-BR: ausente; apenas Pico foi encontrado e nenhuma engine foi
-  alterada;
-- `Uncaught SyntaxError: Unexpected token .` na pagina Power BI do conteudo,
-  portanto a janela de 60 s do NeoNews nao pode ser aprovada como estabilidade.
+O runtime já prova a execução do APK ARM oficial no Android-x86 através do
+Native Bridge e prova a síntese real do NeoNews usando RHVoice. O Android é
+configurado em português do Brasil e o relógio é corrigido a partir do
+Windows durante a operação.
 
-## O que foi validado
+Isso não libera o produto: WebView `com.google.android.webview`
+`119.0.6045.193`, conteúdo real sem erro, estabilidade de 600 s, três ciclos
+e publicação zero-touch ainda precisam ser validados juntos.
 
-| Area | Resultado |
-| --- | --- |
-| QEMU/WHPX, Android API 25 e ADB TCP | PASS observado |
-| DNS, HTTP/HTTPS, HLS, cache e offline | PASS no probe; HLS usa fixture oficial de teste |
-| Native Bridge `7_y`/ARM32 e `7_z`/ARM64 | PASS estrutural/runtime no overlay |
-| Persistencia do Native Bridge no overlay | PASS observado apos reboot |
-| Package, assinatura, ABI e `primaryCpuAbi` do NeoNews | PASS observado |
-| `TerminalActivity` por 60 s | Executada, mas gate estrito BLOCKED pelo logcat Chromium |
-| WebView 119 e conteudo NeoNews | BLOCKED |
-| RHVoice pt-BR, sintese e audio | BLOCKED / PROTECTED |
-| Debloat | Nao executado |
-| Build Release e contratos do repositorio | PASS |
-| 600 s, tres ciclos, kiosk/watchdog/tray e nova maquina | Nao homologado |
+## Proteções
 
-## Protecoes mantidas
+RHVoice, voz pt-BR, WebView, Native Bridge e dados do NeoNews não foram
+apagados. Não foram executados `uninstall`, `pm clear` ou remoção de arquivos.
+Nenhuma engine de voz foi desabilitada. Os artefatos externos continuam fora
+do Git e as credenciais de ativação não foram registradas.
 
-Nao foram feitos `uninstall`, `pm clear`, apagamento de arquivos, substituicao
-do APK, alteracao de WebView, alteracao de RHVoice, troca de engine TTS ou
-debloat. A politica persistente do projeto mantem a permissao Superuser do
-package NeoNews e suprime a notificacao/toast. Credenciais de ativacao nao
-foram gravadas em codigo, relatorios ou logs.
-
-Os cinco PNGs staged pelo usuario permanecem fora do checkpoint tecnico.
-Artefatos proprietarios ou externos - APK, qcow2, ISO, QEMU, ADB, Houdini,
-WebView, RHVoice, vozes, logs e estado live - nao foram adicionados ao Git.
-
-## Proximo gate
-
-Fornecer/provisionar, com origem autorizada, WebView compativel e RHVoice
-pt-BR; depois repetir a matriz integrada em uma copia descartavel, validar o
-conteudo real e completar os testes de 600 s, tres ciclos e publicacao. O
-provisionador oficial do Native Bridge deve continuar parando quando o
-artefato esperado nao puder ser obtido, sem buscar mirrors aleatorios.
-
-Consulte [`FINAL-HOMOLOGATION-REPORT.md`](FINAL-HOMOLOGATION-REPORT.md) para a
-matriz completa, hashes e relatorios primarios.
+Consulte o [relatório completo de homologação](FINAL-HOMOLOGATION-REPORT.md)
+e os relatórios live em `reports/`.

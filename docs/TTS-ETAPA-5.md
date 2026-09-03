@@ -1,66 +1,50 @@
 # TTS offline — Etapa 5
 
-Data da validação: **2026-09-01**  
-AVD: `NeoNews_API25_x86`  
-Script: [`scripts/validation/Test-TtsProvider.ps1`](../scripts/validation/Test-TtsProvider.ps1)
+**Data da validação:** 2026-09-03
+**Guest:** Android-x86 7.1.2 / API 25, ADB TCP `127.0.0.1:5556`
+**Script:** [`scripts/validation/Test-TtsProvider.ps1`](../scripts/validation/Test-TtsProvider.ps1)
 
 ## Resultado
 
-O AVD API 25 contém uma engine Google TTS, mas não contém o RHVoice requerido pelo runtime:
-
 | Campo | Resultado |
 |---|---|
-| Engine requerida | `RHVoice` |
+| Engine requerida | RHVoice |
 | Locale requerido | `pt-BR` |
-| Pacote de engine detectado | `com.google.android.tts` |
-| RHVoice presente | `false` |
-| Engine padrão | `null` |
-| Status | `missing-engine` |
+| Pacote | `com.github.olga_yakovleva.rhvoice.android` 1.18.4 / 118040 |
+| Engine padrão | RHVoice |
+| Dados pt-BR | `...language.brazilian_portuguese.1240` presente |
+| Voz | `Letícia-F123` / `...voice.leticia_f123.4060` presente |
+| Síntese offline | PASS; WAV não vazio, 110.204 bytes |
+| Status | `provider-and-locale-validated-synthesis-confirmed` |
 
-Comando executado:
+O `CHECK_TTS_DATA` legado da API 25 retorna `result=0` mesmo com os dados
+instalados. Por isso o runtime exige a evidência de síntese real no mesmo
+serial e valida diretamente os diretórios de idioma/voz, além de confirmar o
+arquivo WAV e a engine padrão.
 
-```powershell
-.\scripts\validation\Test-TtsProvider.ps1 `
-  -ReportPath .\reports\tts-etapa-5.json
-```
+## Teste dentro do NeoNews
 
-O teste usa o ADB portátil e o endpoint TCP configurados no runtime. A etapa
-de síntese permanece explicitamente pendente: presença do pacote, engine
-padrão e `CHECK_TTS_DATA` não são tratados como prova de áudio reproduzido.
+O menu nativo do NeoNews foi aberto em português e o botão `VERBALIZAR` foi
+acionado. O logcat confirmou vínculo a `RHVoiceService`, locale `por-BRA`,
+`AudioTrack`, `tts_speak_success` e `Texto verbalizado com sucesso!`.
 
-Saída resumida:
+Evidência: `reports/neonews-verbalize-live.json`.
 
-```json
-{
-  "requested": { "engine": "RHVoice", "locale": "pt-BR" },
-  "detected": {
-    "rhvoicePresent": false,
-    "enginePackages": ["com.google.android.tts"],
-    "defaultEngine": "null"
-  },
-  "status": "missing-engine"
-}
-```
+## Proteção
 
-## Decisão da etapa
+RHVoice e todos os pacotes relacionados permanecem protegidos na política
+`critical`. Google TTS/Pico não foram desabilitados; nenhum `uninstall`,
+`pm clear`, apagamento de arquivos ou substituição automática foi executado.
+Qualquer otimização futura deve repetir a síntese e fazer rollback imediato
+se algum gate falhar.
 
-**Etapa 5 concluída como diagnóstico, com TTS offline bloqueado.** A homologação exige um pacote RHVoice compatível com API 25, sua instalação no guest, seleção como engine padrão e teste real de síntese em `pt-BR`.
+## Artefatos
 
-O pacote não foi baixado de fonte não verificada e nenhuma engine proprietária foi incluída no repositório.
+- APK RHVoice F-Droid: SHA-256
+  `FDB0F7D6F3EC455477A84AA8CC86D1F2D580CB180D69A0C780240975C2EFD288`.
+- Idioma Brazilian Portuguese v1.24: SHA-256
+  `76D4309902D8CBDD822EF16DE2E85BDED8E0E23EF9960FEF877DA5ED143806E6`.
+- Voz Leticia-F123 v4.6: SHA-256
+  `E032EB268BB8B28523E40296D4A99908DBDBB5C65EF8F775279D202C897B23CA`.
 
-## Probe de síntese real
-
-Com o guest provisionado e o SDK Android de desenvolvimento disponível, execute:
-
-```powershell
-.\scripts\validation\Test-TtsSynthesis.ps1 `
-  -SdkRoot C:\Android\Sdk `
-  -ReportPath .\reports\tts-synthesis.json
-```
-
-O script compila localmente um probe temporário, chama `TextToSpeech.speak` e
-`synthesizeToFile` com a frase de teste, confirma um WAV não vazio e remove o
-probe fica instalado por padrão para evitar uma remoção destrutiva do guest;
-use `-CleanupProbe` somente com intenção explícita de removê-lo. `-KeepProbe`
-continua aceito por compatibilidade. `-BuildOnly` valida apenas a construção
-do probe.
+Os binários permanecem fora do Git.

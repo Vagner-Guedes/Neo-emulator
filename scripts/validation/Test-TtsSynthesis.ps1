@@ -152,9 +152,18 @@ while ((Get-Date) -lt $deadline) {
     if ($probeResult -match '^status=(ok|error)') { break }
     Start-Sleep -Seconds 1
 }
-$audioListing = (Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'ls', '-l', 'files/tts.wav')).Text
-$audioSizeMatch = [regex]::Match($audioListing, '\s(\d+)\s+tts\.wav$')
-$audioBytes = if ($audioSizeMatch.Success) { [int64]$audioSizeMatch.Groups[1].Value } else { 0 }
+$audioStat = Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'stat', '-c', '%s', 'files/tts.wav')
+$audioBytes = 0L
+if ($audioStat.ExitCode -eq 0 -and $audioStat.Text -match '(?m)^\s*(\d+)\s*$') {
+    $audioBytes = [int64]$Matches[1]
+} else {
+    # Android-x86 7.1 images can expose different toybox/stat behavior;
+    # retain a conservative ls fallback without treating a parse failure as
+    # successful synthesis.
+    $audioListing = (Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'ls', '-l', 'files/tts.wav')).Text
+    $audioSizeMatch = [regex]::Match($audioListing, '(?m)\s(\d+)\s+(?:\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|tts\.wav)')
+    if ($audioSizeMatch.Success) { $audioBytes = [int64]$audioSizeMatch.Groups[1].Value }
+}
 $probeEngineMatch = [regex]::Match($probeResult, 'engine=([^;]+)')
 $probeEngine = if ($probeEngineMatch.Success) { $probeEngineMatch.Groups[1].Value } else { '' }
 $probeLocale = $probeResult -match '(?i)locale=pt-BR'

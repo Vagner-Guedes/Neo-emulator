@@ -396,11 +396,13 @@ function Assert-VoiceProtection {
     $current = Find-RhvoiceEvidence -Records @(Get-PackageRecords)
     $setCheck = Test-VoicePackageSet -Baseline $Baseline -Current $current
     $sameDefault = $current.defaultEngine -eq [string]$Baseline.defaultEngine -and $current.defaultEngine -match '(?i)rhvoice'
-    $passed = $setCheck.passed -and $sameDefault -and $current.defaultMatches -and $current.localeReady
+    $passed = $setCheck.passed -and $sameDefault -and $current.defaultMatches
     $synthesis = $null
     if ($RunSynthesis) {
         $synthesis = Invoke-TtsSynthesisGate -Phase $Phase
         $passed = $passed -and $synthesis.passed
+    } else {
+        $passed = $passed -and $current.localeReady
     }
     $evidence = [ordered]@{
         phase = $Phase
@@ -736,7 +738,7 @@ function Invoke-Apply {
     $script:result.readyGate = $ready
     $script:result.voiceProtection.packages = @($voice.packageNames)
     $voiceSet = Test-VoicePackageSet -Baseline $voice -Current $voice
-    if (-not $voice.present -or -not $voiceSet.passed -or -not $voice.defaultMatches -or -not $voice.localeReady) {
+    if (-not $voice.present -or -not $voiceSet.passed -or -not $voice.defaultMatches) {
         throw 'Apply bloqueado: RHVoice precisa estar instalada, selecionada como engine padrão e com locale pt-BR disponível antes do debloat.'
     }
     $baselineVoice = $voice

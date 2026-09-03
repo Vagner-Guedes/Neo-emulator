@@ -256,6 +256,21 @@ foreach ($component in $components) {
     }
 }
 $existingFiles = if ($existingState -and $existingState.files) { @($existingState.files) } else { @() }
+$imageHash = ''
+if ($existingState -and $existingState.PSObject.Properties.Name -contains 'imageHash') {
+    $imageHash = [string]$existingState.imageHash
+}
+$diskFingerprint = ''
+if ($existingState -and $existingState.PSObject.Properties.Name -contains 'diskFingerprint') {
+    $diskFingerprint = [string]$existingState.diskFingerprint
+}
+$files = @()
+if ($existingState -and $existingState.PSObject.Properties.Name -contains 'files') {
+    $files = @($existingState.files)
+}
+foreach ($component in $components) {
+    $files += $component
+}
 $state = [ordered]@{
     schema = 1
     androidImageVersion = $config.android.release
@@ -268,9 +283,9 @@ $state = [ordered]@{
     ttsEnginePreserved = $defaultEnginePreserved
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
-    imageHash = if ($existingState) { [string]$existingState.imageHash } else { '' }
-    diskFingerprint = if ($existingState) { [string]$existingState.diskFingerprint } else { '' }
-    files = @($existingFiles + @($components))
+    imageHash = $imageHash
+    diskFingerprint = $diskFingerprint
+    files = $files
     provenance = $provenance
     guest = [ordered]@{ serial = $Serial; release = $guestRelease; apiLevel = $guestApi; identityMatches = $true; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngineBefore = $baselineDefaultEngine; defaultTtsEngine = $defaultEngine; defaultEnginePreserved = $defaultEnginePreserved; defaultChanged = $defaultChanged }
 }

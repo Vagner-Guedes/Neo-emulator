@@ -3,7 +3,8 @@ param(
     [string]$ConfigPath,
     [string]$Serial,
     [int]$BootTimeoutSeconds = 180,
-    [string]$ReportPath = 'reports/tts-provider.json'
+    [string]$ReportPath = 'reports/tts-provider.json',
+    [string]$SynthesisEvidencePath = 'reports/tts-synthesis.json'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -102,7 +103,32 @@ $localeCheck = $localeCheckResult.Text
 $serviceList = $serviceListResult.Text
 $rhvoicePresent = (($enginePackages -join "`n") -match '(?i)rhvoice')
 $defaultMatches = $defaultEngine -match '(?i)rhvoice'
-$localeReady = $localeCheck -match '(?i)result=1|CHECK_(VOICE|TTS)_DATA_PASS'
+$legacyLocaleReady = $localeCheck -match '(?i)result=1|CHECK_(VOICE|TTS)_DATA_PASS'
+$synthesisEvidence = $null
+$synthesisEvidenceValid = $false
+$synthesisEvidenceFullPath = Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $SynthesisEvidencePath
+if ($synthesisEvidenceFullPath -and (Test-Path -LiteralPath $synthesisEvidenceFullPath -PathType Leaf)) {
+    try {
+        $synthesisEvidence = Get-Content -LiteralPath $synthesisEvidenceFullPath -Raw -Encoding utf8 | ConvertFrom-Json
+        $evidenceTimestamp = [DateTimeOffset]::Parse([string]$synthesisEvidence.timestamp)
+        $evidenceFresh = $evidenceTimestamp -le [DateTimeOffset]::UtcNow.AddMinutes(5) -and $evidenceTimestamp -ge [DateTimeOffset]::UtcNow.AddHours(-24)
+        $evidenceAudioBytes = [int64]$synthesisEvidence.audio.bytes
+        $synthesisEvidenceValid = $evidenceFresh -and
+            [string]$synthesisEvidence.serial -eq [string]$Serial -and
+            [string]$synthesisEvidence.status -eq 'validated' -and
+            [bool]$synthesisEvidence.defaultEngineMatches -and
+            [bool]$synthesisEvidence.probeLocale -and
+            [bool]$synthesisEvidence.audio.nonEmpty -and
+            $evidenceAudioBytes -gt 0
+    }
+    catch {
+        $synthesisEvidence = [pscustomobject]@{ status = 'invalid-report'; error = $_.Exception.Message }
+    }
+}
+# RHVoice 1.18.4 can return result=0 for CHECK_TTS_DATA on API 25 even with
+# Portuguese data installed. A fresh same-serial real synthesis report is the
+# stronger locale proof; the raw broadcast remains recorded for diagnostics.
+$localeReady = $legacyLocaleReady -or $synthesisEvidenceValid
 $api = $apiResult.Text
 $release = $releaseResult.Text
 $abi = $abiResult.Text
@@ -120,10 +146,19 @@ $result = [ordered]@{
         defaultMatches = $defaultMatches
         localeCheck = $localeCheck
         localeReady = $localeReady
-        textToSpeechService = ($serviceList -match '(?i)texttospeech|tts')
+        legacyLocaleReady = $legacyLocaleReady
+        textToSpeechService = (($enginePackages -join "`n") -match '(?i)rhvoice|svox|tts')
+        synthesisEvidence = [ordered]@{
+            status = if ($synthesisEvidenceValid) { 'validated' } else { 'not-validated' }
+            evidencePath = $SynthesisEvidencePath
+            evidenceValid = $synthesisEvidenceValid
+            reason = if ($synthesisEvidenceValid) { 'Fresh same-serial real synthesis confirmed RHVoice, pt-BR and non-empty WAV.' } else { 'Fresh same-serial real synthesis has not been confirmed.' }
+        }
         synthesis = [ordered]@{ status = 'not-executed'; reason = 'A síntese exige uma chamada TextToSpeech real em um probe Android; presença do provider não é tratada como prova de áudio.' }
     }
-    status = if ($rhvoicePresent -and $defaultMatches -and $localeReady) { 'provider-and-locale-validated-synthesis-pending' } elseif (-not $rhvoicePresent) { 'missing-engine' } else { 'engine-or-locale-mismatch' }
+    status = if ($rhvoicePresent -and $defaultMatches -and $localeReady) {
+        if ($synthesisEvidenceValid) { 'provider-and-locale-validated-synthesis-confirmed' } else { 'provider-and-locale-validated-synthesis-pending' }
+    } elseif (-not $rhvoicePresent) { 'missing-engine' } else { 'engine-or-locale-mismatch' }
 }
 
 $json = $result | ConvertTo-Json -Depth 10

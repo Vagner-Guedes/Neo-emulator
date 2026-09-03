@@ -1,53 +1,39 @@
 # Provedor WebView — Etapa 4
 
-Data da validação: **2026-09-01**  
-AVD: `NeoNews_API25_x86`  
-Script: [`scripts/validation/Test-WebViewProvider.ps1`](../scripts/validation/Test-WebViewProvider.ps1)
+**Data da validação:** 2026-09-03
+**Guest:** Android-x86 7.1.2 / API 25 / x86_64
+**Script:** [`scripts/validation/Test-WebViewProvider.ps1`](../scripts/validation/Test-WebViewProvider.ps1)
 
 ## Resultado
 
-O provedor `com.google.android.webview` está presente na imagem Google APIs API 25, mas a versão instalada não corresponde ao alvo do runtime:
-
 | Campo | Resultado |
 |---|---|
-| Android | `7.1.1` |
-| API | `25` |
-| ABI do AVD | `x86` |
-| Provedor | `com.google.android.webview` |
-| Versão instalada | `55.0.2883.91` |
-| Versão alvo | `119.0.6045.193` |
-| Status | `version-mismatch` |
+| Provider exigido | `com.google.android.webview` |
+| Versão exigida | `119.0.6045.193` |
+| ABI exigida | x86/x86_64 |
+| Provider/versão exigidos no guest | Ausentes |
+| Status | `missing-provider` / BLOCKED |
 
-Comando executado:
+O NeoNews chegou a carregar o provider legado do sistema
+`com.android.webview` 52.0.2743.100, mas isso não atende à versão exigida.
+Também foi observado erro Chromium na página Power BI (`Unexpected token .`),
+portanto o conteúdo real não foi aprovado.
 
-```powershell
-.\scripts\validation\Test-WebViewProvider.ps1 `
-  -ReportPath .\reports\webview-etapa-4.json
-```
+## Regra de aquisição
 
-O teste usa o ADB configurado em `runtime/adb/adb.exe` e o endpoint TCP
-`127.0.0.1:5556`. Para exercitar conteúdo real, acrescente
-`-ContentUrl https://example.com`; sem esse parâmetro o resultado cobre apenas
-provider, versão, API e ABI.
+Arquivo esperado: `packages/webview/webview.apk`. Não foi encontrada uma URL
+oficial pública direta e pinável para o APK Google assinado exatamente em
+`119.0.6045.193`. Foram consultadas a [página oficial do Google Play](https://play.google.com/store/apps/details?id=com.google.android.webview),
+as [instruções oficiais de build do Chromium WebView](https://chromium.googlesource.com/chromium/src/%2Bshow/d66b8119aa23c5f10de05c408ea6835f45fba63c/android_webview/docs/build-instructions.md)
+e a [integração AOSP do Chromium 119](https://chromium.googlesource.com/chromium/src/%2B/119.0.6045.199/android_webview/docs/aosp-system-integration.md).
 
-Saída resumida:
+Como a origem direta exata não está disponível, a aquisição parou conforme a
+regra definida. Nenhum APKMirror, APKPure ou mirror aleatório foi utilizado.
+Não instalar um arquivo aproximado e não declarar provider homologado apenas
+por nome de pacote.
 
-```json
-{
-  "android": { "release": "7.1.1", "apiLevel": "25", "abi": "x86" },
-  "provider": {
-    "packageName": "com.google.android.webview",
-    "expectedVersion": "119.0.6045.193",
-    "installedVersion": "55.0.2883.91",
-    "packagePresent": true,
-    "versionMatches": false
-  },
-  "status": "version-mismatch"
-}
-```
+## Próximo gate
 
-## Decisão da etapa
-
-**Etapa 4 concluída como validação do estado atual, com homologação bloqueada.** O runtime não deve declarar suporte ao WebView 119 até que seja fornecido um pacote `com.google.android.webview` compatível com API 25, instalado no AVD e validado por versão, assinatura e execução de uma página de teste.
-
-O teste do WebView foi separado do APK NeoNews porque o APK continua sem caminho executável neste host por ser ARM-only. Portanto, este resultado mede somente a imagem Android base.
+Obter o APK oficial/licenciado exato, registrar origem, tamanho e SHA-256,
+instalar no mesmo overlay e validar `dumpsys webviewupdate`, package, versão,
+assinatura, ABI, HTML/CSS/JavaScript, HTTPS e o conteúdo real do NeoNews.
