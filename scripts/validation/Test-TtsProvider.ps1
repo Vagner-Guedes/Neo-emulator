@@ -85,7 +85,10 @@ foreach ($package in $candidatePackages) {
 }
 
 $defaultEngineResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'settings', 'get', 'secure', 'tts_default_synth')
-$localeCheckResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'am', 'broadcast', '-a', 'android.speech.tts.engine.CHECK_TTS_DATA', '--es', 'language', 'por', '--es', 'country', 'BRA', '--es', 'variant', '')
+# Android-x86 7.1's `am` parser rejects an empty value after `--es variant`
+# when PowerShell 5.1 launches adb. Language and country are sufficient for
+# CHECK_TTS_DATA and keep the probe compatible with that parser.
+$localeCheckResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'am', 'broadcast', '-a', 'android.speech.tts.engine.CHECK_TTS_DATA', '--es', 'language', 'por', '--es', 'country', 'BRA')
 $serviceListResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'service', 'list')
 $apiResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
 $releaseResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')

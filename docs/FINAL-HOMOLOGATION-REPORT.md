@@ -1,192 +1,158 @@
-# Relatório Final de Homologação — NeoNews Runtime V1
+# Relatorio Final de Homologacao - NeoNews Runtime V1
 
-**STATUS: BLOCKED**
+**STATUS GLOBAL: BLOCKED / NOT PRODUCTION READY**
 
-**Release:** NOT PRODUCTION READY
-
-**Data:** 02/09/2026
-
+**Data da evidencia:** 2026-09-03
 **Branch:** `codex/neonews-runtime-homologation`
+**Backend:** QEMU x86_64 + WHPX, Android-x86 7.1-r5, Android 7.1.2/API 25
+**Tag de producao:** nao criada
 
-**Backend obrigatório:** QEMU x86_64 + WHPX, Android-x86 7.1-r5, Android
-7.1.2/API 25
+## Conclusao executiva
 
-**Checkpoint técnico publicado:** `f38b410`
+A infraestrutura e os gates de validacao foram endurecidos, e a sessao ADB TCP
+esta operacional no guest descartavel usado nesta rodada. O Native Bridge
+oficial tambem foi executado em overlay separado do qcow2 base: o Android
+confirmou `persist.sys.nativebridge=1`, `ro.dalvik.vm.native.bridge=libnb.so`,
+`libhoudini.so` nao vazio e persistencia apos reboot do guest.
 
-**Push do checkpoint:** concluído em `origin/codex/neonews-runtime-homologation`
+O V1 ainda nao pode ser homologado. A prova do APK NeoNews alcancou identidade,
+ABI ARM, instalacao previamente existente, `primaryCpuAbi=armeabi-v7a` e
+`TerminalActivity` em foreground por 60 segundos, mas o gate estrito de
+estabilidade falhou porque o logcat capturou:
 
-**Tag de produção:** não criada
+`chromium: Uncaught SyntaxError: Unexpected token ., source: https://vagner-guedes.github.io/powerbi/ (315)`
 
-## Conclusão executiva
+Esse erro e coerente com o provider WebView antigo observado no guest. O
+provider configurado `com.google.android.webview` versao `119.0.6045.193` nao
+esta instalado, portanto WebView/NeoNews permanece bloqueado.
 
-O NeoNews Runtime V1 não pode ser homologado nesta execução. O bloqueio
-determinante é o gate ADB: o endpoint TCP do host é aceito, mas o transporte
-permanece `offline`/`Disconnected` e nunca atingiu o estado obrigatório
-`device`. Sem uma sessão ADB online não há caminho seguro para validar a
-identidade do guest pelo runtime, Native Bridge, NeoNews, RHVoice, WebView,
-mídia, persistência funcional ou os ciclos de reinício exigidos.
+O gate de voz tambem permanece bloqueado e protegido: o inventario live
+encontrou apenas `com.svox.pico`, engine padrao `null`, locale `en-US` e
+nenhum RHVoice. Nao houve sintese real aprovada, saida de audio ou debloat.
 
-O diagnóstico completo está em
-[`ADB-TCP-HOMOLOGATION-REPORT.md`](ADB-TCP-HOMOLOGATION-REPORT.md). Ele registra
-as tentativas controladas, o listener IPv6 do `adbd`, os testes com endereço
-IPv4, as variantes de NIC, o rastreamento do `adbd`, o pacote CNXN e o
-encerramento QMP sem kill forçado.
+## Matriz de gates
 
-Não foram executados debloat, `uninstall`, `pm clear`, exclusão de arquivos,
-substituição de APK, alteração de engine TTS ou alteração de dados de voz.
-O APK NeoNews, Native Bridge, WebView e RHVoice continuam fora do repositório
-e não foram incorporados à publicação.
-
-## Matriz dos gates V1
-
-| Gate | Resultado | Evidência e limite |
+| Gate | Resultado | Evidencia e limite |
 | --- | --- | --- |
-| Branch e controle de versão | PASS | Branch correta; checkpoint `f38b410` publicado. |
-| QEMU/WHPX e layout base | PASS parcial | Build e smoke direto do QEMU/QMP passaram; isso não substitui o guest online. |
-| Identidade Android/API 25 | BLOCKED | A identidade foi observada no console de diagnóstico, mas o gate do runtime exige sessão ADB live. |
-| Disco qcow2 persistente | BLOCKED | Disco, hash e `qemu-img check` foram observados; marcador após reinício controlado não foi homologado. |
-| ADB TCP | BLOCKED | `adb devices -l` nunca exibiu `device`; estado observado `offline`/`Disconnected`. |
-| Native Bridge ARM | NOT EXECUTED | Gate depende de ADB online e de componente local legalmente provisionado. |
-| NeoNews oficial | NOT EXECUTED | O APK ARM-only não foi instalado nem alterado; `TerminalActivity` não foi iniciada neste backend. |
-| RHVoice pt-BR | BLOCKED / PROTECTED | Não houve inventário nem síntese live; nenhuma engine ou arquivo de voz foi modificado. |
-| WebView compatível | NOT EXECUTED | Não houve teste live de provider, página HTML/CSS/JavaScript/HTTPS ou NeoNews. |
-| Rede, HLS, áudio e offline | NOT EXECUTED | Dependem de guest operacional e conteúdo real. |
-| Kiosk, watchdog, startup, tray e hotkey | PASS parcial | Implementação e contratos estáticos preparados; fluxo end-to-end não foi homologado. |
-| Estabilidade de 600 segundos | NOT EXECUTED | Não é permitido declarar estabilidade sem ADB, app e conteúdo real. |
-| Build e regressão do repositório | PASS | Build Release com 0 erros/0 avisos; 31 scripts, JSONs, contratos e regras de artefatos passaram. |
-| Publicação sem binários proprietários | PASS | APK, Native Bridge, WebView, RHVoice, imagem Android e outros componentes externos não foram adicionados ao Git. |
+| Branch e checkpoint | PASS parcial | Branch correta; alteracoes desta rodada ainda precisam do checkpoint final. |
+| QEMU x86_64 + WHPX | PASS observado | Processo live usa QEMU configurado com `-accel whpx`; o mesmo runtime deve ainda passar os ciclos completos. |
+| Android 7.1.2/API 25 | PASS | Confirmado pelo guest live no relatorio Native Bridge. |
+| ADB TCP `127.0.0.1:5556` | PASS | Serial online e root no guest usado pelos probes. |
+| Rede guest, DNS, HTTP/HTTPS | PASS | Probe live: `dns=true`, `http=true`, `https=true`. |
+| HLS, cache e offline | PASS parcial | HLS oficial de teste, cache e NIC QMP down/up passaram; isto nao prova ainda o conteudo real do NeoNews. |
+| Native Bridge estrutural | PASS observado | Overlay descartavel, script presente, comandos oficiais com exit code 0, propriedades e `libhoudini.so` nao-zero confirmados. |
+| Persistencia Native Bridge | PASS observado | Propriedades e artefatos persistiram apos reboot no mesmo overlay. Falta homologar o fluxo automatico de nova maquina. |
+| APK NeoNews e assinatura | PASS observado | Package `com.in9midia.neonews.player`, versao `9.0.3`, versionCode `522`, assinatura e ABIs esperadas. |
+| ARM32 / `primaryCpuAbi` | PASS observado | `primaryCpuAbi=armeabi-v7a`; `TerminalActivity` iniciou no overlay. |
+| NeoNews estavel | BLOCKED | Janela de 60 s foi coletada, mas o logcat registrou erro Chromium/WebView; nao declarar estabilidade. |
+| WebView 119 | BLOCKED | `com.google.android.webview` ausente; provider ativo, versao 119 e conteudo nao foram validados. |
+| RHVoice pt-BR | BLOCKED / PROTECTED | RHVoice ausente; sintese e audio nao executados; Google/Pico nao foram desabilitados. |
+| Debloat | NOT EXECUTED | Nenhum uninstall, `pm clear`, exclusao de arquivo, troca de engine ou alteracao de dados de voz. |
+| Locale e timezone persistentes | NOT FULLY VALIDATED | Contratos existem; a homologacao live conjunta precisa concluir esse gate. |
+| Superuser silencioso | PASS de configuracao / live parcial | Politica versionada para `com.in9midia.neonews.player`, allow permanente e notificacao desativada; falta repetir a prova em ciclo limpo. |
+| Kiosk, watchdog, startup e tray | NOT TESTED end-to-end | Implementacao e contratos estaticos existem; fluxo integrado ainda nao foi aprovado. |
+| Estabilidade de 600 s | NOT TESTED | A prova de 60 s nao substitui os 600 s exigidos. |
+| Tres ciclos Start -> Ready -> QMP shutdown | NOT TESTED | Ainda nao executados como matriz completa do runtime final. |
+| Build Release | PASS | .NET 8 Release: 0 warnings e 0 errors. |
+| Regressao do repositorio | PASS | 33 scripts; parse/configuracao/contratos sem erros; nenhum artefato proprietario rastreado. |
+| Publicacao zero-touch em nova maquina | BLOCKED | O launcher ainda aponta para o qcow2 base e os componentes externos nao podem ser incorporados sem origem/licenca de redistribuicao registrada. |
 
-Nenhum resultado `PASS` parcial acima autoriza a conclusão do V1. O status
-global permanece `BLOCKED` enquanto qualquer gate essencial não tiver evidência
-live correspondente.
+Um PASS observado de componente nao autoriza o PASS do V1. O status global
+permanece BLOCKED enquanto WebView, RHVoice, conteudo real, estabilidade longa,
+ciclos completos e publicacao reproduzivel nao tiverem evidencia conjunta.
 
-## Gate ADB e causa-raiz observada
+## Evidencia Native Bridge e proveniencia
 
-O contrato configurado é `127.0.0.1:5556` no host encaminhado para
-`10.0.2.15:5555` no guest. O backend usa QEMU/WHPX, qcow2 persistente, NIC
-`e1000` e Android-x86 7.1-r5.
+O qcow2 base usado como origem foi:
 
-Durante as tentativas:
+`runtime/android/adb-tcp-provisioned-api25.qcow2`
+SHA-256: `F4AD7075326D78814128941F66F5FFCE0E93F6A054A11652FCF19020120A343B`
 
-- o host conseguiu abrir o endpoint de forwarding;
-- o ADB criou o transporte, mas o estado permaneceu `offline`;
-- o guest expôs `tcp6 :::5555 LISTEN`, sem resposta funcional equivalente no
-  destino IPv4 utilizado pelo forwarding;
-- o rastreamento do `adbd` registrou tentativa no socket 5555, mas não
-  registrou `server: new connection`;
-- um pacote CNXN ADB válido enviado pelo forwarding não recebeu resposta;
-- atribuir `10.0.2.15` à interface e configurar rota funcionou apenas dentro do
-  guest e não tornou o transporte ADB online;
-- `e1000` e `virtio-net-pci`, boot direto do kernel/initrd, `ip=dhcp` e
-  variantes de forwarding não produziram `device`;
-- QMP negociou capacidades, recebeu `quit` e encerrou sem `forcedKill`, mas
-  esse resultado não aprova ADB.
+A validacao foi feita em uma copia descartavel:
 
-O diagnóstico não aponta para autorização de chave, múltiplos servidores ADB
-ou erro de porta do host como correção suficiente. A causa operacional ainda
-é a ausência de uma resposta CNXN funcional do `adbd` Android-x86 no caminho
-IPv4 encaminhado. O próximo trabalho deve corrigir esse transporte ou
-fornecer uma imagem Android-x86 compatível que mantenha o contrato do backend.
+`runtime/android/nativebridge-official-455658f4e32e4babb46230523e3ba718.qcow2`
 
-## Proteção absoluta do sistema de voz
+O arquivo guest `/system/bin/enable_nativebridge` foi encontrado e seu
+SHA-256 e `E5B59F57D1DEE568E2EEE0BAB09D84A1480C11BC5364737B193CFD6D53A4F4AA`.
+O script espera os endpoints registrados no projeto:
 
-A proteção RHVoice foi preservada e verificada no código, mas não foi
-homologada no guest por causa do bloqueio ADB.
+| Variante | Arquivo esperado | URL direta esperada | Redirecionamento historico registrado |
+| --- | --- | --- | --- |
+| ARM32 `7_y` | `houdini.sfs` | `http://dl.android-x86.org/houdini/7_y/houdini.sfs` | `http://tinyurl.com/16f0ntql` |
+| ARM64 `7_z` | `houdini.sfs` | `http://dl.android-x86.org/houdini/7_z/houdini.sfs` | `http://tinyurl.com/yee4xnfw` |
 
-O script
-[`Optimize-AndroidGuest.ps1`](../scripts/provision/Optimize-AndroidGuest.ps1)
-contém os controles necessários para o futuro fluxo autorizado:
+Artefatos usados, com origem allowlisted, nome, tamanho e SHA-256:
 
-- inventaria packages e procura evidências RHVoice em nomes e dumps de
-  packages;
-- descobre os packages relacionados à voz e os inclui automaticamente em
-  `critical` antes de criar o plano;
-- registra packages descobertos, engine padrão e locale no
-  `android-package-policy.json`;
-- bloqueia Apply sem RHVoice presente, selecionada e com `pt-BR` disponível;
-- exige síntese real e saída de áudio não vazia antes e depois de cada grupo;
-- verifica a presença dos caminhos dos packages protegidos;
-- permite somente `disable-user` para candidatos aprovados e recusa qualquer
-  ação sobre packages críticos, required ou de voz;
-- executa rollback imediato do grupo em caso de falha;
-- não executa uninstall, `pm clear`, remoção de arquivos, remoção de dados de
-  voz ou substituição automática da engine.
+| Variante | Nome local | Tamanho | SHA-256 |
+| --- | --- | ---: | --- |
+| `7_y` | `packages/nativebridge/houdini7_y.sfs` | 37,728,256 bytes | `56FD08C448840578386A71819C07139122F0AF39F011059CE728EA0F3C60B665` |
+| `7_z` | `packages/nativebridge/houdini7_z.sfs` | 37,253,120 bytes | `7EEDC42015E6FB84A11A406A099241EFCCC20D4E020D476335A5FDB6E69A33D2` |
 
-O arquivo versionado
-[`android-package-policy.json`](../config/android-package-policy.json)
-continua com `critical: []` porque nenhum inventário real foi concluído nesta
-execução. Isso é uma consequência do gate ADB bloqueado; não é autorização
-para preencher a lista por inferência nem para executar Apply. A descoberta
-automática só deve gravar os nomes observados no guest após uma auditoria ADB
-online.
+O provisionador `scripts/provision/Provision-NativeBridgeOfficial.ps1` usa
+somente essas origens, valida tamanho e hash, executa o mecanismo suportado
+(`setprop persist.sys.nativebridge 1` e `enable_nativebridge`) e aborta com
+`EXTERNAL_ARTIFACT_REQUIRED` quando um artefato oficial nao esta disponivel.
+Nenhum mirror aleatorio foi procurado ou usado.
 
-Google TTS não foi desabilitada. Nenhuma engine foi alterada e a voz utilizada
-pelo NeoNews não foi substituída.
+## Protecao absoluta do sistema de voz
 
-## Verificações executadas
+A protecao definida pelo projeto foi mantida. O modo `Audit` inventaria os
+packages relacionados ao RHVoice e os adiciona automaticamente a `critical`
+antes de qualquer plano. O modo `Apply` exige evidencia fresca de RHVoice,
+pt-BR, engine selecionada, sintese real e audio antes/depois de cada grupo;
+em falha, faz rollback do grupo. As operacoes permitidas continuam limitadas
+a `disable-user`; nao ha uninstall, `pm clear`, remocao de arquivos de voz ou
+substituicao automatica da engine.
 
-As verificações locais não destrutivas executadas após o checkpoint foram:
+Na sessao atual, como RHVoice nao estava presente, nenhuma otimizacao foi
+aplicada. Google TTS/Pico nao foram desabilitados. O resultado live foi
+registrado em `reports/tts-provider-live-current.json` como
+`missing-engine`, sem tentativa de mascarar a ausencia de sintese.
 
-1. `Test-RuntimeRepository.ps1`: passou com 31 scripts, zero erros de parse,
-   configuração válida, zero caminhos obrigatórios ausentes, zero erros de
-   contrato, APK proprietário ignorado e zero artefatos proprietários
-   rastreados.
-2. Build Release do launcher WPF: passou com 0 erros e 0 avisos.
-3. Diagnóstico QEMU/ADB já registrado: `boot-timeout`, `adb.ready=false`,
-   `adb.booted=false`, com desligamento QMP confirmado e `forcedKill=false`.
-4. Checklist funcional existente: permanece `not-approved`; evidências
-   ausentes ou invalidadas não foram promovidas a aprovação.
+## Configuracoes persistentes do projeto
 
-Os relatórios em `reports/`, os binários locais, o qcow2, a ISO, o APK, as
-vozes e os logs não fazem parte do commit técnico. Os cinco PNGs já staged em
-`docs/ui-reference/` foram preservados e ficaram fora do checkpoint.
+`config/runtime.json` e os servicos de configuracao versionados preservam:
 
-## Trabalho não iniciado por bloqueio
+- rede guest `eth0`, `10.0.2.15/24`, rota `10.0.2.2`, DNS `10.0.2.3` e `VIRT_WIFI=0`;
+- politica Superuser para o package exato do NeoNews, allow permanente e
+  notificacao desativada;
+- backend QEMU/WHPX, API 25, serial/forwarding ADB e Native Bridge obrigatorio;
+- exigencia de WebView `119.0.6045.193` e RHVoice `pt-BR` no fluxo comercial.
 
-Para evitar alterar o sistema sem uma rota de recuperação comprovada, estes
-gates não foram executados depois que o bloqueio ADB foi confirmado:
+Esses contratos tornam as configuracoes reproduziveis no codigo. Contudo, a
+publicacao atual nao possui os componentes externos necessarios para cumprir
+o requisito de uma nova maquina somente com o APK do usuario. O Native Bridge,
+WebView, RHVoice, imagem Android, QEMU/ADB e logs ficam fora do Git por
+protecao legal, tamanho e seguranca; uma distribuicao zero-touch exige uma
+origem/licenca explicita para cada artefato externo.
 
-- instalação e validação prática da Native Bridge ARM;
-- instalação, lançamento e estabilidade do NeoNews oficial;
-- identificação de packages RHVoice, engine padrão, locale `pt-BR`, síntese e
-  áudio;
-- validação do provider WebView e do conteúdo real;
-- rede, DNS, HTTPS, HLS/`.m3u8`, MediaPlayer, áudio, cache e modo offline;
-- marcador de persistência após reinícios;
-- kiosk, watchdog, startup, tray, hotkey, CLI e teste prolongado integrado.
+## Relatorios primarios desta rodada
 
-Não é correto marcar esses itens como `PASS` a partir da existência de código,
-configuração ou relatórios históricos.
+- `reports/nativebridge-live-current.json`: Native Bridge e ABI, com falha
+  estrita de estabilidade por erro Chromium.
+- `reports/guest-network-media-live-current.json`: rede, HLS, cache e offline.
+- `reports/webview-provider-live-current.json` e
+  `reports/webview-content-live-current.json`: provider ausente e conteudo
+  nao validado.
+- `reports/tts-provider-live-current.json`: RHVoice ausente e sintese nao
+  executada.
+- `reports/runtime-repository-final-live.json`: contratos estaticos aprovados.
 
-## Critério para retomar
+## Criterio para liberar o V1
 
-O V1 só pode avançar quando uma execução fresca registrar, no mesmo runtime:
+Ainda faltam, no mesmo runtime e em uma execucao fresca:
 
-1. `adb devices -l` com o serial configurado no estado `device`;
-2. propriedades Android e `sys.boot_completed` confirmadas;
-3. três ciclos de reinício controlados com ADB online;
-4. Native Bridge ARM em execução prática e instalação do APK com ABI
-   comprovada;
-5. NeoNews em foreground com conteúdo real e logcat estável;
-6. RHVoice preservada, engine padrão confirmada, locale `pt-BR`, síntese real
-   e áudio não vazio antes de qualquer debloat;
-7. WebView, mídia, offline, persistência, kiosk, watchdog, startup, tray e
-   estabilidade de 600 segundos aprovados;
-8. revalidação da proteção RHVoice depois de cada grupo, caso debloat seja
-   explicitamente autorizado.
+1. provisionar WebView compativel e validar provider, HTML/CSS/JavaScript,
+   HTTPS e pagina real do NeoNews;
+2. provisionar RHVoice oficial e voz pt-BR, selecionar a engine, sintetizar
+   audio real e confirmar saida antes de qualquer debloat;
+3. corrigir o erro de compatibilidade de conteudo sem alterar o APK ou
+   mascarar o logcat;
+4. repetir Native Bridge + NeoNews depois de reboot, com TerminalActivity e
+   logcat limpos;
+5. executar estabilidade integrada de 600 s, tres ciclos completos, kiosk,
+   watchdog, startup, tray, single-instance e persistencia;
+6. produzir uma distribuicao legalmente redistribuivel e zero-touch, ou
+   registrar os artefatos externos como pre-requisitos explicitos da instalacao.
 
-Até esses critérios serem satisfeitos, o resultado oficial é **STATUS:
-BLOCKED / NOT PRODUCTION READY** e não deve receber tag de produção.
-
-## Histórico técnico do branch
-
-| Commit | Conteúdo | Publicação |
-| --- | --- | --- |
-| `20b984c` | Registro anterior do probe DHCP/ADB | já existente no branch |
-| `f38b410` | Checkpoint do diagnóstico ADB TCP e causa-raiz API 25 | pushed para `origin/codex/neonews-runtime-homologation` |
-| `16001d7` | Relatório final V1 com resultado bloqueado | pushed para `origin/codex/neonews-runtime-homologation` |
-| `aae18a4` | Registro da proveniência final do relatório | pushed para `origin/codex/neonews-runtime-homologation` |
-
-Os commits `16001d7` e `aae18a4` foram publicados antes do handoff. A
-verificação final desta rodada confirma a branch correta, o push no remoto e a
-exclusão dos PNGs staged do commit técnico.
+Sem esses itens, o resultado oficial continua **BLOCKED / NOT PRODUCTION READY**.

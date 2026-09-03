@@ -471,8 +471,8 @@ $activityRunning = $activityDumpExitCode -eq 0 -and (Test-ActivityRunning $activ
 $logcatResult = Invoke-AdbResult @('-s', $serial, 'shell', 'logcat', '-d', '-b', 'all', '-t', '240')
 $logcat = $logcatResult.Text
 $logcatExitCode = $logcatResult.ExitCode
-$relevantLogcat = @($logcat -split "`r?`n" | Where-Object { $_ -match 'com\.in9midia\.neonews\.player|AndroidRuntime|linker|native bridge|SIGSEGV|FATAL|dex2oat|chromium|WebView' })
-$failurePattern = 'UnsatisfiedLinkError|linker.*(error|fail)|SIGSEGV|FATAL EXCEPTION|dex2oat.*(error|fail)|zygote.*(error|fail)|chromium.*(error|fail)|WebView.*(error|fail)'
+$relevantLogcat = @($logcat -split "`r?`n" | Where-Object { $_ -match '(?i)com\.in9midia\.neonews\.player|AndroidRuntime|NativeBridge|Native Bridge|Houdini|houdini|linker|UnsatisfiedLinkError|SIGSEGV|SIGABRT|FATAL|crash|ANR|dex2oat|chromium|WebView' })
+$failurePattern = '(?i)UnsatisfiedLinkError|linker.*(error|fail)|SIGSEGV|SIGABRT|FATAL EXCEPTION|crash|ANR in|dex2oat.*(error|fail)|zygote.*(error|fail)|chromium.*(error|fail)|WebView.*(error|fail)|NativeBridge.*(error|fail)|Houdini.*(error|fail|exception)'
 $initialErrors = @($relevantLogcat | Where-Object { $_ -match $failurePattern })
 $runtimeStable = $guestPropertiesReadable -and $guestIdentityMatches -and $bridgeReady -and $installSucceeded -and $packageDumpExitCode -eq 0 -and $selectedApkAbi -and $launchSucceeded -and $activityRunning -and $logcatExitCode -eq 0 -and $initialErrors.Count -eq 0
 

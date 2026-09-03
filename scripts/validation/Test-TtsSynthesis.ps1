@@ -31,8 +31,17 @@ function Resolve-ConfiguredPath {
 
 function Invoke-External {
     param([string]$Executable, [string[]]$Arguments)
-    $output = & $Executable @Arguments 2>&1
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+    $output = @()
+    $exitCode = 1
+    try {
+        $output = & $Executable @Arguments 2>&1
+        $exitCode = [int]$LASTEXITCODE
+    }
+    catch {
+        $output += $_.Exception.Message
+        $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 1 }
+    }
+    [pscustomobject]@{ ExitCode = $exitCode; Text = (($output | Out-String).Trim()) }
 }
 
 function Invoke-Adb {
@@ -74,9 +83,14 @@ if ($javaRoot -and (Test-Path -LiteralPath (Join-Path $javaRoot 'bin\java.exe'))
 }
 $aaptPath = Join-Path $buildTools 'aapt.exe'
 $dxJar = Join-Path $buildTools 'lib\dx.jar'
-$apksignerPath = Join-Path $buildTools 'apksigner.bat'
-foreach ($requiredTool in @(@{ Name = 'android.jar'; Path = $androidJar }, @{ Name = 'java'; Path = $javaPath }, @{ Name = 'javac'; Path = $javacPath }, @{ Name = 'jar'; Path = $jarPath }, @{ Name = 'keytool'; Path = $keytoolPath }, @{ Name = 'aapt'; Path = $aaptPath }, @{ Name = 'dx.jar'; Path = $dxJar }, @{ Name = 'apksigner'; Path = $apksignerPath })) {
+$apksignerJar = Join-Path $buildTools 'lib\apksigner.jar'
+foreach ($requiredTool in @(@{ Name = 'android.jar'; Path = $androidJar }, @{ Name = 'java'; Path = $javaPath }, @{ Name = 'javac'; Path = $javacPath }, @{ Name = 'jar'; Path = $jarPath }, @{ Name = 'keytool'; Path = $keytoolPath }, @{ Name = 'aapt'; Path = $aaptPath }, @{ Name = 'dx.jar'; Path = $dxJar }, @{ Name = 'apksigner.jar'; Path = $apksignerJar })) {
     if ([string]::IsNullOrWhiteSpace($requiredTool.Path) -or -not (Test-Path -LiteralPath $requiredTool.Path)) { throw "$($requiredTool.Name) não encontrado: $($requiredTool.Path)." }
+}
+function Invoke-ApkSigner {
+    param([string[]]$Arguments)
+    & $javaPath '--add-opens=java.base/java.io=ALL-UNNAMED' '--add-exports=java.base/sun.security.x509=ALL-UNNAMED' '--add-exports=java.base/sun.security.pkcs=ALL-UNNAMED' '--add-exports=java.base/sun.security.util=ALL-UNNAMED' '-jar' $apksignerJar @Arguments
+    return [int]$LASTEXITCODE
 }
 
 $adbRelativePath = Join-Path $config.android.tooling.sdkRoot $config.android.tooling.adbRelativePath
@@ -110,10 +124,10 @@ if (-not (Test-Path -LiteralPath $keystorePath)) {
     & $keytoolPath '-genkeypair' '-keystore' $keystorePath '-storepass' 'android' '-keypass' 'android' '-alias' 'androiddebugkey' '-dname' 'CN=Android Debug,O=Android,C=US' '-keyalg' 'RSA' '-keysize' '2048' '-validity' '10000'
     if ($LASTEXITCODE -ne 0) { throw 'Falha ao gerar a chave temporária do probe TTS.' }
 }
-& $apksignerPath 'sign' '--ks' $keystorePath '--ks-pass' 'pass:android' '--key-pass' 'pass:android' '--out' $probeApk $unsignedApk
-if ($LASTEXITCODE -ne 0) { throw 'Falha ao assinar o probe TTS.' }
-& $apksignerPath 'verify' $probeApk
-if ($LASTEXITCODE -ne 0) { throw 'A verificação da assinatura do probe TTS falhou.' }
+$signExitCode = Invoke-ApkSigner @('sign', '--ks', $keystorePath, '--ks-pass', 'pass:android', '--key-pass', 'pass:android', '--out', $probeApk, $unsignedApk)
+if ($signExitCode -ne 0 -or -not (Test-Path -LiteralPath $probeApk -PathType Leaf)) { throw 'Falha ao assinar o probe TTS.' }
+$verifyExitCode = Invoke-ApkSigner @('verify', $probeApk)
+if ($verifyExitCode -ne 0) { throw 'A verificação da assinatura do probe TTS falhou.' }
 
 if ($BuildOnly) {
     [ordered]@{ status = 'probe-built'; apk = $probeApk; package = $probePackage } | ConvertTo-Json -Depth 5
