@@ -68,33 +68,28 @@ Referências oficiais:
 - [Android build instructions da tag](https://chromium.googlesource.com/chromium/src/+/119.0.6045.193/docs/android_build_instructions.md)
 - [Linux build instructions da tag](https://chromium.googlesource.com/chromium/src/+/119.0.6045.193/docs/linux/build_instructions.md)
 
-## Preflight do host
+## Preflight e host de build
 
-O build não foi iniciado. A documentação oficial exige uma máquina Intel 64
-bit com pelo menos 8 GB de RAM e 100 GB livres; mais de 16 GB de RAM é
-altamente recomendado.
+O host é Intel 64-bit com 8,45 GB de RAM decimal / 7,87 GiB, WSL2 funcional
+(`Debian-NeoNews`) e espaço suficiente no volume D: para a árvore e os
+artefatos. A execução usa baixa paralelização para respeitar a memória
+disponível. O checkout, `depot_tools`, SDK/NDK e hooks foram obtidos pelas
+fontes oficiais do Chromium/CIPD/Google Storage.
 
-| Recurso | Exigido | Disponível | Resultado |
-|---|---:|---:|---|
-| RAM | 8 GB mínimo; >16 GB recomendado | 8,45 GB decimais / 7,87 GiB | marginal; abaixo do recomendado |
-| Disco livre | 100 GB | 69,74 GB | insuficiente |
-| WSL2 | distribuição Linux operacional | nenhuma instalada | incompleto |
-
-Resultado obrigatório da meta: **`BUILD_HOST_RESOURCE_REQUIRED`**.
-
-O checkout do Chromium, `depot_tools`, hooks e qualquer build foram
-deliberadamente adiados. Não foi instalado um ambiente Linux parcial nem
-baixado código pesado que não pudesse ser compilado com segurança neste host.
+O GN foi gerado com sucesso em
+`/home/neonews/chromium/out/NeoNewsWebView119` e o Ninja está compilando
+`system_webview_apk`. Até o APK ser concluído e auditado, o resultado é
+`BUILD_IN_PROGRESS / NOT HOMOLOGATED`.
 
 ## Próximo gate
 
-Liberar pelo menos 100 GB de disco e disponibilizar uma distribuição Linux
-WSL2 ou um host Linux com pelo menos 8 GB de RAM (preferencialmente mais de
-16 GB para o link release).
-Depois disso, repetir o preflight, instalar apenas `depot_tools` oficial,
-fazer checkout da tag exata, configurar `system_webview_apk`, gerar e
-registrar o APK, e só então integrar em um novo overlay descartável.
+Concluir o build e registrar o APK, tamanho e SHA-256 em
+`reports/webview-build-119.json`. Em seguida, validar package,
+versionName/versionCode, assinatura e ABI antes de integrar somente em um
+novo overlay descartável. O provider efetivo permanece inalterado durante
+essa etapa.
 
-O provider só poderá mudar para PASS depois de validar package, assinatura,
-versionCode, ABI, provider efetivo, HTML/CSS/JavaScript moderno, HTTPS,
-Power BI, NeoNews, reboot, Native Bridge e RHVoice.
+O provider só poderá mudar para PASS depois de validar HTML/CSS/JavaScript
+moderno, HTTPS, Power BI, NeoNews, reboot, Native Bridge/Houdini e RHVoice,
+incluindo síntese real, locale pt-BR, relógio sincronizado, três ciclos e
+600 segundos de estabilidade.
