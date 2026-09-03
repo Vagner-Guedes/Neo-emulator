@@ -105,6 +105,48 @@ ao pacote CNXN bruto; a tentativa ADB permaneceu `offline`. A evidencia
 reforca que o forwarding e o endereco do guest nao sao suficientes para
 homologar este `adbd` Android-x86.
 
+## Atualizacao: Native Bridge oficial em overlay
+
+Em `2026-09-03`, o Native Bridge foi provisionado e revalidado em uma copia
+descartavel do qcow2 aprovado. A base
+`runtime/android/adb-tcp-provisioned-api25.qcow2` manteve o SHA-256
+`F4AD7075326D78814128941F66F5FFCE0E93F6A054A11652FCF19020120A343B`; o
+overlay utilizado foi
+`runtime/android/nativebridge-official-455658f4e32e4babb46230523e3ba718.qcow2`.
+
+O script guest `/system/bin/enable_nativebridge` foi confirmado presente, com
+SHA-256 `E5B59F57D1DEE568E2EEE0BAB09D84A1480C11BC5364737B193CFD6D53A4F4AA`.
+Os artefatos oficiais diretos usados foram:
+
+| Variante | Arquivo | URL oficial | Tamanho | SHA-256 |
+|---|---|---|---:|---|
+| `7_y` / ARM32 | `houdini7_y.sfs` | `http://dl.android-x86.org/houdini/7_y/houdini.sfs` | `37728256` | `56FD08C448840578386A71819C07139122F0AF39F011059CE728EA0F3C60B665` |
+| `7_z` / ARM64 | `houdini7_z.sfs` | `http://dl.android-x86.org/houdini/7_z/houdini.sfs` | `37253120` | `7EEDC42015E6FB84A11A406A099241EFCCC20D4E020D476335A5FDB6E69A33D2` |
+
+Os arquivos foram mantidos fora do Git em `packages/nativebridge/`. Com root
+real, o guest recebeu ambos em `/data/arm/`; `setprop persist.sys.nativebridge
+1` e `enable_nativebridge` terminaram com exit code 0. Depois disso,
+`persist.sys.nativebridge=1`, `ro.dalvik.vm.native.bridge=libnb.so`, os dois
+`libhoudini.so` nao-zero, os mounts SquashFS e as entradas binfmt ARM foram
+confirmados. Os mesmos sinais persistiram depois de reboot do guest e reinicio
+do QEMU sobre o mesmo overlay.
+
+No mesmo overlay, o package NeoNews ja instalado permaneceu sem reinstalacao:
+`com.in9midia.neonews.player`, `9.0.3`, versionCode `522`,
+`primaryCpuAbi=armeabi-v7a`. Houdini inicializou nos processos NeoNews e
+`TerminalActivity` foi exibida, mas o fluxo navegou para `LoadConfigActivity`
+sem configuracao de estacao. O teste de 60 segundos encontrou ANR em
+`NeonewsGuardianService`, e os mapas nao mostraram as JNI ARM de conteudo
+(`libnativelib.so`/`libUACAudio.so`). Portanto, esta evidencia atualiza o
+Native Bridge para **READY estrutural/runtime no overlay**, mas mantem o
+NeoNews como **NAO HOMOLOGADO** e o projeto geral como **NÃO HOMOLOGADO**.
+
+Nenhuma alteracao foi feita em RHVoice, TTS, WebView, debloat ou no APK. O
+provisionador reproduzivel e
+`scripts/provision/Provision-NativeBridgeOfficial.ps1`; ele usa allowlist dos
+dois endpoints oficiais, valida nome/tamanho/SHA-256 e para com
+`EXTERNAL_ARTIFACT_REQUIRED` quando um artefato nao pode ser obtido.
+
 ## Contrato do runtime
 
 O arquivo [`config/runtime.json`](../config/runtime.json) usa:

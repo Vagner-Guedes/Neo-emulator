@@ -41,13 +41,26 @@ Execute:
 
 O script apenas valida arquivos locais e salva hashes no estado de provisionamento. Ele não baixa uma ISO, QEMU, Native Bridge, WebView ou TTS.
 
+O Native Bridge do Android-x86 não é um APK. Para a variante oficial Houdini
+do Android-x86 7.1-r5, use o provisionador dedicado, que aceita somente os
+endpoints oficiais fixados, pré-carrega os SFS em `/data/arm`, executa
+`enable_nativebridge` como root e revalida propriedades, mounts, binfmt e
+persistência. Ele não consulta mirrors e não coloca os binários no Git:
+
+```powershell
+.\scripts\provision\Provision-NativeBridgeOfficial.ps1
+```
+
+Use `-DownloadOfficial` apenas na fase de provisionamento com rede e, ainda
+assim, somente os dois URLs oficiais allowlisted são aceitos. A execução normal
+não baixa Native Bridge.
+
 Depois que o guest estiver online, a instalação dos componentes locais é uma
 operação separada e explícita:
 
 ```powershell
 .\scripts\provision\Install-GuestComponents.ps1 `
-  -InstallNativeBridge -InstallWebView -InstallTts `
-  -NativeBridgeOrigin "<origem aprovada/licenca do Native Bridge>" `
+  -InstallWebView -InstallTts `
   -WebViewOrigin "<origem aprovada/licenca do WebView>" `
   -TtsOrigin "<origem aprovada/licenca do RHVoice>"
 ```
