@@ -347,6 +347,7 @@ public sealed class RuntimeController : IAsyncDisposable
         try { if (_kiosk.IsActive && await _adb.IsDeviceOnlineAsync(cancellationToken)) await _kiosk.ExitAsync(cancellationToken).ConfigureAwait(false); } catch { }
         try { await _backend.StopAsync(cancellationToken).ConfigureAwait(false); } catch { }
         try { await _adb.DisconnectAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        try { await _adb.StopServerAsync(cancellationToken).ConfigureAwait(false); } catch { }
     }
 
     private async Task StartSystemCoreAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
@@ -419,6 +420,7 @@ public sealed class RuntimeController : IAsyncDisposable
         catch { }
         try { await _backend.StopAsync(CancellationToken.None); } catch { }
         try { await _adb.DisconnectAsync(CancellationToken.None); } catch { }
+        try { await _adb.StopServerAsync(CancellationToken.None); } catch { }
     }
 
     private async Task StopSystemCoreAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken, bool setStopped = true)
@@ -433,6 +435,7 @@ public sealed class RuntimeController : IAsyncDisposable
         progress?.Report(new RuntimeProgress("Parando Android", $"Encerrando {_backend.Name}...", 65));
         await _backend.StopAsync(cancellationToken);
         await _adb.DisconnectAsync(cancellationToken);
+        await _adb.StopServerAsync(cancellationToken);
         if (setStopped) _state.Set(RuntimeState.Stopped);
         await RefreshSnapshotAsync(cancellationToken);
         progress?.Report(new RuntimeProgress("Sistema parado", "Disco persistente e dados preservados.", 100));

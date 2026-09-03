@@ -20,7 +20,7 @@ function Resolve-SdkRoot {
 
 function Invoke-Adb {
     param([string]$AdbPath, [string[]]$Arguments)
-    $output = & $AdbPath -s $Serial @Arguments 2>&1
+    $output = & $AdbPath -P $script:adbServerPort -s $Serial @Arguments 2>&1
     return (($output | Out-String).Trim())
 }
 
@@ -29,14 +29,14 @@ function Wait-ForBoot {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $stableBootChecks = 0
     do {
-        $state = (& $AdbPath -s $Serial get-state 2>$null | Out-String).Trim()
+        $state = (& $AdbPath -P $script:adbServerPort -s $Serial get-state 2>$null | Out-String).Trim()
         if ($state -eq 'device') {
-            $boot = (& $AdbPath -s $Serial shell getprop sys.boot_completed 2>$null | Out-String).Trim()
+            $boot = (& $AdbPath -P $script:adbServerPort -s $Serial shell getprop sys.boot_completed 2>$null | Out-String).Trim()
             if ($boot -match '(?m)^1$') {
                 $stableBootChecks++
                 if ($stableBootChecks -ge 2) {
                     Start-Sleep -Seconds 2
-                    $finalState = (& $AdbPath -s $Serial get-state 2>$null | Out-String).Trim()
+                    $finalState = (& $AdbPath -P $script:adbServerPort -s $Serial get-state 2>$null | Out-String).Trim()
                     if ($finalState -eq 'device') { return $true }
                 }
             } else {
@@ -55,6 +55,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 if ($StartEmulator -and $config.android.backend -eq 'qemu-android-x86') {
     throw 'O backend configurado é QEMU. Use NeoNewsRuntime.exe --start; este script só mantém compatibilidade com AVDs legados.'
 }
@@ -117,7 +118,7 @@ try {
         for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
             $event = [ordered]@{ attempt = $attempt; status = $null; detail = $null }
             try {
-                & $adbPath start-server 2>&1 | Out-Null
+                & $adbPath -P $script:adbServerPort start-server 2>&1 | Out-Null
                 $booted = Wait-ForBoot -AdbPath $adbPath
                 if (-not $booted) {
                     $event.status = 'device-not-booted'

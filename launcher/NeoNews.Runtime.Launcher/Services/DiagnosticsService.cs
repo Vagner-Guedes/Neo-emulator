@@ -120,6 +120,7 @@ public sealed class DiagnosticsService
                 adb = _adb.AdbPath,
                 transport = _adb.Transport,
                 serial = _adb.Serial,
+                adbServer = _adb.ServerEndpoint,
                 backend = _backend.Name,
                 backendProcessId = _backend.ProcessId,
                 backendProcess = backendRunning,
@@ -134,10 +135,15 @@ public sealed class DiagnosticsService
                     nicModel = _context.Config.Android.Qemu.NicModel,
                     hostAddress = _context.Config.Android.Adb.Host,
                     hostPort = _context.Config.Android.Adb.HostPort,
-                    guestPort = _context.Config.Android.Adb.GuestPort
+                    guestPort = _context.Config.Android.Adb.GuestPort,
+                    qmpAddress = "127.0.0.1",
+                    qmpPort = _context.Config.Android.Qemu.QmpPort
                 },
                 androidDisk = _context.ResolveAndroidDiskPath(),
                 runtimeDirectory = _context.RootDirectory,
+                hostProcessState = _context.HostProcessStatePath,
+                adbServerState = _context.AdbServerStatePath,
+                hostIsolation = _context.Config.HostIsolation,
                 requiredFiles = integrity,
                 whpx
             },

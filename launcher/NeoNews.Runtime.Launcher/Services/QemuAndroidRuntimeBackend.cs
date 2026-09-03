@@ -102,6 +102,15 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             var guestAddress = RequireIpv4Address(qemu.GuestAddress, "GuestAddress");
             var nicModel = RequireQemuToken(qemu.NicModel, "NicModel");
             var qmpPort = qemu.QmpPort;
+            HostPortGuard.EnsureDistinct(
+                ("ADB transport", hostPort),
+                ("QMP", qmpPort),
+                ("ADB server", _context.Config.Android.Adb.ServerPort));
+            if (_context.Config.HostIsolation.RefusePortConflicts)
+            {
+                HostPortGuard.EnsureAvailable(host, hostPort, "ADB transport do NeoNews Runtime");
+                HostPortGuard.EnsureAvailable("127.0.0.1", qmpPort, "QMP do NeoNews Runtime");
+            }
             var requestedMemoryMb = Math.Max(512, qemu.MemoryMb);
             var availableMemoryMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024L * 1024L);
             var memoryLimitMb = availableMemoryMb > 0
@@ -141,7 +150,24 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
             }
 
             progress?.Report(new RuntimeProgress("Iniciando Android", $"QEMU x86_64 com WHPX; ADB {host}:{hostPort} → guest:{guestPort}", 20));
-            _process = _runner.StartLongRunning(executable, arguments, _context.RootDirectory, "qemu");
+            _process = _runner.StartLongRunning(
+                executable,
+                arguments,
+                _context.RootDirectory,
+                "qemu",
+                isolateEnvironment: _context.Config.HostIsolation.ClearHostToolEnvironment);
+            await HostProcessOwnership.WriteAsync(
+                _context.HostProcessStatePath,
+                new HostProcessRecord(
+                    _process.ProcessId,
+                    executable,
+                    _context.RootDirectory,
+                    DateTimeOffset.UtcNow,
+                    Name,
+                    $"{host}:{hostPort}",
+                    qmpPort,
+                    hostPort),
+                cancellationToken);
             await Task.Delay(300, cancellationToken);
             if (_process.HasExited)
                 throw new RuntimeOperationException("QEMU encerrou durante a inicialização.", $"O processo QEMU terminou antes do ADB ficar disponível. Executável: {executable}");
@@ -150,7 +176,9 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
         {
             if (_process is not null)
             {
+                var processId = _process.ProcessId;
                 try { await _process.DisposeAsync(); } catch { }
+                try { await HostProcessOwnership.ClearAsync(_context.HostProcessStatePath, processId); } catch { }
                 _process = null;
             }
             throw;
@@ -167,9 +195,11 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
         try
         {
             if (_process is null) return;
+            var processId = _process.ProcessId;
             await RequestQmpShutdownAsync(cancellationToken);
             await _process.StopAsync(TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.QemuShutdownSeconds)), cancellationToken);
             await _process.DisposeAsync();
+            await HostProcessOwnership.ClearAsync(_context.HostProcessStatePath, processId, cancellationToken);
             _process = null;
         }
         finally

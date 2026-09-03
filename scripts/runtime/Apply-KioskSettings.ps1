@@ -16,7 +16,7 @@ function Resolve-SdkRoot {
 
 function Invoke-Adb {
     param([string]$AdbPath, [string[]]$Arguments)
-    $output = & $AdbPath -s $Serial @Arguments 2>&1
+    $output = & $AdbPath -P $script:adbServerPort -s $Serial @Arguments 2>&1
     return (($output | Out-String).Trim())
 }
 
@@ -25,6 +25,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 if (-not [string]::IsNullOrWhiteSpace($ReportPath) -and -not [System.IO.Path]::IsPathRooted($ReportPath)) {

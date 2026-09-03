@@ -23,6 +23,7 @@ $scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-WebViewContent'
 if ($ContentUrl -notmatch '^https://') { throw "ContentUrl precisa usar HTTPS: $ContentUrl" }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 $probePackage = 'com.neonews.runtime.webviewprobe'
 
 function Resolve-ConfiguredPath {
@@ -48,7 +49,7 @@ function Invoke-External {
 
 function Invoke-Adb {
     param([string[]]$Arguments)
-    Invoke-External -Executable $script:adbPath -Arguments $Arguments
+    Invoke-External -Executable $script:adbPath -Arguments (@('-P', [string]$script:adbServerPort) + @($Arguments))
 }
 
 function Wait-ForBoot {

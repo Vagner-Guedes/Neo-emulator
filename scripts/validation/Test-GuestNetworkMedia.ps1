@@ -27,6 +27,7 @@ $scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-GuestNetworkMedia'
 if (-not $BuildOnly -and [string]::IsNullOrWhiteSpace($HlsUrl)) { throw 'Forneça -HlsUrl para validar uma playlist HLS real.' }
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 $probePackage = 'com.neonews.runtime.mediaprobe'
 
 function Resolve-ConfiguredPath {
@@ -52,7 +53,7 @@ function Invoke-External {
 
 function Invoke-Adb {
     param([string[]]$Arguments)
-    Invoke-External -Executable $script:adbPath -Arguments $Arguments
+    Invoke-External -Executable $script:adbPath -Arguments (@('-P', [string]$script:adbServerPort) + @($Arguments))
 }
 
 function Wait-ForBoot {

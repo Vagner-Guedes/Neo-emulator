@@ -24,7 +24,7 @@ function Invoke-Adb {
     $previousErrorAction = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & $AdbPath -s $Serial @Arguments 2>&1 | Out-String
+        $output = & $AdbPath -P $script:adbServerPort -s $Serial @Arguments 2>&1 | Out-String
         return $output.Trim()
     } finally {
         $ErrorActionPreference = $previousErrorAction
@@ -61,6 +61,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 $sdkRoot = Resolve-SdkRoot

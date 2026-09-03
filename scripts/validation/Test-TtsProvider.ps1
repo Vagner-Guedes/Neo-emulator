@@ -17,6 +17,7 @@ $scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-TtsProvider'
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 
 function Resolve-ConfiguredPath {
     param([string]$ConfiguredPath)
@@ -26,13 +27,13 @@ function Resolve-ConfiguredPath {
 
 function Invoke-AdbCommand {
     param([string[]]$Arguments)
-    $output = & $script:adbPath @Arguments 2>&1
+    $output = & $script:adbPath -P $script:adbServerPort @Arguments 2>&1
     return (($output | Out-String).Trim())
 }
 
 function Invoke-AdbResult {
     param([string[]]$Arguments)
-    $output = & $script:adbPath @Arguments 2>&1
+    $output = & $script:adbPath -P $script:adbServerPort @Arguments 2>&1
     [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
 }
 

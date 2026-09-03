@@ -10,6 +10,7 @@ public sealed class AdbService
     private readonly RuntimeContext _context;
     private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
+    private ManagedProcess? _serverProcess;
     private AdbRuntimeState _state = AdbRuntimeState.Disconnected;
     private AdbRuntimeState _lastLoggedState = AdbRuntimeState.Disconnected;
     private string _lastTransportDetail = "ADB ainda não foi executado.";
@@ -23,6 +24,10 @@ public sealed class AdbService
     }
 
     public string Transport => _context.Config.Android.Adb.Transport;
+
+    public string ServerEndpoint => $"{_context.Config.Android.Adb.ServerHost}:{_context.Config.Android.Adb.ServerPort}";
+
+    public int ServerPort => _context.Config.Android.Adb.ServerPort;
 
     public string Serial
     {
@@ -49,7 +54,7 @@ public sealed class AdbService
         CancellationToken cancellationToken = default,
         bool logOutput = true)
     {
-        var fullArguments = new[] { "-s", Serial }.Concat(arguments);
+        var fullArguments = BuildArguments(new[] { "-s", Serial }.Concat(arguments));
         return _runner.RunAsync(
             AdbPath,
             fullArguments,
@@ -57,7 +62,9 @@ public sealed class AdbService
             "adb",
             timeout ?? TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)),
             cancellationToken,
-            logOutput);
+            logOutput,
+            BuildEnvironment(),
+            _context.Config.HostIsolation.ClearHostToolEnvironment);
     }
 
     public Task<ProcessResult> ExecuteHostAsync(
@@ -67,12 +74,14 @@ public sealed class AdbService
         bool logOutput = false) =>
         _runner.RunAsync(
             AdbPath,
-            arguments,
+            BuildArguments(arguments),
             _context.RootDirectory,
             "adb",
             timeout ?? TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)),
             cancellationToken,
-            logOutput);
+            logOutput,
+            BuildEnvironment(),
+            _context.Config.HostIsolation.ClearHostToolEnvironment);
 
     public Task<ProcessResult> PushFileAsync(
         string localPath,
@@ -86,12 +95,104 @@ public sealed class AdbService
 
     public async Task StartServerAsync(CancellationToken cancellationToken = default)
     {
-        var result = await ExecuteHostAsync(["start-server"], TimeSpan.FromSeconds(20), cancellationToken);
-        RecordTransportResult("start-server", result);
+        var result = await StartOwnedServerAsync(cancellationToken);
+        RecordTransportResult($"nodaemon server {ServerEndpoint}", result);
         if (!result.Succeeded)
         {
             SetState(AdbRuntimeState.Disconnected);
             throw new RuntimeOperationException("Não foi possível iniciar o ADB.", $"ADB: {AdbPath}\n{result.StandardError}\n{result.StandardOutput}");
+        }
+    }
+
+    private async Task<ProcessResult> StartOwnedServerAsync(CancellationToken cancellationToken)
+    {
+        if (_serverProcess is { HasExited: false })
+            return new ProcessResult(0, "servidor ADB privado já ativo", string.Empty, false, TimeSpan.Zero);
+
+        if (_serverProcess is not null)
+        {
+            var staleProcessId = _serverProcess.ProcessId;
+            try { await _serverProcess.DisposeAsync(); } catch { }
+            try { await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, staleProcessId); } catch { }
+            _serverProcess = null;
+        }
+
+        var executable = AdbPath;
+        if (!File.Exists(executable))
+            throw new RuntimeOperationException("ADB não foi encontrado.", $"Caminho configurado: {executable}");
+
+        if (!_context.Config.Android.Adb.ServerHost.Equals("127.0.0.1", StringComparison.Ordinal))
+            throw new RuntimeOperationException("O servidor ADB privado deve usar loopback.", $"Host configurado: {_context.Config.Android.Adb.ServerHost}; esperado: 127.0.0.1.");
+
+        HostPortGuard.EnsureAvailable(
+            _context.Config.Android.Adb.ServerHost,
+            ServerPort,
+            "servidor ADB privado do NeoNews Runtime");
+
+        try
+        {
+            // `nodaemon server` keeps the private daemon owned by this
+            // launcher process. `start-server` could attach to an unrelated
+            // daemon already listening on the configured port.
+            _serverProcess = _runner.StartLongRunning(
+                executable,
+                ["-L", $"tcp:{ServerPort}", "nodaemon", "server"],
+                _context.RootDirectory,
+                "adb-server",
+                BuildEnvironment(),
+                _context.Config.HostIsolation.ClearHostToolEnvironment);
+
+            var processId = _serverProcess.ProcessId;
+            await HostProcessOwnership.WriteAsync(
+                _context.AdbServerStatePath,
+                new HostProcessRecord(
+                    processId,
+                    executable,
+                    _context.RootDirectory,
+                    DateTimeOffset.UtcNow,
+                    "ADB private server",
+                    ServerEndpoint,
+                    0,
+                    ServerPort),
+                cancellationToken);
+
+            await Task.Delay(300, cancellationToken);
+            if (_serverProcess.HasExited)
+                throw new RuntimeOperationException(
+                    "O servidor ADB privado encerrou durante a inicialização.",
+                    $"Executável: {executable}; endpoint: {ServerEndpoint}.");
+
+            return new ProcessResult(0, "servidor ADB privado ativo", string.Empty, false, TimeSpan.Zero);
+        }
+        catch
+        {
+            if (_serverProcess is not null)
+            {
+                var processId = _serverProcess.ProcessId;
+                try { await _serverProcess.DisposeAsync(); } catch { }
+                try { await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, processId); } catch { }
+                _serverProcess = null;
+            }
+            SetState(AdbRuntimeState.Disconnected);
+            throw;
+        }
+    }
+
+    public async Task StopServerAsync(CancellationToken cancellationToken = default)
+    {
+        if (_serverProcess is null) return;
+
+        var process = _serverProcess;
+        _serverProcess = null;
+        var processId = process.ProcessId;
+        try
+        {
+            await process.StopAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+        finally
+        {
+            await process.DisposeAsync();
+            await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, processId, cancellationToken);
         }
     }
 
@@ -630,6 +731,21 @@ public sealed class AdbService
             throw new RuntimeOperationException("O arquivo APK é inválido.", $"Não foi possível ler o APK como ZIP: {exception.Message}", exception);
         }
     }
+
+    private IEnumerable<string> BuildArguments(IEnumerable<string> arguments)
+    {
+        var port = ServerPort;
+        if (port is < 1 or > 65535)
+            throw new RuntimeOperationException("A porta do servidor ADB privado é inválida.", $"Porta configurada: {port}. Esperada: 1..65535.");
+        return new[] { "-P", port.ToString(CultureInfo.InvariantCulture) }.Concat(arguments);
+    }
+
+    private IReadOnlyDictionary<string, string?> BuildEnvironment() => new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        // Defense in depth: the CLI flag above selects the server, while this
+        // variable keeps the daemon spawned by adb on the same private port.
+        ["ANDROID_ADB_SERVER_PORT"] = ServerPort.ToString(CultureInfo.InvariantCulture)
+    };
 
     private void SetState(AdbRuntimeState state)
     {

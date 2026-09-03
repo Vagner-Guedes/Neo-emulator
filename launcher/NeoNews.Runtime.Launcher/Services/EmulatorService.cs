@@ -23,8 +23,7 @@ public sealed class EmulatorService : IAndroidRuntimeBackend
     {
         get
         {
-            if (_process is { HasExited: false } process) return process.ProcessId;
-            return System.Diagnostics.Process.GetProcessesByName("emulator").FirstOrDefault()?.Id;
+            return _process is { HasExited: false } process ? process.ProcessId : null;
         }
     }
 
@@ -43,12 +42,8 @@ public sealed class EmulatorService : IAndroidRuntimeBackend
     public Task<bool> WaitForAdbAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
         _adb.WaitForDeviceAsync(timeout, cancellationToken);
 
-    public async Task<bool> IsRunningAsync(CancellationToken cancellationToken = default)
-    {
-        if (_process is { HasExited: false }) return true;
-        if (await _adb.IsDeviceOnlineAsync(cancellationToken)) return true;
-        return System.Diagnostics.Process.GetProcessesByName("emulator").Length > 0;
-    }
+    public Task<bool> IsRunningAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(_process is { HasExited: false });
 
     public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {

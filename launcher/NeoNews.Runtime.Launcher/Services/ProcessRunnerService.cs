@@ -67,10 +67,12 @@ public sealed class ProcessRunnerService
         string category,
         TimeSpan timeout,
         CancellationToken cancellationToken = default,
-        bool logOutput = true)
+        bool logOutput = true,
+        IReadOnlyDictionary<string, string?>? environment = null,
+        bool isolateEnvironment = true)
     {
         var started = Stopwatch.StartNew();
-        using var process = CreateProcess(executable, arguments, workingDirectory);
+        using var process = CreateProcess(executable, arguments, workingDirectory, environment, isolateEnvironment);
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
         var waitTask = process.WaitForExitAsync(cancellationToken);
@@ -105,9 +107,11 @@ public sealed class ProcessRunnerService
         string executable,
         IEnumerable<string> arguments,
         string workingDirectory,
-        string category)
+        string category,
+        IReadOnlyDictionary<string, string?>? environment = null,
+        bool isolateEnvironment = true)
     {
-        var process = CreateProcess(executable, arguments, workingDirectory);
+        var process = CreateProcess(executable, arguments, workingDirectory, environment, isolateEnvironment);
         var outputTask = ConsumeAsync(process.StandardOutput, category, false);
         var errorTask = ConsumeAsync(process.StandardError, category, true);
         _logs.Info("launcher", $"Processo iniciado: {executable} (PID {process.Id})");
@@ -168,7 +172,12 @@ public sealed class ProcessRunnerService
         return new ProcessResult(process.ExitCode, string.Empty, string.Empty, timedOut, started.Elapsed);
     }
 
-    private Process CreateProcess(string executable, IEnumerable<string> arguments, string workingDirectory)
+    private Process CreateProcess(
+        string executable,
+        IEnumerable<string> arguments,
+        string workingDirectory,
+        IReadOnlyDictionary<string, string?>? environment,
+        bool isolateEnvironment)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -180,6 +189,15 @@ public sealed class ProcessRunnerService
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };
+        if (isolateEnvironment) ApplyIsolatedEnvironment(startInfo, executable);
+        if (environment is not null)
+        {
+            foreach (var (name, value) in environment)
+            {
+                if (string.IsNullOrEmpty(value)) startInfo.Environment.Remove(name);
+                else startInfo.Environment[name] = value;
+            }
+        }
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         try
@@ -193,6 +211,27 @@ public sealed class ProcessRunnerService
             _logs.Error("process", $"Falha ao iniciar {executable}", exception);
             throw;
         }
+    }
+
+    private static void ApplyIsolatedEnvironment(ProcessStartInfo startInfo, string executable)
+    {
+        // These variables are common sources of accidental coupling to an
+        // Android Studio, Java, Gradle, QEMU, or ADB installation on the host.
+        foreach (var name in new[]
+        {
+            "ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_AVD_HOME", "ANDROID_SDK_HOME",
+            "ANDROID_USER_HOME", "ANDROID_EMULATOR_HOME", "ANDROID_ADB_SERVER_PORT",
+            "ADB_SERVER_SOCKET", "ADB_VENDOR_KEYS", "JAVA_HOME", "JDK_HOME", "GRADLE_HOME",
+            "QEMU_AUDIO_DRV", "QEMU_AUDIO_DLL", "QEMU_LOG", "QEMU_LOG_FILENAME"
+        }) startInfo.Environment.Remove(name);
+
+        var executableDirectory = Path.GetDirectoryName(Path.GetFullPath(executable));
+        var systemRoot = Environment.GetEnvironmentVariable("SystemRoot");
+        var system32 = string.IsNullOrWhiteSpace(systemRoot) ? null : Path.Combine(systemRoot, "System32");
+        var system = string.IsNullOrWhiteSpace(systemRoot) ? null : Path.Combine(systemRoot, "System");
+        startInfo.Environment["PATH"] = string.Join(
+            Path.PathSeparator,
+            new[] { executableDirectory, system32, system }.Where(path => !string.IsNullOrWhiteSpace(path)));
     }
 
     private async Task ConsumeAsync(StreamReader reader, string category, bool isError)

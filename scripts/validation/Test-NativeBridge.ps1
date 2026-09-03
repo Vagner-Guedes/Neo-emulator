@@ -27,6 +27,7 @@ if (-not (Test-Path -LiteralPath $ApkPath)) { throw "APK oficial não encontrado
 $adbPath = Join-Path $RepositoryRoot ($config.android.tooling.sdkRoot + '\' + $config.android.tooling.adbRelativePath)
 if (-not (Test-Path -LiteralPath $adbPath)) { throw "ADB não encontrado em $adbPath. O teste não usa PATH nem baixa ferramentas." }
 $serial = "$($config.android.adb.host):$($config.android.adb.hostPort)"
+$adbServerPort = [int]$config.android.adb.serverPort
 $packageName = $config.neonews.packageName
 $activityName = [string]$config.neonews.launchActivity
 if ($activityName -match '/') { $activityName = ($activityName -split '/')[-1] }
@@ -51,6 +52,8 @@ function Invoke-AdbResult([string[]]$Arguments) {
     $startInfo.RedirectStandardError = $true
     $argumentListProperty = $startInfo.PSObject.Properties['ArgumentList']
     if ($null -ne $argumentListProperty) {
+        [void]$startInfo.ArgumentList.Add('-P')
+        [void]$startInfo.ArgumentList.Add([string]$adbServerPort)
         foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add([string]$argument) }
     }
     else {

@@ -83,7 +83,8 @@ function Invoke-QemuBenchmarkAdb {
     param(
         [string]$AdbPath,
         [string]$Serial,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [int]$ServerPort = 5038
     )
 
     $previousErrorActionPreference = $ErrorActionPreference
@@ -92,7 +93,7 @@ function Invoke-QemuBenchmarkAdb {
         # adb daemon banner or an offline-device diagnostic is expected input
         # to the evidence collector, not a terminating PowerShell exception.
         $ErrorActionPreference = 'Continue'
-        $raw = @(& $AdbPath -s $Serial @Arguments 2>&1)
+        $raw = @(& $AdbPath -P $ServerPort -s $Serial @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -107,13 +108,14 @@ function Invoke-QemuBenchmarkAdb {
 function Invoke-QemuBenchmarkAdbHost {
     param(
         [string]$AdbPath,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        [int]$ServerPort = 5038
     )
 
     $previousErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $raw = @(& $AdbPath @Arguments 2>&1)
+        $raw = @(& $AdbPath -P $ServerPort @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally {

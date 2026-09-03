@@ -12,6 +12,13 @@
     "maxClockSkewSeconds": 5,
     "hotkey": "Ctrl+Alt+Shift+F12"
   },
+  "hostIsolation": {
+    "requireBundledTools": true,
+    "clearHostToolEnvironment": true,
+    "singleInstancePerDistribution": true,
+    "refusePortConflicts": true,
+    "processOwnership": "child-process-only"
+  },
   "timeouts": {
     "adbSeconds": 30,
     "bootSeconds": 180,
@@ -86,6 +93,8 @@
       "host": "127.0.0.1",
       "hostPort": 5556,
       "guestPort": 5555,
+      "serverHost": "127.0.0.1",
+      "serverPort": 5038,
       "emulatorSerial": ""
     },
     "guestConfiguration": {

@@ -59,7 +59,7 @@ try {
     $directory = Split-Path -Parent $GuestPath -ErrorAction Stop
     $mkdir = Invoke-QemuBenchmarkAdb -AdbPath $paths.Adb -Serial $serial -Arguments @('shell', 'mkdir', '-p', $directory)
     if ($mkdir.ExitCode -ne 0) { throw "Não foi possível preparar o diretório persistente: $($mkdir.Text)" }
-    $push = & $paths.Adb -s $serial push $markerFile $GuestPath 2>&1
+    $push = & $paths.Adb -P ([int]$config.android.adb.serverPort) -s $serial push $markerFile $GuestPath 2>&1
     $pushCode = $LASTEXITCODE
     if ($pushCode -ne 0) { throw "Não foi possível gravar o marcador no guest: $(($push | Out-String).Trim())" }
     $firstStopResult = Stop-QemuBenchmarkProcess -Process $firstProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)

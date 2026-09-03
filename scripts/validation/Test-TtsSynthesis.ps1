@@ -21,6 +21,7 @@ $scriptRepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 . (Join-Path $scriptRepositoryRoot 'scripts\validation\ValidationEvidence.Common.ps1')
 $reportFullPath = Initialize-ValidationReport -ReportPath (Resolve-ValidationReportPath -RepositoryRoot $repositoryRoot -ReportPath $ReportPath) -Validator 'Test-TtsSynthesis'
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 $probePackage = 'com.neonews.runtime.ttsprobe'
 
 function Resolve-ConfiguredPath {
@@ -46,7 +47,7 @@ function Invoke-External {
 
 function Invoke-Adb {
     param([string[]]$Arguments)
-    Invoke-External -Executable $script:adbPath -Arguments $Arguments
+    Invoke-External -Executable $script:adbPath -Arguments (@('-P', [string]$script:adbServerPort) + @($Arguments))
 }
 
 function Wait-ForBoot {

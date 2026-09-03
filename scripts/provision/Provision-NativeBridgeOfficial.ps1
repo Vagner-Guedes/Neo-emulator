@@ -17,6 +17,7 @@ if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
     $ConfigPath = Join-Path $RepositoryRoot 'config\runtime.json'
 }
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 
 function Resolve-ConfiguredPath([string]$ConfiguredPath) {
     if ([System.IO.Path]::IsPathRooted($ConfiguredPath)) { return $ConfiguredPath }
@@ -49,7 +50,7 @@ function Invoke-AdbResult([string[]]$Arguments) {
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $output = @(& $script:AdbPath @Arguments 2>&1)
+        $output = @(& $script:AdbPath -P $script:adbServerPort @Arguments 2>&1)
         $exitCode = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $previous }

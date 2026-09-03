@@ -40,6 +40,9 @@ try {
 $requiredPaths = @(
     'config/runtime.json',
     'config/android-package-policy.json',
+    'reports/HOST-DEPENDENCY-AUDIT.md',
+    'docs/HOST-COEXISTENCE-HOMOLOGATION.md',
+    'scripts/validation/Test-HostIsolation.ps1',
     'docs/AUDIT-ETAPA-1.md',
     'docs/ABI-ETAPA-3.md',
     'docs/WEBVIEW-ETAPA-4.md',
@@ -97,6 +100,8 @@ $runtimeSupervisorSource = if (Test-Path -LiteralPath $runtimeSupervisorPath) { 
 $runtimeConfigSource = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding utf8 } else { '' }
 $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRuntime.ps1'
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
+$hostIsolationScriptPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HostIsolation.ps1'
+$hostIsolationSource = if (Test-Path -LiteralPath $hostIsolationScriptPath) { Get-Content -LiteralPath $hostIsolationScriptPath -Raw -Encoding utf8 } else { '' }
 $componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1'
 $componentProvisioningSource = if (Test-Path -LiteralPath $componentProvisioningPath) { Get-Content -LiteralPath $componentProvisioningPath -Raw -Encoding utf8 } else { '' }
 $baseProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Provision-QemuAndroidRuntime.ps1'
@@ -308,6 +313,24 @@ $contractChecks['legacyEnsureEmulatorIsGuardedForQemu'] =
     $ensureNeoNewsSource -match '\$config\.android\.backend' -and
     $ensureNeoNewsSource -match 'qemu-android-x86' -and
     $ensureNeoNewsSource -match 'NeoNewsRuntime\.exe --start'
+$contractChecks['hostIsolationQualityGate'] =
+    $hostIsolationSource -match 'static-host-isolation-quality-gate' -and
+    $hostIsolationSource -match 'HostProcessOwnership' -and
+    $hostIsolationSource -match 'privateAdbValid' -and
+    $hostIsolationSource -match 'dynamicEvidence'
+$contractChecks['runtimeConfigHasPrivateAdbServer'] =
+    [int]$configObject.android.adb.serverPort -eq 5038 -and
+    [string]$configObject.android.adb.serverHost -eq '127.0.0.1' -and
+    $launcherSourceText -match '"-P"' -and
+    $launcherSourceText -match 'ANDROID_ADB_SERVER_PORT'
+$contractChecks['runtimeProcessIsolationContracts'] =
+    $launcherSourceText -match 'class RuntimePaths' -and
+    $launcherSourceText -match 'HostPortGuard' -and
+    $launcherSourceText -match 'HostProcessOwnership\.WriteAsync' -and
+    $launcherSourceText -match 'nodaemon' -and
+    $launcherSourceText -match 'AdbServerStatePath' -and
+    $launcherSourceText -match 'StopServerAsync' -and
+    $launcherSourceText -notmatch 'GetProcessesByName'
 foreach ($check in $contractChecks.GetEnumerator()) {
     if (-not [bool]$check.Value) { $contractErrors += [string]$check.Key }
 }

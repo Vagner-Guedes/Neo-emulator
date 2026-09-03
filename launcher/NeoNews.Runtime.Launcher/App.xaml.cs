@@ -23,25 +23,24 @@ public partial class App : System.Windows.Application
         RegisterGlobalExceptionHandlers();
         SessionEnding += (_, _) => HandleSessionEnding();
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        _singleInstance = new SingleInstanceService();
         var command = RuntimeCommandParser.Parse(e.Args);
         var exitAfterDiagnostics = e.Args.Length > 0 && command == RuntimeCommand.Diagnostics;
-
-        if (!_singleInstance.TryAcquire())
-        {
-            var sent = false;
-            for (var attempt = 0; attempt < 4 && !sent; attempt++)
-            {
-                sent = await SingleInstanceService.SendCommandAsync(command.ToArgument());
-                if (!sent) await Task.Delay(150);
-            }
-            Shutdown();
-            return;
-        }
 
         try
         {
             _context = RuntimeContext.Load();
+            _singleInstance = new SingleInstanceService(_context.RootDirectory);
+            if (!_singleInstance.TryAcquire())
+            {
+                var sent = false;
+                for (var attempt = 0; attempt < 4 && !sent; attempt++)
+                {
+                    sent = await _singleInstance.SendCommandAsync(command.ToArgument());
+                    if (!sent) await Task.Delay(150);
+                }
+                Shutdown();
+                return;
+            }
             _controller = new RuntimeController(_context);
             _mainWindow = new MainWindow(_controller);
             MainWindow = _mainWindow;

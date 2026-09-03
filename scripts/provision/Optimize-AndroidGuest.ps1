@@ -27,6 +27,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $repositoryRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 $config = Get-Content -LiteralPath $configPathFull -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 
 function Resolve-RepositoryPath {
     param([string]$ConfiguredPath)
@@ -120,7 +121,7 @@ function Add-OptimizationLog {
 
 function Invoke-AdbResult {
     param([string[]]$Arguments)
-    $output = & $script:adbPath @Arguments 2>&1
+    $output = & $script:adbPath -P $script:adbServerPort @Arguments 2>&1
     [pscustomobject]@{
         ExitCode = [int]$LASTEXITCODE
         Text = (($output | Out-String).Trim())

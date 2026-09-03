@@ -31,7 +31,7 @@ function Invoke-AdbCommand {
         [string[]]$Arguments
     )
 
-    $output = & $AdbPath -s $DeviceSerial @Arguments 2>&1
+    $output = & $AdbPath -P $script:adbServerPort -s $DeviceSerial @Arguments 2>&1
     return (($output | Out-String).Trim())
 }
 
@@ -44,7 +44,7 @@ function Wait-ForBoot {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
-        $state = (& $AdbPath -s $DeviceSerial get-state 2>$null | Out-String).Trim()
+        $state = (& $AdbPath -P $script:adbServerPort -s $DeviceSerial get-state 2>$null | Out-String).Trim()
         if ($state -eq 'device') {
             $bootCompleted = Invoke-AdbCommand -AdbPath $AdbPath -DeviceSerial $DeviceSerial -Arguments @('shell', 'getprop', 'sys.boot_completed')
             if ($bootCompleted -match '(?m)^1$') {
@@ -63,6 +63,7 @@ if (-not (Test-Path -LiteralPath $ConfigPath)) {
 }
 
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
+$script:adbServerPort = [int]$config.android.adb.serverPort
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
 $runtimeRoot = [System.IO.Directory]::GetParent([System.IO.Directory]::GetParent($configPathFull).FullName).FullName
 if (-not [string]::IsNullOrWhiteSpace($ReportPath) -and -not [System.IO.Path]::IsPathRooted($ReportPath)) {

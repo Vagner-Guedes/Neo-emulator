@@ -10,13 +10,17 @@ public sealed class RuntimeContext
         RootDirectory = rootDirectory;
         ConfigPath = configPath;
         Config = config;
+        Paths = new RuntimePaths(rootDirectory, configPath);
     }
 
     public string RootDirectory { get; }
     public string ConfigPath { get; }
     public RuntimeConfig Config { get; }
-    public string LogsDirectory => Path.Combine(RootDirectory, "logs");
-    public string ReportsDirectory => Path.Combine(RootDirectory, "reports");
+    public RuntimePaths Paths { get; }
+    public string LogsDirectory => Paths.LogsDirectory;
+    public string ReportsDirectory => Paths.ReportsDirectory;
+    public string HostProcessStatePath => Paths.HostProcessStatePath;
+    public string AdbServerStatePath => Paths.AdbServerStatePath;
 
     public static RuntimeContext Load(string? explicitConfigPath = null)
     {
@@ -33,17 +37,12 @@ public sealed class RuntimeContext
 
     public string ResolvePath(string configuredPath)
     {
-        if (Path.IsPathRooted(configuredPath))
-        {
-            return configuredPath;
-        }
-
-        return Path.GetFullPath(Path.Combine(RootDirectory, configuredPath.Replace('/', Path.DirectorySeparatorChar)));
+        return Paths.Resolve(configuredPath);
     }
 
     public string ResolveAdbPath()
     {
-        var configured = ResolvePath(Path.Combine(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.AdbRelativePath));
+        var configured = Paths.ResolveBundledTool(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.AdbRelativePath);
         if (File.Exists(configured)) return configured;
         return Config.Android.Tooling.AllowEnvironmentFallback
             ? FindToolInRoots("adb.exe", Config.Android.Tooling.AdbRelativePath, Path.Combine("platform-tools", "adb.exe"))
@@ -66,7 +65,7 @@ public sealed class RuntimeContext
 
     public string ResolveEmulatorPath()
     {
-        var configured = ResolvePath(Path.Combine(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.EmulatorRelativePath));
+        var configured = Paths.ResolveBundledTool(Config.Android.Tooling.SdkRoot, Config.Android.Tooling.EmulatorRelativePath);
         if (File.Exists(configured)) return configured;
         return Config.Android.Tooling.AllowEnvironmentFallback
             ? FindToolInRoots("emulator.exe", Config.Android.Tooling.EmulatorRelativePath, Path.Combine("emulator", "emulator.exe"))

@@ -7,6 +7,7 @@ public sealed class RuntimeConfig
     public int SchemaVersion { get; set; } = 1;
     public ReleaseConfig Release { get; set; } = new();
     public RuntimeSettings Runtime { get; set; } = new();
+    public HostIsolationConfig HostIsolation { get; set; } = new();
     public RuntimeTimeoutConfig Timeouts { get; set; } = new();
     public AndroidConfig Android { get; set; } = new();
     [JsonPropertyName("neonews")]
@@ -36,6 +37,15 @@ public sealed class RuntimeSettings
     public bool SyncClockWithHost { get; set; } = true;
     public int MaxClockSkewSeconds { get; set; } = 5;
     public string Hotkey { get; set; } = "Ctrl+Alt+Shift+F12";
+}
+
+public sealed class HostIsolationConfig
+{
+    public bool RequireBundledTools { get; set; } = true;
+    public bool ClearHostToolEnvironment { get; set; } = true;
+    public bool SingleInstancePerDistribution { get; set; } = true;
+    public bool RefusePortConflicts { get; set; } = true;
+    public string ProcessOwnership { get; set; } = "child-process-only";
 }
 
 public sealed class RuntimeTimeoutConfig
@@ -134,6 +144,8 @@ public sealed class AdbConfig
     public string Host { get; set; } = "127.0.0.1";
     public int HostPort { get; set; } = 5556;
     public int GuestPort { get; set; } = 5555;
+    public string ServerHost { get; set; } = "127.0.0.1";
+    public int ServerPort { get; set; } = 5038;
     public string EmulatorSerial { get; set; } = string.Empty;
 }
 
