@@ -108,9 +108,14 @@ public sealed class RuntimeController : IAsyncDisposable
             var packages = await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken);
             var defaultEngine = await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken);
             var localeCheck = await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken);
-            var hasRhvoice = packages.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
+            var ttsData = await ReadTtsVoiceDataAsync(cancellationToken);
+            var providerPackage = string.IsNullOrWhiteSpace(_context.Config.Tts.ProviderPackage)
+                ? "com.github.olga_yakovleva.rhvoice.android"
+                : _context.Config.Tts.ProviderPackage;
+            var hasRhvoice = packages.Contains(providerPackage, StringComparison.OrdinalIgnoreCase);
             var selected = defaultEngine.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
-            var localeReady = localeCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase);
+            var legacyLocaleReady = localeCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase);
+            var localeReady = legacyLocaleReady || ttsData.Ready;
             voiceLabel = hasRhvoice ? (selected && localeReady ? "RHVoice ativa" : "RHVoice instalada") : "RHVoice ausente";
             ttsState = hasRhvoice && selected && localeReady ? TtsRuntimeState.Ready : TtsRuntimeState.Missing;
         }
@@ -174,6 +179,7 @@ public sealed class RuntimeController : IAsyncDisposable
                 await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
                 await EnsureGuestIdentityAsync(cancellationToken);
                 await EnsureGuestLocaleAsync(progress, cancellationToken);
+                await EnsureGuestClockAsync(progress, cancellationToken);
                 await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: false, cancellationToken: cancellationToken);
                 _state.Set(RuntimeState.Running);
                 await _provisioning.SetStageAsync("AndroidReady", cancellationToken);
@@ -361,6 +367,7 @@ public sealed class RuntimeController : IAsyncDisposable
             await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
             await EnsureGuestIdentityAsync(cancellationToken);
             await EnsureGuestLocaleAsync(progress, cancellationToken);
+            await EnsureGuestClockAsync(progress, cancellationToken);
             await _provisioning.SetStageAsync("NATIVE_BRIDGE_VALIDATION", cancellationToken);
             var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !bridge.Ready) throw new RuntimeOperationException("O Native Bridge ARM não está disponível.", bridge.Detail);
@@ -447,6 +454,7 @@ public sealed class RuntimeController : IAsyncDisposable
         await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
         await EnsureGuestIdentityAsync(cancellationToken);
         await EnsureGuestLocaleAsync(progress, cancellationToken);
+        await EnsureGuestClockAsync(progress, cancellationToken);
         await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: false, cancellationToken: cancellationToken);
         await _provisioning.SetStageAsync("AndroidReady", cancellationToken);
         await StartSupervisorIfEnabledAsync();
@@ -493,6 +501,33 @@ public sealed class RuntimeController : IAsyncDisposable
         _logs.Info("provisioning", $"LOCALE_OK requested={locale.Requested}; effective={locale.Effective}; rebootRequired={locale.RebootRequired}.");
         await _provisioning.SetStageAsync("LOCALE_VALIDATION", cancellationToken);
         progress?.Report(new RuntimeProgress("Idioma validado", "Português (Brasil) confirmado; NeoNews pode iniciar.", 75));
+    }
+
+    private async Task EnsureGuestClockAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        if (!_context.Config.Runtime.SyncClockWithHost) return;
+
+        var timezone = _context.Config.Runtime.Timezone;
+        if (string.IsNullOrWhiteSpace(timezone))
+            throw new RuntimeOperationException("O fuso horário do Android não está configurado.", "runtime.timezone está vazio.");
+
+        progress?.Report(new RuntimeProgress("Sincronizando horário", "Aplicando o relógio do Windows ao Android...", 76));
+        await _provisioning.SetStageAsync("CLOCK_CONFIGURATION", cancellationToken);
+        await _adb.EnsureRootAsync(cancellationToken);
+        var clock = await _adb.EnsureHostClockAsync(
+            timezone,
+            _context.Config.Runtime.MaxClockSkewSeconds,
+            cancellationToken);
+        if (!clock.Validated)
+        {
+            throw new RuntimeOperationException(
+                "O horário do Android não corresponde ao Windows.",
+                clock.Detail);
+        }
+
+        _logs.Info("provisioning", $"CLOCK_OK {clock.Detail}");
+        await _provisioning.SetStageAsync("CLOCK_VALIDATION", cancellationToken);
+        progress?.Report(new RuntimeProgress("Horário validado", $"Android sincronizado com o Windows; desvio de {clock.SkewSeconds}s.", 78));
     }
 
     private async Task WaitForConfiguredBootAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
@@ -546,6 +581,7 @@ public sealed class RuntimeController : IAsyncDisposable
         {
             await EnsureGuestIdentityAsync(cancellationToken);
             await EnsureGuestLocaleAsync(progress, cancellationToken);
+            await EnsureGuestClockAsync(progress, cancellationToken);
         }
     }
 
@@ -567,10 +603,29 @@ public sealed class RuntimeController : IAsyncDisposable
         var packages = await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken);
         var defaultEngine = await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken);
         var localeCheck = await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken);
-        var packageReady = packages.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
+        var ttsData = await ReadTtsVoiceDataAsync(cancellationToken);
+        var providerPackage = string.IsNullOrWhiteSpace(_context.Config.Tts.ProviderPackage)
+            ? "com.github.olga_yakovleva.rhvoice.android"
+            : _context.Config.Tts.ProviderPackage;
+        var packageReady = packages.Contains(providerPackage, StringComparison.OrdinalIgnoreCase);
         var selected = defaultEngine.Contains("rhvoice", StringComparison.OrdinalIgnoreCase);
-        var localeReady = localeCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase);
-        return (packageReady && selected && localeReady, $"engineEsperada={_context.Config.Tts.Engine}; default={defaultEngine}; locale={_context.Config.Tts.Locale}; pacoteRhvoice={packageReady}; engineSelecionada={selected}; dadosLocale={localeReady}; retorno={localeCheck}", defaultEngine);
+        var legacyLocaleReady = localeCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || localeCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase);
+        var localeReady = legacyLocaleReady || ttsData.Ready;
+        return (packageReady && selected && localeReady, $"engineEsperada={_context.Config.Tts.Engine}; provider={providerPackage}; default={defaultEngine}; locale={_context.Config.Tts.Locale}; pacoteRhvoice={packageReady}; engineSelecionada={selected}; dadosLocale={localeReady}; dadosInstalados={ttsData.Ready}; retorno={localeCheck}; paths={ttsData.Detail}", defaultEngine);
+    }
+
+    private async Task<(bool Ready, string Detail)> ReadTtsVoiceDataAsync(CancellationToken cancellationToken)
+    {
+        var providerPackage = string.IsNullOrWhiteSpace(_context.Config.Tts.ProviderPackage)
+            ? "com.github.olga_yakovleva.rhvoice.android"
+            : _context.Config.Tts.ProviderPackage;
+        var dataRoot = $"/data/user/0/{providerPackage}/app_data";
+        var result = await SafeAsync(() => _adb.ShellAsync(["find", dataRoot, "-maxdepth", "2", "-type", "d"], TimeSpan.FromSeconds(20), cancellationToken), cancellationToken);
+        var languagePackage = _context.Config.Tts.LanguagePackage;
+        var voicePackage = _context.Config.Tts.VoicePackage;
+        var languageReady = !string.IsNullOrWhiteSpace(languagePackage) && result.Contains(languagePackage, StringComparison.OrdinalIgnoreCase);
+        var voiceReady = !string.IsNullOrWhiteSpace(voicePackage) && result.Contains(voicePackage, StringComparison.OrdinalIgnoreCase);
+        return (languageReady && voiceReady, $"root={dataRoot}; language={languagePackage}; languageReady={languageReady}; voice={voicePackage}; voiceReady={voiceReady}; listing={result}");
     }
 
     private async Task PersistProvisioningStatusAsync(

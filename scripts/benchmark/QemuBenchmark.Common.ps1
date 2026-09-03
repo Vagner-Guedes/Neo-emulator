@@ -200,6 +200,8 @@ function New-QemuBenchmarkArguments {
     $arguments.Add($(if ($qemu.machine) { [string]$qemu.machine } else { 'pc' }))
     $arguments.Add('-accel')
     $arguments.Add('whpx')
+    $arguments.Add('-rtc')
+    $arguments.Add('base=utc')
     $qemuExecutable = [string]$qemu.executable
     if (-not [System.IO.Path]::IsPathRooted($qemuExecutable)) {
         $qemuExecutable = [System.IO.Path]::GetFullPath((Join-Path $RepositoryRoot ($qemuExecutable -replace '/', '\')))

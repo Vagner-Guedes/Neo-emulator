@@ -23,6 +23,7 @@
 [Bb]in/
 [Oo]bj/
 /dist/
+/.tools/
 *.user
 *.suo
 *.userosscache

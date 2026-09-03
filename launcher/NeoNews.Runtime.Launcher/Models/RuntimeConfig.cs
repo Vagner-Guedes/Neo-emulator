@@ -32,7 +32,9 @@ public sealed class RuntimeSettings
 {
     public string Name { get; set; } = "NeoNews Digital Signage Runtime";
     public string Environment { get; set; } = "production";
-    public string Timezone { get; set; } = "America/Bahia";
+    public string Timezone { get; set; } = "America/Sao_Paulo";
+    public bool SyncClockWithHost { get; set; } = true;
+    public int MaxClockSkewSeconds { get; set; } = 5;
     public string Hotkey { get; set; } = "Ctrl+Alt+Shift+F12";
 }
 
@@ -286,6 +288,10 @@ public sealed class TtsConfig
     public string Locale { get; set; } = "pt-BR";
     public string Engine { get; set; } = "RHVoice";
     public List<string> AvailableEngines { get; set; } = [];
+    public string ProviderPackage { get; set; } = "com.github.olga_yakovleva.rhvoice.android";
+    public string LanguagePackage { get; set; } = string.Empty;
+    public string VoicePackage { get; set; } = string.Empty;
+    public string Voice { get; set; } = string.Empty;
     public bool RhvoicePresent { get; set; }
     public string Status { get; set; } = string.Empty;
     public bool Validated { get; set; }

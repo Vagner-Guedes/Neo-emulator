@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using NeoNews.Runtime.Launcher.Models;
 
@@ -338,6 +339,77 @@ public sealed class AdbService
         return after with { RebootRequired = !after.IsPtBr };
     }
 
+    public async Task<ClockValidationResult> EnsureHostClockAsync(
+        string timezone,
+        int maxSkewSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(timezone))
+            throw new RuntimeOperationException("O fuso horário do Android não está configurado.", "runtime.timezone está vazio.");
+
+        var configuredTimezone = timezone.Trim();
+        var timezoneResult = await ShellResultAsync(
+            ["setprop", "persist.sys.timezone", configuredTimezone],
+            TimeSpan.FromSeconds(20),
+            cancellationToken);
+        if (!timezoneResult.Succeeded)
+        {
+            throw new RuntimeOperationException(
+                "Não foi possível configurar o fuso horário do Android.",
+                $"setprop persist.sys.timezone {configuredTimezone}: exit={timezoneResult.ExitCode}; stderr={timezoneResult.StandardError}; stdout={timezoneResult.StandardOutput}");
+        }
+
+        // The portable guest has no reason to let network time overwrite the
+        // host-controlled clock. The launcher synchronizes it on every start.
+        await ExecuteCheckedAsync(
+            ["shell", "settings", "put", "global", "auto_time", "0"],
+            TimeSpan.FromSeconds(20),
+            cancellationToken,
+            "desabilitar ajuste automático do relógio");
+        await ExecuteCheckedAsync(
+            ["shell", "settings", "put", "global", "auto_time_zone", "0"],
+            TimeSpan.FromSeconds(20),
+            cancellationToken,
+            "desabilitar ajuste automático do fuso horário");
+
+        var hostBeforeSet = DateTimeOffset.Now;
+        var dateValue = hostBeforeSet.LocalDateTime.ToString("MMddHHmmyyyy.ss", CultureInfo.InvariantCulture);
+        var dateResult = await ShellResultAsync(["date", dateValue], TimeSpan.FromSeconds(20), cancellationToken);
+        if (!dateResult.Succeeded)
+        {
+            throw new RuntimeOperationException(
+                "Não foi possível sincronizar o relógio do Android.",
+                $"date {dateValue}: exit={dateResult.ExitCode}; stderr={dateResult.StandardError}; stdout={dateResult.StandardOutput}");
+        }
+
+        var guestEpochText = await ShellAsync(["date", "+%s"], TimeSpan.FromSeconds(10), cancellationToken);
+        if (!long.TryParse(guestEpochText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var guestEpoch))
+        {
+            throw new RuntimeOperationException(
+                "O relógio do Android não pôde ser validado.",
+                $"date +%s retornou um valor inválido: '{guestEpochText}'.");
+        }
+
+        var hostAfterSet = DateTimeOffset.Now;
+        var hostEpoch = hostAfterSet.ToUnixTimeSeconds();
+        var skewSeconds = guestEpoch - hostEpoch;
+        var guestTimezone = await GetPropertyAsync("persist.sys.timezone", cancellationToken);
+        var allowedSkew = Math.Max(0, maxSkewSeconds);
+        var validated = guestTimezone.Equals(configuredTimezone, StringComparison.OrdinalIgnoreCase) &&
+                        Math.Abs(skewSeconds) <= allowedSkew;
+        var detail = validated
+            ? $"timezone={guestTimezone}; host={hostAfterSet:O}; guestEpoch={guestEpoch}; skewSeconds={skewSeconds}."
+            : $"timezone={guestTimezone}; expectedTimezone={configuredTimezone}; host={hostAfterSet:O}; guestEpoch={guestEpoch}; skewSeconds={skewSeconds}; allowedSkewSeconds={allowedSkew}.";
+        return new ClockValidationResult(
+            configuredTimezone,
+            guestTimezone,
+            hostAfterSet,
+            DateTimeOffset.FromUnixTimeSeconds(guestEpoch),
+            skewSeconds,
+            validated,
+            detail);
+    }
+
     public async Task RebootGuestAsync(CancellationToken cancellationToken = default)
     {
         var result = await ShellResultAsync(["reboot"], TimeSpan.FromSeconds(20), cancellationToken);
@@ -617,3 +689,12 @@ public sealed record LocaleValidationResult(
     string PersistedCountry,
     string SystemLocales,
     bool RebootRequired = false);
+
+public sealed record ClockValidationResult(
+    string ConfiguredTimezone,
+    string GuestTimezone,
+    DateTimeOffset HostTime,
+    DateTimeOffset GuestTime,
+    long SkewSeconds,
+    bool Validated,
+    string Detail);

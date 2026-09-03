@@ -7,7 +7,9 @@
   "runtime": {
     "name": "NeoNews Digital Signage Runtime",
     "environment": "development",
-    "timezone": "America/Bahia",
+    "timezone": "America/Sao_Paulo",
+    "syncClockWithHost": true,
+    "maxClockSkewSeconds": 5,
     "hotkey": "Ctrl+Alt+Shift+F12"
   },
   "timeouts": {
@@ -216,11 +218,17 @@
     "locale": "pt-BR",
     "engine": "RHVoice",
     "availableEngines": [
+      "com.github.olga_yakovleva.rhvoice.android",
+      "com.svox.pico",
       "com.google.android.tts"
     ],
-    "rhvoicePresent": false,
-    "status": "missing-engine",
-    "validated": false,
+    "providerPackage": "com.github.olga_yakovleva.rhvoice.android",
+    "languagePackage": "com.github.olga_yakovleva.rhvoice.android.language.brazilian_portuguese.1240",
+    "voicePackage": "com.github.olga_yakovleva.rhvoice.android.voice.leticia_f123.4060",
+    "voice": "Letícia-F123",
+    "rhvoicePresent": true,
+    "status": "validated-on-api25-overlay",
+    "validated": true,
     "report": "docs/TTS-ETAPA-5.md"
   },
   "supervisor": {

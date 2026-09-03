@@ -92,6 +92,8 @@ $qemuSourcePath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\S
 $qemuSource = if (Test-Path -LiteralPath $qemuSourcePath) { Get-Content -LiteralPath $qemuSourcePath -Raw -Encoding utf8 } else { '' }
 $runtimeControllerPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\RuntimeController.cs'
 $runtimeControllerSource = if (Test-Path -LiteralPath $runtimeControllerPath) { Get-Content -LiteralPath $runtimeControllerPath -Raw -Encoding utf8 } else { '' }
+$runtimeSupervisorPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\RuntimeSupervisorService.cs'
+$runtimeSupervisorSource = if (Test-Path -LiteralPath $runtimeSupervisorPath) { Get-Content -LiteralPath $runtimeSupervisorPath -Raw -Encoding utf8 } else { '' }
 $runtimeConfigSource = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding utf8 } else { '' }
 $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRuntime.ps1'
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
@@ -153,6 +155,7 @@ $contractChecks = [ordered]@{
     qemuPassesPortableFirmwarePrefix = $qemuSource -match 'qemuShareDirectory' -and $qemuSource -match '"-L"'
     qemuRequiresPortableFirmware = $qemuSource -match 'bios-256k.bin' -and $qemuSource -match 'share'
     qemuAndroidX86UsesCompatibleDefaults = [string]$configObject.android.qemu.machine -eq 'pc' -and [string]$configObject.android.qemu.nicModel -eq 'e1000' -and $qemuSource -match 'if=ide' -and $qemuSource -match 'nicModel' -and $qemuBenchmarkCommonSource -match 'if=ide' -and $qemuBenchmarkCommonSource -match 'nicModel'
+    qemuUsesUtcRtcForLinuxGuest = $qemuSource -match '"-rtc"' -and $qemuSource -match 'base=utc' -and $qemuBenchmarkCommonSource -match "'-rtc'" -and $qemuBenchmarkCommonSource -match 'base=utc'
     qemuNetworkForwardingIsExplicit = [string]$configObject.android.qemu.networkId -eq 'neonewsnet' -and [string]$configObject.android.qemu.networkCidr -eq '10.0.2.0/24' -and [string]$configObject.android.qemu.guestAddress -eq '10.0.2.15' -and $qemuSource.Contains('dhcpstart={guestAddress}') -and $qemuSource.Contains('hostfwd=tcp:{host}:{hostPort}-{guestAddress}:{guestPort}') -and $qemuBenchmarkCommonSource.Contains('dhcpstart=$guestAddress') -and $qemuBenchmarkCommonSource.Contains('hostfwd=tcp:$($adb.host):$($adb.hostPort)-${guestAddress}:$($adb.guestPort)')
     benchmarkPassesPortableFirmwarePrefix = $qemuBenchmarkCommonSource -match 'qemuShareDirectory' -and $qemuBenchmarkCommonSource -match "'-L'"
     benchmarkResolvesConfiguredQemuPath = $qemuBenchmarkCommonSource -match '\$qemuExecutable = \[string\]\$qemu\.executable' -and $qemuBenchmarkCommonSource -match 'Join-Path \$RepositoryRoot'
@@ -183,6 +186,8 @@ $contractChecks = [ordered]@{
     firstRunReadyGateWaitsForSettingsProvider = $launcherSourceText -match 'WaitForSettingsProviderAsync' -and $launcherSourceText -match 'settings"\s*,\s*"list"\s*,\s*"global' -and $launcherSourceText -match 'settings"\s*,\s*"list"\s*,\s*"secure'
     firstRunConfiguresLocaleBeforeNeoNews = $launcherSourceText -match 'EnsureGuestLocaleAsync' -and $launcherSourceText -match 'EnsurePtBrLocaleAsync' -and $launcherSourceText.IndexOf('EnsureGuestLocaleAsync') -lt $launcherSourceText.IndexOf('_neoNews.StartAsync')
     firstRunRebootsAndRevalidatesLocale = $launcherSourceText -match 'RebootGuestAsync' -and $launcherSourceText -match 'MarkRebootPerformedAsync' -and $launcherSourceText -match 'ReadLocaleAsync'
+    firstRunSynchronizesHostClock = [string]$configObject.runtime.timezone -eq 'America/Sao_Paulo' -and [bool]$configObject.runtime.syncClockWithHost -and [int]$configObject.runtime.maxClockSkewSeconds -gt 0 -and $launcherSourceText -match 'EnsureHostClockAsync' -and $runtimeControllerSource -match 'EnsureGuestClockAsync'
+    watchdogResynchronizesHostClock = $runtimeSupervisorSource -match 'SynchronizeClockIfDueAsync' -and $runtimeSupervisorSource -match 'TimeSpan.FromSeconds\(30\)' -and $runtimeSupervisorSource -match 'EnsureHostClockAsync'
     firstRunPersistsStateMachine = $launcherSourceText -match 'SetStageAsync' -and $launcherSourceText -match 'SetErrorAsync' -and $launcherSourceText -match 'SetReadinessAsync' -and $launcherSourceText -match 'NEONEWS_RUNTIME_VALIDATION'
     firstBootUsesSeparateTimeout = $runtimeConfigSource -match 'FirstBootSeconds' -and $runtimeControllerSource -match 'WaitForConfiguredBootAsync' -and $runtimeControllerSource -match 'PackageManagerReady'
     diagnosticsIncludesFirstRunState = $launcherSourceText -match 'packageManagerReady = provisioningState\.PackageManagerReady' -and $launcherSourceText -match 'localeValidated = provisioningState\.LocaleValidated' -and $launcherSourceText -match 'lastError = provisioningState\.LastError'

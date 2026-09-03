@@ -18,6 +18,7 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
     private DateTimeOffset _lastBootingLog = DateTimeOffset.MinValue;
     private DateTimeOffset _lastActivityLossLog = DateTimeOffset.MinValue;
     private DateTimeOffset _lastKioskLossLog = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastClockSync = DateTimeOffset.MinValue;
     private bool _nativeBridgeStructuralError;
 
     public RuntimeSupervisorService(
@@ -92,6 +93,7 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
                         _logs.Warning("watchdog", "Android ainda não confirmou boot completo.");
                     continue;
                 }
+                await SynchronizeClockIfDueAsync(cancellationToken).ConfigureAwait(false);
                 var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken).ConfigureAwait(false);
                 if (_context.Config.Android.NativeBridge.Required && !bridge.Ready)
                 {
@@ -137,6 +139,31 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
             {
                 _logs.Error("watchdog", "Falha no ciclo do watchdog.", exception);
             }
+        }
+    }
+
+    private async Task SynchronizeClockIfDueAsync(CancellationToken cancellationToken)
+    {
+        if (!_context.Config.Runtime.SyncClockWithHost) return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - _lastClockSync < TimeSpan.FromSeconds(30)) return;
+
+        try
+        {
+            var clock = await _adb.EnsureHostClockAsync(
+                _context.Config.Runtime.Timezone,
+                _context.Config.Runtime.MaxClockSkewSeconds,
+                cancellationToken).ConfigureAwait(false);
+            _lastClockSync = now;
+            if (!clock.Validated)
+                _logs.Warning("watchdog", $"Relógio do Android fora de sincronia; nova verificação será feita em breve. {clock.Detail}");
+            else
+                _logs.Info("watchdog", $"CLOCK_SYNC_OK {clock.Detail}");
+        }
+        catch (Exception exception)
+        {
+            _logs.Warning("watchdog", $"Não foi possível sincronizar o relógio do Android neste ciclo: {exception.Message}");
         }
     }
 

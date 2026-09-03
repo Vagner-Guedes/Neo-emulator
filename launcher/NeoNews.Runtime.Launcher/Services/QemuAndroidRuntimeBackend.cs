@@ -113,6 +113,10 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 "-name", qemu.WindowTitle,
                 "-machine", string.IsNullOrWhiteSpace(qemu.Machine) ? "pc" : qemu.Machine,
                 "-accel", acceleration,
+                // Android-x86/Linux interprets the virtual RTC as UTC. Using
+                // localtime here makes the guest fall back by the configured
+                // UTC offset after the time service refreshes the clock.
+                "-rtc", "base=utc",
                 "-L", qemuShareDirectory,
                 "-m", effectiveMemoryMb.ToString(),
                 "-smp", Math.Max(1, Math.Min(qemu.CpuCores, Environment.ProcessorCount)).ToString(),
