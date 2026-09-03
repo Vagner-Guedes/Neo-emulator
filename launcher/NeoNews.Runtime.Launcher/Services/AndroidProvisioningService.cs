@@ -21,6 +21,10 @@ public sealed class ProvisioningState
     public string LastError { get; set; } = string.Empty;
     public string AndroidImageVersion { get; set; } = string.Empty;
     public string NativeBridgeStatus { get; set; } = "unknown";
+    public string GuestConfigurationStatus { get; set; } = "unknown";
+    public string GuestNetworkStatus { get; set; } = "unknown";
+    public string NeoNewsSuperuserStatus { get; set; } = "unknown";
+    public string GuestInitScriptSha256 { get; set; } = string.Empty;
     public string WebViewVersion { get; set; } = string.Empty;
     public string TtsStatus { get; set; } = "unknown";
     public string NeoNewsVersion { get; set; } = string.Empty;
@@ -231,6 +235,19 @@ public sealed class AndroidProvisioningService
     {
         var state = await LoadAsync(cancellationToken) ?? new ProvisioningState();
         state.RebootPerformed = true;
+        await SaveAsync(state, cancellationToken);
+    }
+
+    public async Task RecordGuestConfigurationAsync(
+        GuestConfigurationResult result,
+        CancellationToken cancellationToken = default)
+    {
+        var state = await LoadAsync(cancellationToken) ?? new ProvisioningState();
+        state.GuestConfigurationStatus = result.Ready ? "ready" : "error";
+        state.GuestNetworkStatus = result.NetworkConfigured ? "ready" : "error";
+        state.NeoNewsSuperuserStatus = result.SuperuserConfigured ? "allow-forever-notification-off" : result.SuperuserStatus;
+        state.GuestInitScriptSha256 = result.InitScriptSha256;
+        if (result.RebootPerformed) state.RebootPerformed = true;
         await SaveAsync(state, cancellationToken);
     }
 

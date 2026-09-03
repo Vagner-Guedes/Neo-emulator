@@ -73,6 +73,16 @@ public sealed class AdbService
             cancellationToken,
             logOutput);
 
+    public Task<ProcessResult> PushFileAsync(
+        string localPath,
+        string remotePath,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default) =>
+        ExecuteAsync(
+            ["push", localPath, remotePath],
+            timeout ?? TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.AdbSeconds)),
+            cancellationToken);
+
     public async Task StartServerAsync(CancellationToken cancellationToken = default)
     {
         var result = await ExecuteHostAsync(["start-server"], TimeSpan.FromSeconds(20), cancellationToken);
@@ -161,6 +171,22 @@ public sealed class AdbService
         CancellationToken cancellationToken = default,
         bool logOutput = false) =>
         ExecuteAsync(new[] { "shell" }.Concat(arguments), timeout, cancellationToken, logOutput);
+
+    public Task<ProcessResult> ShellCommandResultAsync(
+        string command,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default,
+        bool logOutput = false) =>
+        ExecuteAsync(["shell", command], timeout, cancellationToken, logOutput);
+
+    public async Task<string> ShellCommandAsync(
+        string command,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await ShellCommandResultAsync(command, timeout, cancellationToken);
+        return result.StandardOutput.Trim();
+    }
 
     private async Task<string> ExecuteShellAsync(IEnumerable<string> arguments, TimeSpan? timeout, CancellationToken cancellationToken)
     {
@@ -471,6 +497,29 @@ public sealed class AdbService
     public Task<string> GetMemoryDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "meminfo"], TimeSpan.FromSeconds(30), cancellationToken);
     public Task<string> GetGraphicsDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "gfxinfo"], TimeSpan.FromSeconds(30), cancellationToken);
     public Task<string> GetLogcatAsync(int lines, CancellationToken cancellationToken = default) => ShellAsync(["logcat", "-d", "-b", "all", "-t", lines.ToString()], TimeSpan.FromMinutes(2), cancellationToken);
+
+    public async Task EnsureRootAsync(CancellationToken cancellationToken = default)
+    {
+        var identity = await ShellAsync(["id"], TimeSpan.FromSeconds(10), cancellationToken);
+        if (identity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase)) return;
+
+        var result = await ExecuteAsync(["root"], TimeSpan.FromSeconds(20), cancellationToken);
+        if (!result.Succeeded && !result.StandardOutput.Contains("already running as root", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "O guest Android nÃ£o forneceu ADB root.",
+                $"adb root falhou: exit={result.ExitCode}; stdout={result.StandardOutput}; stderr={result.StandardError}");
+        }
+
+        var ready = await WaitForStateAsync("device", TimeSpan.FromSeconds(30), cancellationToken);
+        var rootIdentity = await ShellAsync(["id"], TimeSpan.FromSeconds(10), cancellationToken);
+        if (!ready || !rootIdentity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "O guest Android nÃ£o confirmou ADB root.",
+                "A configuraÃ§Ã£o persistente do guest exige uid=0 para alterar /system e a polÃ­tica local do Superuser.");
+        }
+    }
 
     private async Task ExecuteCheckedAsync(IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken, string operation)
     {

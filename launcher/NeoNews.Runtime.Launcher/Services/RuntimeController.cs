@@ -12,6 +12,7 @@ public sealed class RuntimeController : IAsyncDisposable
     private readonly IAndroidRuntimeBackend _backend;
     private readonly AndroidProvisioningService _provisioning;
     private readonly NativeBridgeValidationService _nativeBridge;
+    private readonly GuestConfigurationService _guestConfiguration;
     private readonly NeoNewsService _neoNews;
     private readonly KioskService _kiosk;
     private readonly StartupService _startup;
@@ -38,6 +39,7 @@ public sealed class RuntimeController : IAsyncDisposable
         };
         _provisioning = new AndroidProvisioningService(context, _logs);
         _nativeBridge = new NativeBridgeValidationService(context, _adb);
+        _guestConfiguration = new GuestConfigurationService(context, _adb, _logs);
         _neoNews = new NeoNewsService(context, _adb);
         _kiosk = new KioskService(context, _adb, _backend);
         _startup = new StartupService(context, _runner);
@@ -172,6 +174,7 @@ public sealed class RuntimeController : IAsyncDisposable
                 await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
                 await EnsureGuestIdentityAsync(cancellationToken);
                 await EnsureGuestLocaleAsync(progress, cancellationToken);
+                await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: false, cancellationToken: cancellationToken);
                 _state.Set(RuntimeState.Running);
                 await _provisioning.SetStageAsync("AndroidReady", cancellationToken);
                 await RefreshSnapshotAsync(cancellationToken);
@@ -230,7 +233,9 @@ public sealed class RuntimeController : IAsyncDisposable
         WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
-            await _neoNews.StartAsync(progress, cancellationToken);
+            await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
+            await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
+            await _neoNews.LaunchAsync(progress, cancellationToken);
             if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
             await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
@@ -241,7 +246,10 @@ public sealed class RuntimeController : IAsyncDisposable
         WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
-            await _neoNews.RestartAsync(progress, cancellationToken);
+            await _neoNews.StopAsync(cancellationToken);
+            await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
+            await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
+            await _neoNews.LaunchAsync(progress, cancellationToken);
             if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
             await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
@@ -255,6 +263,7 @@ public sealed class RuntimeController : IAsyncDisposable
             _lastAbiCompatibility = null;
             progress?.Report(new RuntimeProgress("Atualizando NeoNews", "Instalando APK autorizado sem apagar dados...", 75));
             await _neoNews.InstallAsync(cancellationToken);
+            await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
             var bridge = await SafeNativeBridgeAsync(cancellationToken);
             if (bridge is not null)
             {
@@ -363,7 +372,9 @@ public sealed class RuntimeController : IAsyncDisposable
             if (_context.Config.Android.Provisioning.RequireTts && !tts.Ready) throw new RuntimeOperationException("A voz RHVoice pt-BR não está disponível.", tts.Detail);
             await _provisioning.SetStageAsync("NEONEWS_INSTALLATION", cancellationToken);
             _state.Set(RuntimeState.StartingNeoNews);
-            await _neoNews.StartAsync(progress, cancellationToken);
+            await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
+            await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
+            await _neoNews.LaunchAsync(progress, cancellationToken);
             await _provisioning.SetStageAsync("NEONEWS_INSTALL_VALIDATION", cancellationToken);
             _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), _neoNews.LastInstallSucceeded, cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !_lastAbiCompatibility.RuntimeStable) throw new RuntimeOperationException("O NeoNews não permaneceu estável com a ABI ARM.", $"primaryCpuAbi={_lastAbiCompatibility.PrimaryCpuAbi}; selectedApkAbi={_lastAbiCompatibility.SelectedApkAbi}; runtimeStable=false");
@@ -436,6 +447,7 @@ public sealed class RuntimeController : IAsyncDisposable
         await _provisioning.SetStageAsync("SETTINGS_PROVIDER_READY", cancellationToken);
         await EnsureGuestIdentityAsync(cancellationToken);
         await EnsureGuestLocaleAsync(progress, cancellationToken);
+        await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: false, cancellationToken: cancellationToken);
         await _provisioning.SetStageAsync("AndroidReady", cancellationToken);
         await StartSupervisorIfEnabledAsync();
     }
@@ -510,6 +522,31 @@ public sealed class RuntimeController : IAsyncDisposable
         var guest = await _adb.ValidateGuestIdentityAsync(_context.Config.Android.Release, _context.Config.Android.ApiLevel, cancellationToken);
         if (!guest.Ready)
             throw new RuntimeOperationException("A imagem Android não corresponde ao runtime configurado.", guest.Detail);
+    }
+
+    private async Task EnsureGuestConfigurationAsync(
+        IProgress<RuntimeProgress>? progress,
+        bool requireNeoNewsSuperuser,
+        CancellationToken cancellationToken)
+    {
+        await _provisioning.SetStageAsync("GUEST_CONFIGURATION", cancellationToken);
+        var result = await _guestConfiguration.EnsureAsync(progress, requireNeoNewsSuperuser, cancellationToken);
+        await _provisioning.RecordGuestConfigurationAsync(result, cancellationToken);
+        if (!result.Ready)
+        {
+            throw new RuntimeOperationException(
+                "A configuração persistente do guest não foi homologada.",
+                result.Detail);
+        }
+
+        // Updating /system/etc/init.sh takes effect on the next boot. The
+        // guest service already waits for that boot; recheck the identity and
+        // locale gates before allowing any dependent application to start.
+        if (result.RebootPerformed)
+        {
+            await EnsureGuestIdentityAsync(cancellationToken);
+            await EnsureGuestLocaleAsync(progress, cancellationToken);
+        }
     }
 
     private async Task<(bool Ready, string Label, string Detail, string Version)> ReadWebViewAsync(CancellationToken cancellationToken)

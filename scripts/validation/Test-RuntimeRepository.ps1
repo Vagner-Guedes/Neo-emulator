@@ -49,6 +49,7 @@ $requiredPaths = @(
     'docs/QEMU-BENCHMARK.md',
     'docs/GUEST-NETWORK-MEDIA.md',
     'docs/QEMU-PERSISTENCE.md',
+    'docs/GUEST-CONFIGURATION-PERSISTENCE.md',
     'scripts/benchmark/Measure-QemuAndroidRuntime.ps1',
     'scripts/benchmark/Run-QemuNeoNewsBenchmark.ps1',
     'scripts/benchmark/QemuBenchmark.Common.ps1',
@@ -81,6 +82,7 @@ $requiredPaths = @(
     'tools/media-probe/AndroidManifest.xml',
     'tools/media-probe/MainActivity.java',
     'launcher/NeoNews.Runtime.Launcher/Services/AndroidRuntimeParsing.cs',
+    'launcher/NeoNews.Runtime.Launcher/Services/GuestConfigurationService.cs',
     'launcher/NeoNews.Runtime.Launcher/Services/ApkManifestService.cs',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
@@ -266,6 +268,9 @@ $contractChecks = [ordered]@{
     persistenceReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\validation\Test-QemuPersistence.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
     benchmarkReportIncludesTransportIdentity = (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'transport\s*=\s*\$config\.android\.adb\.transport' -and (Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\benchmark\Run-QemuNeoNewsBenchmark.ps1') -Raw -Encoding utf8) -match 'serial\s*=\s*\$serial'
     baseProvisioningRequiresConfiguredImage = $baseProvisioningSource -match '\$android\.qemu\.androidImage' -and $baseProvisioningSource -match "\$required \+= 'installerImage'"
+    guestConfigurationIsProjectControlled = $runtimeConfigSource -match 'guestConfiguration' -and $runtimeConfigSource -match 'virtWifi' -and $launcherSourceText -match 'GuestConfigurationService' -and $runtimeControllerSource -match 'EnsureGuestConfigurationAsync'
+    guestConfigurationPinsEthernetAndSuperuser = $runtimeConfigSource -match '"forceEthernet": true' -and $runtimeConfigSource -match '"virtWifi": false' -and $runtimeConfigSource -match '"interfaceName": "eth0"' -and $runtimeConfigSource -match '"notification": false' -and $runtimeConfigSource -match '"until": 0'
+    guestConfigurationDoesNotTouchProtectedComponents = $launcherSourceText -match 'does not install, remove, clear or alter' -and $runtimeControllerSource -notmatch 'Install-GuestComponents'
     watchdogKeepsBackendRecoveryWhenActivityRestartDisabled = $launcherSourceText -match 'RestartOnActivityLoss && status\.Installed && !status\.Running'
     watchdogTogglePersistsConfiguration = $runtimeControllerSource -match 'Config\.Supervisor\.RestartOnActivityLoss = enabled'
     runtimeOnlyStartsWatchdogWhenEnabled = $runtimeControllerSource -match 'StartSupervisorIfEnabledAsync' -and $runtimeControllerSource -match 'RestartOnActivityLoss \? _supervisor\.StartAsync'

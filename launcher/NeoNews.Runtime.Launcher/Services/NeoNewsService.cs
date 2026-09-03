@@ -43,9 +43,15 @@ public sealed class NeoNewsService
 
     public async Task StartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
-        // Installation evidence belongs to this Start operation only. A
-        // previous install must never make a later offline launch look like
-        // it observed adb install -r again.
+        await EnsureInstalledAsync(progress, cancellationToken);
+        await LaunchAsync(progress, cancellationToken);
+    }
+
+    public async Task EnsureInstalledAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        // Installation evidence belongs to this operation only. A previous
+        // install must never make a later offline launch look like it
+        // observed adb install -r again.
         LastInstallSucceeded = false;
         var status = await GetStatusAsync(cancellationToken);
         var installedVersionCode = status.Installed
@@ -79,6 +85,11 @@ public sealed class NeoNewsService
                     $"Pacote esperado: {PackageName}. APK: {apkPath}");
             }
         }
+        await ValidateInstalledVersionAsync(cancellationToken);
+    }
+
+    public async Task LaunchAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
         await ValidateInstalledVersionAsync(cancellationToken);
         progress?.Report(new RuntimeProgress("Abrindo NeoNews", $"{PackageName}/{ActivityName}", 82));
         await _adb.StartActivityAsync(PackageName, ActivityName, cancellationToken);

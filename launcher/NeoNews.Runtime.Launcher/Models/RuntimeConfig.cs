@@ -70,6 +70,7 @@ public sealed class AndroidConfig
     public EmulatorConfig Emulator { get; set; } = new();
     public QemuConfig Qemu { get; set; } = new();
     public AdbConfig Adb { get; set; } = new();
+    public GuestConfigurationConfig GuestConfiguration { get; set; } = new();
     public NativeBridgeConfig NativeBridge { get; set; } = new();
     public ProvisioningConfig Provisioning { get; set; } = new();
     public OptimizationConfig Optimization { get; set; } = new();
@@ -132,6 +133,38 @@ public sealed class AdbConfig
     public int HostPort { get; set; } = 5556;
     public int GuestPort { get; set; } = 5555;
     public string EmulatorSerial { get; set; } = string.Empty;
+}
+
+public sealed class GuestConfigurationConfig
+{
+    public bool Enabled { get; set; } = true;
+    public string InitScriptPath { get; set; } = "/system/etc/init.sh";
+    public string InitScriptMarker { get; set; } = "NEONEWS RUNTIME GUEST NETWORK v1";
+    public GuestNetworkConfig Network { get; set; } = new();
+    public GuestSuperuserConfig Superuser { get; set; } = new();
+}
+
+public sealed class GuestNetworkConfig
+{
+    public bool ForceEthernet { get; set; } = true;
+    public bool VirtWifi { get; set; }
+    public string InterfaceName { get; set; } = "eth0";
+    public string GuestAddress { get; set; } = "10.0.2.15";
+    public string Netmask { get; set; } = "255.255.255.0";
+    public string Gateway { get; set; } = "10.0.2.2";
+    public string Dns { get; set; } = "10.0.2.3";
+}
+
+public sealed class GuestSuperuserConfig
+{
+    public bool Enabled { get; set; } = true;
+    public string PackageName { get; set; } = "com.in9midia.neonews.player";
+    public string ApplicationLabel { get; set; } = "Neonews Player";
+    public string Policy { get; set; } = "allow";
+    public long Until { get; set; }
+    public bool Notification { get; set; }
+    public bool Logging { get; set; } = true;
+    public string DatabasePath { get; set; } = "/data/user_de/0/com.android.settings/databases/su.sqlite";
 }
 
 public sealed class NativeBridgeConfig
