@@ -76,7 +76,7 @@ altamente recomendado.
 
 | Recurso | Exigido | Disponível | Resultado |
 |---|---:|---:|---|
-| RAM | 8 GB | 7,87 GiB | insuficiente |
+| RAM | 8 GB mínimo; >16 GB recomendado | 8,45 GB decimais / 7,87 GiB | marginal; abaixo do recomendado |
 | Disco livre | 100 GB | 69,74 GB | insuficiente |
 | WSL2 | distribuição Linux operacional | nenhuma instalada | incompleto |
 
@@ -89,7 +89,8 @@ baixado código pesado que não pudesse ser compilado com segurança neste host.
 ## Próximo gate
 
 Liberar pelo menos 100 GB de disco e disponibilizar uma distribuição Linux
-WSL2 ou um host Linux com 8 GB de RAM (preferencialmente mais de 16 GB).
+WSL2 ou um host Linux com pelo menos 8 GB de RAM (preferencialmente mais de
+16 GB para o link release).
 Depois disso, repetir o preflight, instalar apenas `depot_tools` oficial,
 fazer checkout da tag exata, configurar `system_webview_apk`, gerar e
 registrar o APK, e só então integrar em um novo overlay descartável.

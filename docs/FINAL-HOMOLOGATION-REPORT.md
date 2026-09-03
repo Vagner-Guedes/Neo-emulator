@@ -128,9 +128,11 @@ planejado é `system_webview_apk` com package `com.android.webview`; Trichrome
 não será usado.
 
 O build foi interrompido antes do checkout por falta de recursos no host:
-7,87 GiB de RAM disponíveis contra o mínimo oficial de 8 GB e 69,74 GB livres
-contra o mínimo oficial de 100 GB. O WSL2 existe, mas não possui distribuição
-Linux instalada. Resultado obrigatório: **`BUILD_HOST_RESOURCE_REQUIRED`**.
+69,74 GB livres contra o mínimo oficial de 100 GB. A máquina tem 8,45 GB
+decimais (7,87 GiB) de RAM, no mínimo nominal mas muito abaixo dos mais de
+16 GB recomendados para o link release. O WSL2 existe, mas não possui
+distribuição Linux instalada. Resultado obrigatório:
+**`BUILD_HOST_RESOURCE_REQUIRED`**.
 
 Evidência detalhada: `reports/webview-build-preflight.json` e
 [`docs/WEBVIEW-ETAPA-4.md`](WEBVIEW-ETAPA-4.md). Nenhum `depot_tools`, hook,
