@@ -16,7 +16,7 @@
 | Versão exigida | `119.0.6045.193` |
 | ABI do guest | `x86_64` (`ro.zygote=zygote64_32`) |
 | ABI do WebView atual | `x86_64` + `x86` |
-| Status | `BUILD_HOST_RESOURCE_REQUIRED` / BLOCKED |
+| Status | `BUILD_HOST_RESOURCE_REQUIRED` / NOT HOMOLOGATED |
 
 O guest confirmou Android 7.1.2/API25, `com.android.webview` em
 `/system/app/webview/webview.apk`, marcado como pacote de sistema. O provider
@@ -71,19 +71,27 @@ Referências oficiais:
 ## Preflight e host de build
 
 O host é Intel 64-bit com 8,45 GB de RAM decimal / 7,87 GiB, WSL2 funcional
-(`Debian-NeoNews`) e espaço suficiente no volume D: para a árvore e os
-artefatos. A execução usa baixa paralelização para respeitar a memória
-disponível. O checkout, `depot_tools`, SDK/NDK e hooks foram obtidos pelas
-fontes oficiais do Chromium/CIPD/Google Storage.
+(`Debian-NeoNews`) e baixa paralelização. O checkout, `depot_tools`, SDK/NDK e
+hooks foram obtidos pelas fontes oficiais do Chromium/CIPD/Google Storage.
+
+O requisito oficial de build é pelo menos 100 GB livres (mais de 16 GB de RAM
+é recomendado). No momento do bloqueio, o volume D: tinha 81.633.284.096
+bytes livres (aprox. 76,0 GiB), abaixo do requisito. O VHDX também apresentou
+latência extrema: leituras de poucos megabytes demoraram dezenas de segundos.
 
 O GN foi gerado com sucesso em
-`/home/neonews/chromium/out/NeoNewsWebView119` e o Ninja está compilando
-`system_webview_apk`. Até o APK ser concluído e auditado, o resultado é
-`BUILD_IN_PROGRESS / NOT HOMOLOGATED`.
+`/home/neonews/chromium/out/NeoNewsWebView119` e o Ninja iniciou
+`system_webview_apk`, mas ficou preso em `folio_`/`wait_on_buffer` durante
+três retomadas. A distribuição foi encerrada de forma controlada para não
+deixar processos zumbi; a árvore e o cache permanecem no WSL. Nenhum APK foi
+produzido ou instalado. O resultado é
+`BUILD_HOST_RESOURCE_REQUIRED / NOT HOMOLOGATED`.
 
 ## Próximo gate
 
-Concluir o build e registrar o APK, tamanho e SHA-256 em
+Liberar pelo menos 100 GB reais no volume do build e corrigir a latência do
+VHDX (ou usar host Linux/WSL com armazenamento mais rápido). Depois retomar o
+build e registrar o APK, tamanho e SHA-256 em
 `reports/webview-build-119.json`. Em seguida, validar package,
 versionName/versionCode, assinatura e ABI antes de integrar somente em um
 novo overlay descartável. O provider efetivo permanece inalterado durante

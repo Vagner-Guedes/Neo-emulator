@@ -39,6 +39,12 @@ versionado. A instalação só pode ocorrer depois de validar package, versão,
 assinatura, ABI e compatibilidade com a whitelist do guest em um novo overlay
 descartável.
 
+No host auditado, a execução foi interrompida com o status
+`BUILD_HOST_RESOURCE_REQUIRED`: o volume D: caiu para 81.633.284.096 bytes
+livres, abaixo dos 100 GB recomendados oficialmente, e o VHDX apresentou
+latência extrema de leitura. A árvore e o cache continuam disponíveis para
+retomada após liberar espaço ou migrar o build para armazenamento mais rápido.
+
 O build não altera `runtime/android/*.qcow2`, Native Bridge/Houdini, RHVoice,
 WebView atualmente instalado, configurações pt-BR, relógio ou regras de
 debloat. A homologação do provider e os testes de JavaScript, HTTPS, Power BI,
