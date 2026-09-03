@@ -56,6 +56,7 @@ $requiredPaths = @(
     'docs/FINAL-REPORT.md',
     'docs/ANDROID-PACKAGE-OPTIMIZATION.md',
     'scripts/provision/Provision-QemuAndroidRuntime.ps1',
+    'scripts/provision/Provision-NativeBridgeOfficial.ps1',
     'scripts/provision/Install-GuestComponents.ps1',
     'scripts/provision/Optimize-AndroidGuest.ps1',
     'scripts/validation/Test-NativeBridge.ps1',
@@ -108,6 +109,8 @@ $networkMediaPath = Join-Path $RepositoryRoot 'scripts\validation\Test-GuestNetw
 $networkMediaSource = if (Test-Path -LiteralPath $networkMediaPath) { Get-Content -LiteralPath $networkMediaPath -Raw -Encoding utf8 } else { '' }
 $nativeBridgeValidationPath = Join-Path $RepositoryRoot 'scripts\validation\Test-NativeBridge.ps1'
 $nativeBridgeValidationSource = if (Test-Path -LiteralPath $nativeBridgeValidationPath) { Get-Content -LiteralPath $nativeBridgeValidationPath -Raw -Encoding utf8 } else { '' }
+$nativeBridgeProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Provision-NativeBridgeOfficial.ps1'
+$nativeBridgeProvisioningSource = if (Test-Path -LiteralPath $nativeBridgeProvisioningPath) { Get-Content -LiteralPath $nativeBridgeProvisioningPath -Raw -Encoding utf8 } else { '' }
 $integratedStabilityPath = Join-Path $RepositoryRoot 'scripts\validation\Test-RuntimeStability.ps1'
 $integratedStabilitySource = if (Test-Path -LiteralPath $integratedStabilityPath) { Get-Content -LiteralPath $integratedStabilityPath -Raw -Encoding utf8 } else { '' }
 $webViewProviderPath = Join-Path $RepositoryRoot 'scripts\validation\Test-WebViewProvider.ps1'
@@ -204,11 +207,14 @@ $contractChecks = [ordered]@{
     nativeBridgeProbeRejectsMissingPreferredAbi = $nativeBridgeValidationSource.Contains('Nenhuma')
     nativeBridgeProbeRejectsGuestAbi = $nativeBridgeValidationSource.Contains("'x86', 'x86_64'")
     nativeBridgeProbePreflightAbi = $nativeBridgeValidationSource.Contains('$preferredApkAbi') -and $nativeBridgeValidationSource.Contains('Nenhuma') -and $nativeBridgeValidationSource.Contains("'x86', 'x86_64'")
+    officialNativeBridgeProvisioner = $nativeBridgeProvisioningSource -match 'dl\.android-x86\.org/houdini/7_y/houdini\.sfs' -and $nativeBridgeProvisioningSource -match 'dl\.android-x86\.org/houdini/7_z/houdini\.sfs' -and $nativeBridgeProvisioningSource -match 'EXTERNAL_ARTIFACT_REQUIRED' -and $nativeBridgeProvisioningSource -match 'DownloadOfficial' -and $nativeBridgeProvisioningSource -match 'adb.*root' -and $nativeBridgeProvisioningSource -match 'setprop.*persist\.sys\.nativebridge' -and $nativeBridgeProvisioningSource -match 'enable_nativebridge' -and $nativeBridgeProvisioningSource -match 'sha256sum' -and $nativeBridgeProvisioningSource -match "'reboot'"
+    officialNativeBridgeConfigIsPinned = $runtimeConfigSource -match 'enableScriptSha256' -and $runtimeConfigSource -match '7_y' -and $runtimeConfigSource -match '7_z' -and $runtimeConfigSource -match '56FD08C448840578386A71819C07139122F0AF39F011059CE728EA0F3C60B665' -and $runtimeConfigSource -match '7EEDC42015E6FB84A11A406A099241EFCCC20D4E020D476335A5FDB6E69A33D2'
+    nativeBridgeValidationSkipsExactInstalledApk = $nativeBridgeValidationSource -match 'alreadyInstalledExact' -and $nativeBridgeValidationSource -match 'installAttempted' -and $nativeBridgeValidationSource -match 'adb install -r skipped'
     diagnosticsIncludesProvisioningState = $launcherSourceText -match 'SafeProvisioningStateAsync' -and $launcherSourceText -match 'imageHash = provisioningState\.ImageHash' -and $launcherSourceText -match 'diskFingerprint = provisioningState\.DiskFingerprint'
     diagnosticsCliExitsAfterCollection = $launcherSourceText -match 'exitAfterDiagnostics' -and $launcherSourceText -match 'RequestExit\(\)'
     diagnosticsScriptUsesCanonicalLauncher = $diagnosticsScriptSource -match "ArgumentList '--diagnostics'" -and $diagnosticsScriptSource -match 'schema.*identidade'
     diagnosticsSupportsExplicitExecutable = $diagnosticsScriptSource -match '\[string\]\$ExecutablePath' -and $diagnosticsScriptSource -match 'GetFullPath\(\$ExecutablePath\)'
-    prolongedStabilityEvidence = $nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
+    prolongedStabilityEvidence = ($nativeBridgeValidationSource -match 'stabilitySeconds = \$StabilitySeconds' -or $nativeBridgeValidationSource.Contains("['stabilitySeconds'] = `$StabilitySeconds")) -and $checklistSource -match 'MinimumStabilitySeconds' -and $checklistSource -match 'stabilitySeconds'
     integratedStabilityEvidence = $integratedStabilitySource -match 'DurationSeconds = 600' -and $integratedStabilitySource -match 'watchdog\.active' -and $integratedStabilitySource -match 'Test-KioskState' -and $integratedStabilitySource -match 'webView\.status' -and $integratedStabilitySource -match 'voice\.localeReady' -and $checklistSource -match 'runtime-stability.json'
     integratedStabilityRequiresNeoNewsContent = $integratedStabilitySource -match 'LauncherSmokeEvidencePath' -and $integratedStabilitySource -match 'neoNewsContentObserved' -and $integratedStabilitySource -match 'neoNewsPlaybackObserved' -and $integratedStabilitySource -match 'Test-NeoNewsContentEvidence'
     checklistRequiresApkManifestIdentity = $checklistSource -match "apk\.packageName" -and $checklistSource -match "apk\.versionName" -and $checklistSource -match "apk\.versionCode"
@@ -242,6 +248,7 @@ $contractChecks = [ordered]@{
     componentProvisioningRequiresStrongState = $componentProvisioningSource -match 'Estado base de provisionamento' -and $componentProvisioningSource -match 'existingImageHash' -and $componentProvisioningSource -match '\^\[0-9a-fA-F\]\{64\}\$'
     componentProvisioningValidatesBaseHashes = $componentProvisioningSource -match 'basePaths' -and $componentProvisioningSource -match 'installerImage' -and $componentProvisioningSource -match 'Get-FileHash' -and $componentProvisioningSource -match "baseName -ne 'disk'"
     componentProvisioningRequiresOrigin = $componentProvisioningSource -match 'requestedOrigins' -and $componentProvisioningSource -match 'requestedComponent.*Origin' -and $componentProvisioningSource -match 'InstallNativeBridge'
+    legacyNativeBridgeApkInstallRejected = $componentProvisioningSource -match 'adb install -r foi bloqueado' -and $componentProvisioningSource -match 'Provision-NativeBridgeOfficial\.ps1'
     componentProvisioningRequiresBaseOrigins = $componentProvisioningSource -match 'record\.origin' -and $componentProvisioningSource -match 'provenance do componente-base'
     componentProvisioningVerifiesWebViewAfterInstall = $componentProvisioningSource -match 'webViewPackagePresent' -and $componentProvisioningSource -match 'webViewProviderActive' -and $componentProvisioningSource -match 'webViewVersionMatches' -and $componentProvisioningSource -match 'if \(\$InstallWebView'
     componentProvisioningPreservesTtsEngineUnlessExplicit = $componentProvisioningSource -match 'baselineDefaultEngine' -and $componentProvisioningSource -match 'if \(-not \$SetRhVoiceDefault' -and $componentProvisioningSource -match 'defaultEnginePreserved' -and $componentProvisioningSource -match "'settings', 'delete', 'secure', 'tts_default_synth'"

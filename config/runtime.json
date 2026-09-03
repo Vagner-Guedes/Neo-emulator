@@ -90,7 +90,29 @@
       "required": true,
       "preferredAbi": "armeabi-v7a",
       "property": "ro.dalvik.vm.native.bridge",
-      "status": "missing"
+      "status": "missing",
+      "officialProvisioning": {
+        "enableScriptPath": "/system/bin/enable_nativebridge",
+        "enableScriptSha256": "e5b59f57d1dee568e2eee0bab09d84a1480c11bc5364737b193cfd6d53a4f4aa",
+        "arm32": {
+          "variant": "7_y",
+          "architecture": "ARM32",
+          "fileName": "houdini7_y.sfs",
+          "artifactPath": "packages/nativebridge/houdini7_y.sfs",
+          "officialUrl": "http://dl.android-x86.org/houdini/7_y/houdini.sfs",
+          "expectedSize": 37728256,
+          "sha256": "56FD08C448840578386A71819C07139122F0AF39F011059CE728EA0F3C60B665"
+        },
+        "arm64": {
+          "variant": "7_z",
+          "architecture": "ARM64",
+          "fileName": "houdini7_z.sfs",
+          "artifactPath": "packages/nativebridge/houdini7_z.sfs",
+          "officialUrl": "http://dl.android-x86.org/houdini/7_z/houdini.sfs",
+          "expectedSize": 37253120,
+          "sha256": "7EEDC42015E6FB84A11A406A099241EFCCC20D4E020D476335A5FDB6E69A33D2"
+        }
+      }
     },
     "provisioning": {
       "statePath": "runtime/state/provisioning.json",

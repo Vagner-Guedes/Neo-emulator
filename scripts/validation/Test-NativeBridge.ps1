@@ -5,7 +5,8 @@ param(
     [string]$ReportPath = 'reports/nativebridge.json',
     [int]$TimeoutSeconds = 180,
     [int]$StabilitySeconds = 10,
-    [int]$RestartCount = 1
+    [int]$RestartCount = 1,
+    [int]$AdbCommandTimeoutSeconds = 45
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,9 +34,47 @@ if ($activityName.StartsWith('.')) { $activityName = $activityName.Substring(1) 
 if ($activityName.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) { $activityName = $activityName.Substring($packageName.Length + 1) }
 $activity = "$packageName/.$activityName"
 
+function Quote-WindowsProcessArgument([string]$Value) {
+    if ($null -eq $Value -or $Value.Length -eq 0) { return '""' }
+    if ($Value -notmatch '[\s"]') { return $Value }
+    $escaped = $Value -replace '(\\*)"', '$1$1\\"'
+    $escaped = $escaped -replace '(\\+)$', '$1$1'
+    return '"' + $escaped + '"'
+}
+
 function Invoke-AdbResult([string[]]$Arguments) {
-    $output = & $adbPath @Arguments 2>&1
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $adbPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $argumentListProperty = $startInfo.PSObject.Properties['ArgumentList']
+    if ($null -ne $argumentListProperty) {
+        foreach ($argument in $Arguments) { [void]$startInfo.ArgumentList.Add([string]$argument) }
+    }
+    else {
+        $startInfo.Arguments = (($Arguments | ForEach-Object { Quote-WindowsProcessArgument ([string]$_) }) -join ' ')
+    }
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) { return [pscustomobject]@{ ExitCode = -1; Text = 'ADB process did not start.' } }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $timeoutMilliseconds = [int]([Math]::Max(1, $AdbCommandTimeoutSeconds) * 1000)
+        if (-not $process.WaitForExit($timeoutMilliseconds)) {
+            try { $process.Kill() } catch { }
+            try { $process.WaitForExit(5000) } catch { }
+            $timeoutOutput = 'ADB command timed out after ' + $AdbCommandTimeoutSeconds + ' seconds: ' + ($Arguments -join ' ')
+            return [pscustomobject]@{ ExitCode = 124; Text = $timeoutOutput }
+        }
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        $combined = (($stdout + "`n" + $stderr).Trim())
+        return [pscustomobject]@{ ExitCode = $process.ExitCode; Text = $combined }
+    }
+    finally { $process.Dispose() }
 }
 
 function Invoke-Adb([string[]]$Arguments) {
@@ -388,7 +427,24 @@ if (-not $bridgeReady) {
 
 $installOutput = ''
 $installSucceeded = $false
-if (Test-Path -LiteralPath $ApkPath) {
+$installAttempted = $false
+$packageBeforeInstallResult = Invoke-AdbResult @('-s', $serial, 'shell', 'dumpsys', 'package', $packageName)
+$packageBeforeInstall = $packageBeforeInstallResult.Text
+$installedVersionName = if ($packageBeforeInstall -match 'versionName=([^\s]+)') { $Matches[1] } else { $null }
+$installedVersionCode = if ($packageBeforeInstall -match 'versionCode=(\d+)') { [int64]$Matches[1] } else { $null }
+$alreadyInstalledExact = $packageBeforeInstallResult.ExitCode -eq 0 -and
+    $packageBeforeInstall -match "Package \[$([regex]::Escape($packageName))\]" -and
+    $installedVersionName -eq [string]$config.neonews.versionName -and
+    $installedVersionCode -eq [int64]$config.neonews.versionCode
+if ($alreadyInstalledExact) {
+    # An exact, already-installed package is evidence of the install gate. Do
+    # not replace the APK merely to repeat a test: preserving guest data is a
+    # runtime requirement and a separate install attempt is not needed here.
+    $installOutput = 'already-installed-exact-version; adb install -r skipped'
+    $installExitCode = 0
+    $installSucceeded = $true
+} elseif (Test-Path -LiteralPath $ApkPath) {
+    $installAttempted = $true
     $installResult = Invoke-AdbResult @('-s', $serial, 'install', '-r', $ApkPath)
     $installOutput = $installResult.Text
     $installExitCode = $installResult.ExitCode
@@ -476,45 +532,59 @@ for ($restart = 1; $restart -le [math]::Max(0, $RestartCount) -and $runtimeStabl
 $restartStable = @($restartResults | Where-Object { -not $_.stable }).Count -eq 0
 $runtimeStable = $runtimeStable -and $restartStable
 
-$report = [ordered]@{
-    timestamp = (Get-Date).ToUniversalTime().ToString('o')
-    status = if ($runtimeStable) { 'validated' } else { 'not-validated' }
-    transport = 'tcp'
-    serial = $serial
-    androidRelease = $release
-    androidApiLevel = $apiLevel
-    guestIdentityMatches = $guestIdentityMatches
-    guestAbi = $guestAbi
-    guestAbiList = $guestAbiList
-    nativeBridgeProperty = $property
-    nativeBridgeAbi2 = $abi2
-    nativeBridgeReady = $bridgeReady
-    apkAbis = $apkAbis
-    apkPackageName = $apkIdentity.PackageName
-    apkVersionName = $apkIdentity.VersionName
-    apkVersionCode = $apkIdentity.VersionCode
-    apkIdentityMatches = $apkIdentity.PackageName -eq [string]$config.neonews.packageName -and $apkIdentity.VersionName -eq [string]$config.neonews.versionName -and [int64]$apkIdentity.VersionCode -eq [int64]$config.neonews.versionCode
-    apkCertificateSha256 = $actualCertificateSha256
-    apkSignatureMatches = [string]::IsNullOrWhiteSpace($expectedCertificateSha256) -or $actualCertificateSha256 -eq $expectedCertificateSha256
-    selectedApkAbi = $selectedApkAbi
-    installSucceeded = $installSucceeded
-    primaryCpuAbi = $primaryCpuAbi
-    launchSucceeded = $launchSucceeded
-    activityRunning = $activityRunning
-    runtimeStable = $runtimeStable
-    stabilitySeconds = $StabilitySeconds
-    guestPropertyExitCodes = $propertyExitCodes
-    installExitCode = if ($null -ne $installExitCode) { [int]$installExitCode } else { $null }
-    packageDumpExitCode = if ($null -ne $packageDumpExitCode) { [int]$packageDumpExitCode } else { $null }
-    launchExitCode = if ($null -ne $launchExitCode) { [int]$launchExitCode } else { $null }
-    activityDumpExitCode = $activityDumpExitCode
-    logcatExitCode = $logcatExitCode
-    restartCount = [math]::Max(0, $RestartCount)
-    restartResults = @($restartResults)
-    installOutput = $installOutput
-    launchOutput = $launchOutput
-    relevantLogcat = $relevantLogcat
-}
+$installExitCodeValue = $null
+if ($null -ne $installExitCode) { $installExitCodeValue = [int]$installExitCode }
+$packageDumpExitCodeValue = $null
+if ($null -ne $packageDumpExitCode) { $packageDumpExitCodeValue = [int]$packageDumpExitCode }
+$launchExitCodeValue = $null
+if ($null -ne $launchExitCode) { $launchExitCodeValue = [int]$launchExitCode }
+$reportStatus = 'not-validated'
+if ($runtimeStable) { $reportStatus = 'validated' }
+$apkIdentityMatches = $apkIdentity.PackageName -eq [string]$config.neonews.packageName -and $apkIdentity.VersionName -eq [string]$config.neonews.versionName -and [int64]$apkIdentity.VersionCode -eq [int64]$config.neonews.versionCode
+$apkSignatureMatches = [string]::IsNullOrWhiteSpace($expectedCertificateSha256) -or $actualCertificateSha256 -eq $expectedCertificateSha256
+$restartCountValue = [int][math]::Max(0, $RestartCount)
+$restartResultsValue = @()
+if ($restartResults.Count -gt 0) { $restartResultsValue = $restartResults.ToArray() }
+$report = [ordered]@{}
+$report['timestamp'] = (Get-Date).ToUniversalTime().ToString('o')
+$report['status'] = $reportStatus
+$report['transport'] = 'tcp'
+$report['serial'] = $serial
+$report['androidRelease'] = $release
+$report['androidApiLevel'] = $apiLevel
+$report['guestIdentityMatches'] = $guestIdentityMatches
+$report['guestAbi'] = $guestAbi
+$report['guestAbiList'] = $guestAbiList
+$report['nativeBridgeProperty'] = $property
+$report['nativeBridgeAbi2'] = $abi2
+$report['nativeBridgeReady'] = $bridgeReady
+$report['apkAbis'] = $apkAbis
+$report['apkPackageName'] = $apkIdentity.PackageName
+$report['apkVersionName'] = $apkIdentity.VersionName
+$report['apkVersionCode'] = $apkIdentity.VersionCode
+$report['apkIdentityMatches'] = $apkIdentityMatches
+$report['apkCertificateSha256'] = $actualCertificateSha256
+$report['apkSignatureMatches'] = $apkSignatureMatches
+$report['selectedApkAbi'] = $selectedApkAbi
+$report['installSucceeded'] = $installSucceeded
+$report['installAttempted'] = $installAttempted
+$report['alreadyInstalledExact'] = $alreadyInstalledExact
+$report['primaryCpuAbi'] = $primaryCpuAbi
+$report['launchSucceeded'] = $launchSucceeded
+$report['activityRunning'] = $activityRunning
+$report['runtimeStable'] = $runtimeStable
+$report['stabilitySeconds'] = $StabilitySeconds
+$report['guestPropertyExitCodes'] = $propertyExitCodes
+$report['installExitCode'] = $installExitCodeValue
+$report['packageDumpExitCode'] = $packageDumpExitCodeValue
+$report['launchExitCode'] = $launchExitCodeValue
+$report['activityDumpExitCode'] = $activityDumpExitCode
+$report['logcatExitCode'] = $logcatExitCode
+$report['restartCount'] = $restartCountValue
+$report['restartResults'] = $restartResultsValue
+$report['installOutput'] = $installOutput
+$report['launchOutput'] = $launchOutput
+$report['relevantLogcat'] = $relevantLogcat
 $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $fullReportPath -Encoding utf8
 $report | ConvertTo-Json -Depth 8
 if (-not $runtimeStable) { throw "Native Bridge não foi homologado: runtimeStable=false. Consulte $fullReportPath." }

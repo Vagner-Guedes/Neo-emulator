@@ -140,6 +140,26 @@ public sealed class NativeBridgeConfig
     public string PreferredAbi { get; set; } = "armeabi-v7a";
     public string Property { get; set; } = "ro.dalvik.vm.native.bridge";
     public string Status { get; set; } = "unknown";
+    public OfficialNativeBridgeProvisioningConfig OfficialProvisioning { get; set; } = new();
+}
+
+public sealed class OfficialNativeBridgeProvisioningConfig
+{
+    public string EnableScriptPath { get; set; } = "/system/bin/enable_nativebridge";
+    public string EnableScriptSha256 { get; set; } = string.Empty;
+    public NativeBridgeArtifactConfig Arm32 { get; set; } = new();
+    public NativeBridgeArtifactConfig Arm64 { get; set; } = new();
+}
+
+public sealed class NativeBridgeArtifactConfig
+{
+    public string Variant { get; set; } = string.Empty;
+    public string Architecture { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string ArtifactPath { get; set; } = string.Empty;
+    public string OfficialUrl { get; set; } = string.Empty;
+    public long ExpectedSize { get; set; }
+    public string Sha256 { get; set; } = string.Empty;
 }
 
 public sealed class ProvisioningConfig

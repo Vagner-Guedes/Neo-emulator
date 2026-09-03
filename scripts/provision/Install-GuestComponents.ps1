@@ -16,6 +16,9 @@ param(
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $PSScriptRoot '..\..\config\runtime.json' }
 if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "Configuração não encontrada: $ConfigPath" }
+if ($InstallNativeBridge) {
+    throw 'Native Bridge Houdini nao e um APK: adb install -r foi bloqueado. Use scripts/provision/Provision-NativeBridgeOfficial.ps1 com os artefatos oficiais SFS.'
+}
 if (-not ($InstallNativeBridge -or $InstallWebView -or $InstallTts)) { throw 'Selecione pelo menos um componente: -InstallNativeBridge, -InstallWebView ou -InstallTts.' }
 
 $configPathFull = (Resolve-Path -LiteralPath $ConfigPath).Path
