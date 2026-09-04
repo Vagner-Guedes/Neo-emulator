@@ -128,17 +128,17 @@ public partial class MainWindow : Window
 
     private IntPtr WindowHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (_stopRuntimeHotkey.IsHotKeyMessage(message, wParam))
+        if (_stopRuntimeHotkey.IsHotKeyMessage(message, wParam, lParam))
         {
             handled = true;
             _ = _viewModel.ExecuteCommandAsync(RuntimeCommand.Stop);
         }
-        else if (_toggleFullscreenHotkey.IsHotKeyMessage(message, wParam))
+        else if (_toggleFullscreenHotkey.IsHotKeyMessage(message, wParam, lParam))
         {
             handled = true;
             _ = _controller.ToggleKioskAsync(null);
         }
-        else if (_hotkeyService.IsHotKeyMessage(message, wParam))
+        else if (_hotkeyService.IsHotKeyMessage(message, wParam, lParam))
         {
             handled = true;
             _ = _viewModel.ExecuteCommandAsync(RuntimeCommand.ExitKiosk);
@@ -150,7 +150,7 @@ public partial class MainWindow : Window
     private void RegisterOperationalHotkey(HotkeyService service, string specification, string purpose)
     {
         if (!service.Register(_source!.Handle, specification))
-            _controller.Logs.Warning("launcher", $"Hotkey de {purpose} indisponivel: {specification}");
+            _controller.Logs.Warning("launcher", $"Hotkey de {purpose} indisponivel: {specification}; Win32Error={service.LastRegistrationError}");
         else
             _controller.Logs.Info("launcher", $"Hotkey de {purpose} registrada: {specification}.");
     }

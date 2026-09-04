@@ -6,6 +6,7 @@ public sealed class HotkeyService : IDisposable
 {
     private const int WhKeyboardLl = 13;
     private const int WmHotKey = 0x0312;
+    private const int WmInput = 0x00FF;
     private const int WmKeyDown = 0x0100;
     private const int WmSysKeyDown = 0x0104;
     private const uint LlkhfUp = 0x0080;
@@ -14,9 +15,12 @@ public sealed class HotkeyService : IDisposable
     private uint _key;
     private LowLevelKeyboardProc? _keyboardProc;
     private IntPtr _keyboardHook;
+    private bool _rawInputRegistered;
     private bool _registered;
 
     public HotkeyService(int id) => _id = id;
+
+    public int LastRegistrationError { get; private set; }
 
     public bool Register(IntPtr windowHandle, string specification)
     {
@@ -25,17 +29,34 @@ public sealed class HotkeyService : IDisposable
         _windowHandle = windowHandle;
         _key = key;
         _registered = RegisterHotKey(_windowHandle, _id, modifiers, key);
+        LastRegistrationError = _registered ? 0 : System.Runtime.InteropServices.Marshal.GetLastWin32Error();
         if (!_registered && modifiers == 0)
         {
             _keyboardProc = KeyboardHookCallback;
-            _keyboardHook = SetWindowsHookEx(WhKeyboardLl, _keyboardProc, GetModuleHandle(null), 0);
+            // Low-level keyboard hooks are delivered to the installing thread.
+            // Some single-file hosts reject the apphost module handle, while
+            // others require it; try both supported forms before reporting the
+            // key as unavailable.
+            _keyboardHook = SetWindowsHookEx(WhKeyboardLl, _keyboardProc, IntPtr.Zero, 0);
+            if (_keyboardHook == IntPtr.Zero)
+                _keyboardHook = SetWindowsHookEx(WhKeyboardLl, _keyboardProc, GetModuleHandle(null), 0);
             _registered = _keyboardHook != IntPtr.Zero;
+            if (!_registered)
+            {
+                _rawInputRegistered = RegisterRawKeyboard(_windowHandle);
+                _registered = _rawInputRegistered;
+            }
+            if (!_registered) LastRegistrationError = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
         }
         return _registered;
     }
 
-    public bool IsHotKeyMessage(int message, IntPtr wParam) =>
-        _registered && (message == WmHotKey || message == CustomKeyboardMessage) && wParam.ToInt32() == _id;
+    public bool IsHotKeyMessage(int message, IntPtr wParam, IntPtr lParam = default)
+    {
+        if (!_registered) return false;
+        if ((message == WmHotKey || message == CustomKeyboardMessage) && wParam.ToInt32() == _id) return true;
+        return message == WmInput && _rawInputRegistered && IsRawKeyboardKey(lParam);
+    }
 
     public void Unregister()
     {
@@ -46,6 +67,7 @@ public sealed class HotkeyService : IDisposable
             _keyboardHook = IntPtr.Zero;
         }
         _keyboardProc = null;
+        _rawInputRegistered = false;
         _registered = false;
         _windowHandle = IntPtr.Zero;
         _key = 0;
@@ -57,7 +79,7 @@ public sealed class HotkeyService : IDisposable
         key = 0;
         if (string.IsNullOrWhiteSpace(specification)) return false;
         var tokens = specification.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length < 2) return false;
+        if (tokens.Length == 0) return false;
 
         foreach (var token in tokens[..^1])
         {
@@ -87,6 +109,10 @@ public sealed class HotkeyService : IDisposable
     private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     private const int CustomKeyboardMessage = 0x8000 + 0x4E52;
+    private const uint RidInput = 0x10000003;
+    private const ushort KeyboardUsagePage = 0x01;
+    private const ushort KeyboardUsage = 0x06;
+    private const uint RidevInputSink = 0x00000100;
 
     private delegate IntPtr LowLevelKeyboardProc(int code, IntPtr wParam, IntPtr lParam);
 
@@ -98,6 +124,49 @@ public sealed class HotkeyService : IDisposable
         public uint Flags;
         public uint Time;
         public IntPtr ExtraInfo;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RawInputDevice
+    {
+        public ushort UsagePage;
+        public ushort Usage;
+        public uint Flags;
+        public IntPtr Target;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RawInputHeader
+    {
+        public uint Type;
+        public uint Size;
+        public IntPtr Device;
+        public IntPtr Param;
+    }
+
+    private bool RegisterRawKeyboard(IntPtr windowHandle)
+    {
+        var device = new RawInputDevice
+        {
+            UsagePage = KeyboardUsagePage,
+            Usage = KeyboardUsage,
+            Flags = RidevInputSink,
+            Target = windowHandle
+        };
+        return RegisterRawInputDevices(ref device, 1, (uint)System.Runtime.InteropServices.Marshal.SizeOf<RawInputDevice>());
+    }
+
+    private bool IsRawKeyboardKey(IntPtr rawInputHandle)
+    {
+        if (rawInputHandle == IntPtr.Zero) return false;
+        uint size = 0;
+        var headerSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<RawInputHeader>();
+        if (GetRawInputData(rawInputHandle, RidInput, null, ref size, headerSize) != 0 || size < headerSize + 8) return false;
+        var data = new byte[size];
+        if (GetRawInputData(rawInputHandle, RidInput, data, ref size, headerSize) != size) return false;
+        var virtualKey = BitConverter.ToUInt16(data, (int)headerSize + 6);
+        var flags = BitConverter.ToUInt16(data, (int)headerSize + 2);
+        return virtualKey == _key && (flags & 0x0001) == 0;
     }
 
     private IntPtr KeyboardHookCallback(int code, IntPtr wParam, IntPtr lParam)
@@ -125,4 +194,10 @@ public sealed class HotkeyService : IDisposable
 
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr hWnd, int message, IntPtr wParam, IntPtr lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool RegisterRawInputDevices(ref RawInputDevice devices, uint count, uint deviceSize);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetRawInputData(IntPtr rawInput, uint command, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPArray)] byte[]? data, ref uint size, uint headerSize);
 }

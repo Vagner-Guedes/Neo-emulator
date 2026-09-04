@@ -153,7 +153,8 @@ O menu do tray oferece abrir painel, iniciar/parar/reiniciar o sistema, kiosk, d
 Os atalhos sao `F11` para parada consciente do runtime e `F12` para alternar o
 fullscreen/window do Android. Quando o Windows recusa o registro direto de
 uma tecla reservada, o launcher usa um hook global de baixo nivel sem bloquear
-a entrada e encaminha a acao por uma mensagem interna. A parada grava `runtime/state/runtime-intent.json`
+a entrada e encaminha a acao por uma mensagem interna; o fallback final usa
+Raw Input com `RIDEV_INPUTSINK`. A parada grava `runtime/state/runtime-intent.json`
 com `UserStoppedRuntime`; o autostart e o Guardian respeitam esse marcador e
 nao reconectam ADB, reiniciam QEMU ou relancam a activity ate que uma acao
 explicita de iniciar/reiniciar limpe a intencao.
