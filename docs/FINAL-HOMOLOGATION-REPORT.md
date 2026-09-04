@@ -111,13 +111,15 @@ processo residual; caminho contendo espaços e zero-touch externo permanecem
 
 ## Limpeza de armazenamento
 
-As cópias descartáveis já testadas em `tmp`, as publicações antigas em `dist`
-e as duas cópias de homologação em E: foram removidas em 2026-09-04. O espaço
-livre passou de aproximadamente 185 MB para 74,98 GB em C: e de 140,48 GB
-para 152,49 GB em E:. Foram preservados o projeto canônico,
+Os conteúdos das cópias descartáveis já testadas em `tmp`, das publicações
+antigas em `dist` e das duas cópias de homologação em E: foram removidos em
+2026-09-04. O espaço livre passou de aproximadamente 185 MB para 74,98 GB
+em C: e de 140,48 GB para 152,49 GB em E:. Foram preservados o projeto canônico,
 `dist/NeoNewsRuntime-current`, o qcow2 raiz e
 `E:\NeoNewsRuntime-Archived-20260904`. O ADB global 5037 não foi encerrado;
-seu executável em uso é o único resíduo da publicação antiga.
+seu executável em uso é o resíduo da publicação antiga em C:. A cópia E:
+mantém apenas `adb.exe` e duas DLLs por acesso negado do sistema, sem processo
+E: ativo.
 
 ## Próximos passos para desbloqueio
 

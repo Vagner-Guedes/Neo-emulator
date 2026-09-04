@@ -137,11 +137,13 @@ persistente configurado como `runtime/android/neonews-runtime-v1.qcow2`.
 
 ## Limpeza de armazenamento
 
-Em 2026-09-04 foram removidas as cópias descartáveis já testadas em `tmp`,
-as publicações antigas em `dist` e as duas cópias de homologação em E:. O
-espaço livre passou de aproximadamente 185 MB para 74,98 GB em C: e de
-140,48 GB para 152,49 GB em E:. O diretório
+Em 2026-09-04 foram removidos os conteúdos das cópias descartáveis já
+testadas em `tmp`, das publicações antigas em `dist` e das duas cópias de
+homologação em E:. O espaço livre passou de aproximadamente 185 MB para
+74,98 GB em C: e de 140,48 GB para 152,49 GB em E:. O diretório
 `dist/NeoNewsRuntime-current`, o projeto canônico, o qcow2 raiz e
 `E:\NeoNewsRuntime-Archived-20260904` foram preservados. O executável ADB
 global 5037 permaneceu ativo; por isso ficaram somente seus arquivos em uso
-no diretório antigo `dist/NeoNewsRuntime-live-check`.
+no diretório antigo `dist/NeoNewsRuntime-live-check`. A cópia E: também
+mantém apenas `adb.exe` e duas DLLs residuais por acesso negado do sistema;
+nenhum processo E: está ativo.
