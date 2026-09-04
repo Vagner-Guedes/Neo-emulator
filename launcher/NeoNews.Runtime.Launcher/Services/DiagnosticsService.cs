@@ -358,11 +358,22 @@ public sealed class DiagnosticsService
 
     private static async Task<object> GetFileIntegrityAsync(string path, CancellationToken cancellationToken)
     {
-        if (!File.Exists(path)) return new { path, exists = false };
+        if (!File.Exists(path))
+            return new { path, exists = false, length = 0L, lastWriteUtc = (DateTime?)null, sha256 = (string?)null, locked = false, error = (string?)null };
         var info = new FileInfo(path);
-        await using var stream = File.OpenRead(path);
-        var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
-        return new { path, exists = true, length = info.Length, lastWriteUtc = info.LastWriteTimeUtc, sha256 = hash };
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            var hash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
+            return new { path, exists = true, length = info.Length, lastWriteUtc = info.LastWriteTimeUtc, sha256 = hash, locked = false, error = (string?)null };
+        }
+        catch (IOException exception)
+        {
+            // QEMU intentionally keeps the live qcow2 open exclusively. A
+            // runtime diagnostic must still be produced; the offline
+            // integrity check remains responsible for the SHA-256.
+            return new { path, exists = true, length = info.Length, lastWriteUtc = info.LastWriteTimeUtc, sha256 = (string?)null, locked = true, error = exception.Message };
+        }
     }
 
     private async Task<string?> GetWebViewVersionAsync(CancellationToken cancellationToken)
