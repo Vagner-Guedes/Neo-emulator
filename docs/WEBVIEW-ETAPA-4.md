@@ -32,6 +32,31 @@ This gate does not by itself change the overall release decision to production;
 the remaining media/HLS, recovery, kiosk/watchdog, startup, packaging and
 zero-touch gates must still be completed.
 
+## Atualizacao do gate Power BI e warnings - 2026-09-04
+
+O URL do dashboard foi identificado no log real do NeoNews como
+`https://vagner-guedes.github.io/powerbi/`. O teste desse URL no provider
+WebView 119 passou HTML, CSS, JavaScript, HTTPS e conteudo remoto, sem
+`Unexpected token .`. A evidencia esta em
+`reports/webview-powerbi-live.json`.
+
+Classificacao dos warnings do provider:
+
+- `RELRO fallback`: aceito como fallback nao fatal; o WebView iniciou e o
+  conteudo HTTPS foi carregado.
+- `PacProcessor`: nao requerido; nao ha proxy PAC configurado e HTTPS direto
+  passou.
+- cache/variations Chromium: `NON_BLOCKING_WEBVIEW_WARNINGS` isolados; nao
+  causaram crash ou quebra do probe.
+
+O teste do fluxo real do NeoNews foi executado separadamente. A campanha
+`Dashboard - In9` foi encontrada, mas o app registrou `Conteudo offline nao
+encontrado`; tambem foram observados erros do template local (`Cannot read
+properties of undefined (reading 'Hora')`). Por isso `POWERBI_PASS` permanece
+`BLOCKED` por falha do conteudo/integracao do NeoNews, e nao foi promovido com
+base apenas no probe do WebView. O log completo esta em
+`reports/powerbi-real-refresh.logcat.txt`.
+
 ## Resultado anterior (baseline do guest)
 
 | Campo | Resultado |

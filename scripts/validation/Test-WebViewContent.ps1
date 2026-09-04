@@ -179,7 +179,15 @@ if ($providerActive -and $versionMatches -and $apiMatches -and $nativeAbiMatches
 
     $deadline = (Get-Date).AddSeconds($ContentTimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        $probeResult = (Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'cat', 'files/webview-result.txt')).Text
+        $probeRead = Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'cat', 'files/webview-result.txt')
+        if ($probeRead.Text -notmatch '(?i)^status=(ok|error)' -and $probeRead.Text -match '(?i)Could not set capabilities|not debuggable|run-as:') {
+            # Android-x86 production images can reject run-as even for a
+            # locally signed validation probe. The guest is already root for
+            # this validation path, so fall back only to reading the probe's
+            # own result file; no application data is changed.
+            $probeRead = Invoke-Adb @('-s', $Serial, 'shell', 'su', '0', 'cat', "/data/data/$probePackage/files/webview-result.txt")
+        }
+        $probeResult = $probeRead.Text
         if ($probeResult -match '^status=(ok|error)') { break }
         Start-Sleep -Seconds 1
     }
