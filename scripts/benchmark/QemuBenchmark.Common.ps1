@@ -114,52 +114,70 @@ function Assert-QemuBenchmarkProvisionedRuntime {
     }
 }
 
+function Invoke-QemuBenchmarkProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments,
+        [int]$TimeoutSeconds = 30
+    )
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $FilePath
+    $startInfo.WorkingDirectory = $RepositoryRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.Arguments = (($Arguments | ForEach-Object {
+        $value = [string]$_
+        if ($value -match '[\s"]') { '"' + $value.Replace('"', '\"') + '"' } else { $value }
+    }) -join ' ')
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { return [pscustomobject]@{ ExitCode = -1; Text = ''; TimedOut = $false; StandardOutput = ''; StandardError = 'processo não iniciou' } }
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $timedOut = -not $process.WaitForExit([Math]::Max(1000, $TimeoutSeconds * 1000))
+    if ($timedOut) {
+        try { if (-not $process.HasExited) { $process.Kill() } } catch { }
+        $null = $process.WaitForExit(5000)
+    }
+    $stdout = ''
+    $stderr = ''
+    try { $stdout = $stdoutTask.GetAwaiter().GetResult() } catch { }
+    try { $stderr = $stderrTask.GetAwaiter().GetResult() } catch { }
+    $exitCode = if ($timedOut) { -2 } else { try { $process.ExitCode } catch { -1 } }
+    try { $process.Dispose() } catch { }
+    [pscustomobject]@{
+        ExitCode = $exitCode
+        Text = ((@($stdout.Trim(), $stderr.Trim()) | Where-Object { $_ }) -join "`n").Trim()
+        TimedOut = $timedOut
+        StandardOutput = $stdout.Trim()
+        StandardError = $stderr.Trim()
+    }
+}
+
 function Invoke-QemuBenchmarkAdb {
     param(
         [string]$AdbPath,
         [string]$Serial,
         [string[]]$Arguments,
-        [int]$ServerPort = 5038
+        [int]$ServerPort = 5038,
+        [int]$TimeoutSeconds = 30
     )
 
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-        # Windows PowerShell 5.1 surfaces native stderr as an ErrorRecord. An
-        # adb daemon banner or an offline-device diagnostic is expected input
-        # to the evidence collector, not a terminating PowerShell exception.
-        $ErrorActionPreference = 'Continue'
-        $raw = @(& $AdbPath -P $ServerPort -s $Serial @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-    [pscustomobject]@{
-        ExitCode = $exitCode
-        Text = (($raw | Out-String).Trim())
-    }
+    return Invoke-QemuBenchmarkProcess -FilePath $AdbPath -Arguments (@('-P', $ServerPort, '-s', $Serial) + $Arguments) -TimeoutSeconds $TimeoutSeconds
 }
 
 function Invoke-QemuBenchmarkAdbHost {
     param(
         [string]$AdbPath,
         [string[]]$Arguments,
-        [int]$ServerPort = 5038
+        [int]$ServerPort = 5038,
+        [int]$TimeoutSeconds = 30
     )
 
-    $previousErrorActionPreference = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $raw = @(& $AdbPath -P $ServerPort @Arguments 2>&1)
-        $exitCode = $LASTEXITCODE
-    }
-    finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-    [pscustomobject]@{
-        ExitCode = $exitCode
-        Text = (($raw | Out-String).Trim())
-    }
+    return Invoke-QemuBenchmarkProcess -FilePath $AdbPath -Arguments (@('-P', $ServerPort) + $Arguments) -TimeoutSeconds $TimeoutSeconds
 }
 
 function Wait-QemuBenchmarkBoot {
