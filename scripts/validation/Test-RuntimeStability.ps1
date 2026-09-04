@@ -115,7 +115,7 @@ function Send-LauncherCommand {
             return $null
         }
     }
-    else { $process.WaitForExit() }
+    else { $null = $process.WaitForExit() }
     return [int]$process.ExitCode
 }
 
@@ -166,16 +166,25 @@ function Invoke-ExternalWithTimeout {
     $startInfo.Arguments = (($Arguments | ForEach-Object { Convert-ToProcessArgument ([string]$_) }) -join ' ')
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    $stdoutTask = $null
+    $stderrTask = $null
     try {
         $null = $process.Start()
-        if (-not $process.WaitForExit([math]::Max(1000, $TimeoutSeconds * 1000))) {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $timedOut = -not $process.WaitForExit([math]::Max(1000, $TimeoutSeconds * 1000))
+        if ($timedOut) {
             try { $process.Kill() } catch { }
-            return [pscustomobject]@{ exitCode = $null; timedOut = $true; text = 'process-timeout' }
+            try { $null = $process.WaitForExit(2000) } catch { }
         }
-        $stdout = $process.StandardOutput.ReadToEnd()
-        $stderr = $process.StandardError.ReadToEnd()
+        $stdout = if ($stdoutTask) { $stdoutTask.GetAwaiter().GetResult() } else { '' }
+        $stderr = if ($stderrTask) { $stderrTask.GetAwaiter().GetResult() } else { '' }
         $text = (($stdout, $stderr | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n").Trim()
-        return [pscustomobject]@{ exitCode = $process.ExitCode; timedOut = $false; text = $text }
+        return [pscustomobject]@{
+            exitCode = if ($timedOut) { $null } else { $process.ExitCode }
+            timedOut = $timedOut
+            text = if ($timedOut -and [string]::IsNullOrWhiteSpace($text)) { 'process-timeout' } else { $text }
+        }
     }
     catch {
         return [pscustomobject]@{ exitCode = $null; timedOut = $false; text = $_.Exception.Message }
