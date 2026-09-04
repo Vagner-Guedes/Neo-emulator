@@ -43,6 +43,23 @@ ADB durante a inicializacao. A configuracao de 1 vCPU e, portanto, parte do
 contrato de boot deterministico ate que uma nova homologacao substitua essa
 evidencia.
 
+### Homologação cold boot concluída
+
+Em 04/09/2026, após a reconvergência do `NeonewsGuardianService` ser
+aguardada antes do lançamento medido, foram executados três cold boots WHPX
+independentes em overlays esparsos descartáveis. O relatório
+`reports/boot-diagnostics.json` registrou `BOOT_RELIABILITY_PASS` em 3/3
+ciclos, com:
+
+- `sys.boot_completed=1` e cinco probes consecutivos em estado `device`;
+- ADB root confirmado e relógio alinhado ao Windows, com desvio de 0–1 s;
+- `primaryCpuAbi=armeabi-v7a` e `TerminalActivity` estável por 60 s em cada ciclo;
+- overlay com `check-errors=0`, raiz sem alteração e encerramento QMP positivo;
+- apenas o ADB privado do teste, sem encerrar o ADB global `127.0.0.1:5037`.
+
+O atraso pós-`force-stop` é deliberado: o Guardian usa restart agendado e a
+janela de estabilidade só começa depois que essa reconvergência termina.
+
 ## Hotkeys operacionais
 
 - `Ctrl+Alt+Shift+F11`: parada segura e gravação de `UserStoppedRuntime`;

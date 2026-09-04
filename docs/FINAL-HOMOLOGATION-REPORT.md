@@ -16,7 +16,10 @@ Power BI dentro do NeoNews continua sem prova de reprodução, e as execuções
 integradas de 600 s tiveram amostras offline. A publicação em um PC Windows
 novo e o zero-touch externo também não foram homologados.
 
-### Resultado da rodada evidence-only de 04/09/2026
+### Registro histórico da primeira rodada evidence-only de 04/09/2026
+
+> Este registro foi superado pela validação corretiva vigente abaixo e é
+> mantido apenas para preservar a cadeia de evidências.
 
 Nenhuma funcionalidade foi implementada nesta rodada. A validacao do qcow2
 retornou `check-errors=0`, mas o boot real falhou: ADB ficou alternando entre
@@ -35,6 +38,27 @@ O gate de console permanece `pending-evidence` (1/12 cenarios observados).
 Os atalhos publicados ainda sao F11/F12 simples, divergindo da exigencia
 desta meta de Ctrl+Alt+Shift+F11/F12. A decisao permanece
 **BLOCKED / NOT PRODUCTION READY**.
+
+### Atualização vigente — boot determinístico
+
+Após o ajuste publicado em `b1ef4cb`, o ensaio cold boot foi repetido em
+04/09/2026. O relatório vigente `reports/boot-diagnostics.json` registrou
+`BOOT_RELIABILITY_PASS` em 3/3 ciclos WHPX com `qemu.cpuCores=1`:
+
+- Android pronto, `sys.boot_completed=1` e cinco probes consecutivos `device`;
+- ADB root confirmado e relógio alinhado ao Windows, com desvio de 0–1 s;
+- NeoNews lançado com `primaryCpuAbi=armeabi-v7a`;
+- `TerminalActivity` estável por 60 s em cada ciclo, com 12 amostras;
+- overlay descartável íntegro (`check-errors=0`), raiz inalterada e QMP
+  positivo;
+- ADB global `127.0.0.1:5037` preservado.
+
+O atraso de 12 s após o `force-stop` aguarda o restart agendado do Guardian
+antes da janela de estabilidade. A integridade da imagem foi registrada como
+`IMAGE_INTEGRITY_MODEL_PASS` em `reports/image-integrity.json`. A arquitetura
+de pacotes foi documentada em `docs/PACKAGE-ARCHITECTURE.md` e permanece
+evidence-only até que as origens históricas dos artefatos locais sejam
+registradas (`PACKAGE_ARCHITECTURE_EVIDENCE_ONLY_ORIGIN_GAP`).
 
 ## Evidências aprovadas
 
@@ -90,9 +114,10 @@ ficou entre 0 e 3 segundos.
 
 As evidências temporárias registraram 3/3 ciclos bem-sucedidos, com 60 s de
 estabilidade por ciclo, `qmpQuitResponseSucceeded=true` e `forcedKill=false`.
-Também foram observados dois boots, dois desligamentos QMP, marcador
-persistente e nenhum kill forçado. Os diretórios temporários desses testes
-foram removidos após a consolidação deste relatório.
+Também foram observados três boots, três desligamentos QMP, marcador
+persistente e nenhum kill forçado. Os diretórios temporários do ensaio vigente
+permanecem como evidência local até a revisão do operador; a raiz aprovada não
+foi usada como disco de teste.
 
 ## Gate integrado de 600 s
 
