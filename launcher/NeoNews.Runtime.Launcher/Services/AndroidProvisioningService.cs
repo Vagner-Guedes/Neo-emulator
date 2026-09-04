@@ -47,6 +47,7 @@ public sealed class AndroidProvisioningService
 {
     private readonly RuntimeContext _context;
     private readonly LogService _logs;
+    private readonly SemaphoreSlim _stateSaveGate = new(1, 1);
 
     public AndroidProvisioningService(RuntimeContext context, LogService logs)
     {
@@ -157,7 +158,7 @@ public sealed class AndroidProvisioningService
     {
         var path = _context.ResolveProvisioningStatePath();
         if (!File.Exists(path)) return null;
-        await using var stream = File.OpenRead(path);
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, useAsync: true);
         return await JsonSerializer.DeserializeAsync<ProvisioningState>(stream, RuntimeContext.JsonOptions, cancellationToken);
     }
 
@@ -165,9 +166,33 @@ public sealed class AndroidProvisioningService
     {
         var path = _context.ResolveProvisioningStatePath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporaryPath = path + ".tmp";
-        await File.WriteAllTextAsync(temporaryPath, JsonSerializer.Serialize(state, RuntimeContext.JsonOptions), cancellationToken);
-        File.Move(temporaryPath, path, true);
+        var temporaryPath = $"{path}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
+        await _stateSaveGate.WaitAsync(cancellationToken);
+        try
+        {
+            await File.WriteAllTextAsync(temporaryPath, JsonSerializer.Serialize(state, RuntimeContext.JsonOptions), cancellationToken);
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    File.Move(temporaryPath, path, true);
+                    break;
+                }
+                catch (IOException) when (attempt < 5)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(100 * (attempt + 1)), cancellationToken);
+                }
+                catch (UnauthorizedAccessException) when (attempt < 5)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(100 * (attempt + 1)), cancellationToken);
+                }
+            }
+        }
+        finally
+        {
+            _stateSaveGate.Release();
+            try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); } catch { }
+        }
     }
 
     public async Task SetStageAsync(string stage, CancellationToken cancellationToken = default)
