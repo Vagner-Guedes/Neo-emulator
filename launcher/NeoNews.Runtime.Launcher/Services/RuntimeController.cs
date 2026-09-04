@@ -353,10 +353,23 @@ public sealed class RuntimeController : IAsyncDisposable
     public async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
         try { await _supervisor.StopAsync().ConfigureAwait(false); } catch { }
-        try { if (await _adb.IsDeviceOnlineAsync(cancellationToken) && await _neoNews.IsInstalledAsync(cancellationToken)) await _neoNews.StopAsync(cancellationToken).ConfigureAwait(false); } catch { }
-        try { if (_kiosk.IsActive && await _adb.IsDeviceOnlineAsync(cancellationToken)) await _kiosk.ExitAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        var backendRunning = false;
+        try { backendRunning = await _backend.IsRunningAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        // A plain --exit on an already stopped runtime must not start a new
+        // private ADB server merely to ask whether the guest is online.
+        // Consult the guest only when this controller owns a live backend and
+        // an ADB server is already running.
+        var guestQueryable = backendRunning && _adb.IsServerRunning;
+        if (guestQueryable)
+        {
+            try { if (await _adb.IsDeviceOnlineAsync(cancellationToken) && await _neoNews.IsInstalledAsync(cancellationToken)) await _neoNews.StopAsync(cancellationToken).ConfigureAwait(false); } catch { }
+            try { if (_kiosk.IsActive && await _adb.IsDeviceOnlineAsync(cancellationToken)) await _kiosk.ExitAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        }
         try { await _backend.StopAsync(cancellationToken).ConfigureAwait(false); } catch { }
-        try { await _adb.DisconnectAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        if (guestQueryable)
+        {
+            try { await _adb.DisconnectAsync(cancellationToken).ConfigureAwait(false); } catch { }
+        }
         try { await _adb.StopServerAsync(cancellationToken).ConfigureAwait(false); } catch { }
     }
 

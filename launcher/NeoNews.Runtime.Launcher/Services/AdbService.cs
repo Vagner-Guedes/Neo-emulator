@@ -30,6 +30,15 @@ public sealed class AdbService
 
     public int ServerPort => _context.Config.Android.Adb.ServerPort;
 
+    public bool IsServerRunning
+    {
+        get
+        {
+            try { return _serverProcess is { HasExited: false }; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+
     public string Serial
     {
         get
