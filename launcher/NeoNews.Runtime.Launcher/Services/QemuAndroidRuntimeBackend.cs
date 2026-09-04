@@ -136,7 +136,6 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 "-qmp", $"tcp:127.0.0.1:{qmpPort},server=on,wait=off",
                 "-monitor", "none",
                 "-serial", "none",
-                "-no-reboot",
                 "-vga", string.IsNullOrWhiteSpace(qemu.Gpu) ? "std" : qemu.Gpu,
                 // The bundled Windows QEMU build exposes its native window
                 // through GTK. `default` boots the guest but does not publish

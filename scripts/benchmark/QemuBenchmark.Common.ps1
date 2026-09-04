@@ -247,7 +247,6 @@ function New-QemuBenchmarkArguments {
     $arguments.Add('none')
     $arguments.Add('-serial')
     $arguments.Add('none')
-    $arguments.Add('-no-reboot')
     $arguments.Add('-vga')
     $arguments.Add($(if ($qemu.gpu) { [string]$qemu.gpu } else { 'std' }))
     $arguments.Add('-display')
