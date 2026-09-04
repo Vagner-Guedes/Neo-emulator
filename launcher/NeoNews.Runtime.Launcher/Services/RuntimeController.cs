@@ -333,9 +333,15 @@ public sealed class RuntimeController : IAsyncDisposable
 
     public async Task<string> CollectDiagnosticsAsync(CancellationToken cancellationToken = default)
     {
+        _logs.Info("launcher", "Diagnóstico aguardando o lock de operações.");
         await _operationGate.WaitAsync(cancellationToken);
+        _logs.Info("launcher", "Diagnóstico adquiriu o lock de operações.");
         try { return await _diagnostics.CollectAsync(cancellationToken); }
-        finally { _operationGate.Release(); }
+        finally
+        {
+            _operationGate.Release();
+            _logs.Info("launcher", "Diagnóstico liberou o lock de operações.");
+        }
     }
 
     public Task SaveConfigAsync(CancellationToken cancellationToken = default) => _context.SaveAsync(cancellationToken);
