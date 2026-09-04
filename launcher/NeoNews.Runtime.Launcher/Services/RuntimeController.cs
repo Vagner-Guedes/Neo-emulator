@@ -38,7 +38,7 @@ public sealed class RuntimeController : IAsyncDisposable
                 "O backend Android configurado não é suportado.",
                 $"Backend recebido: '{context.Config.Android.Backend}'. Valores aceitos: qemu-android-x86 ou android-sdk-emulator.")
         };
-        _provisioning = new AndroidProvisioningService(context, _logs);
+        _provisioning = new AndroidProvisioningService(context, _runner, _logs);
         _nativeBridge = new NativeBridgeValidationService(context, _adb);
         _guestConfiguration = new GuestConfigurationService(context, _adb, _logs);
         _neoNews = new NeoNewsService(context, _adb);
@@ -609,7 +609,9 @@ public sealed class RuntimeController : IAsyncDisposable
             ? _context.Config.Timeouts.FirstBootSeconds
             : _context.Config.Timeouts.BootSeconds;
         progress?.Report(new RuntimeProgress(firstBoot ? "Primeiro boot Android" : "Boot Android", firstBoot ? "Aguardando dexopt, Package Manager e Settings Provider..." : "Aguardando o guest persistente...", 40));
+        await _provisioning.SetStageAsync("ADB_CONNECTING", cancellationToken);
         await _adb.WaitForBootAsync(progress, TimeSpan.FromSeconds(Math.Max(15, seconds)), cancellationToken);
+        await _provisioning.RecordAdbLastOnlineAsync(_adb.LastDeviceSeenAt, cancellationToken);
     }
 
     private Task StartSupervisorIfEnabledAsync() =>

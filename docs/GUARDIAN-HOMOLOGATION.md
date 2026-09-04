@@ -23,12 +23,12 @@ na rodada evidence-only.
   `SetWinEventHook` observou somente `launcher-diagnostics`; os demais
   cenarios exigidos nao foram executados.
 
-## Divergencia de atalhos
+## Atalhos configurados
 
-A configuracao publicada declara `F11` e `F12` simples para as operacoes de
-parada e fullscreen. A meta final exige `Ctrl+Alt+Shift+F11` e
-`Ctrl+Alt+Shift+F12`. Este mismatch fica registrado como bloqueio; nao foi
-alterado durante a rodada evidence-only.
+A configuração persistente agora declara `Ctrl+Alt+Shift+F11` para parada segura,
+`Ctrl+Alt+Shift+F12` para fullscreen/janela e `Ctrl+Alt+Shift+F10` para exibir
+o painel. As teclas simples `F11` e `F12` não são registradas. A evidência live
+destes atalhos ainda está pendente porque o boot desta rodada não completou.
 
 ## Proximo gate permitido
 

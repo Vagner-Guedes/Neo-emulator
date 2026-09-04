@@ -10,9 +10,9 @@
     "timezone": "America/Sao_Paulo",
     "syncClockWithHost": true,
     "maxClockSkewSeconds": 5,
-    "hotkey": "Ctrl+Alt+Shift+F12",
-    "stopRuntimeHotkey": "F11",
-    "toggleFullscreenHotkey": "F12"
+    "hotkey": "Ctrl+Alt+Shift+F10",
+    "stopRuntimeHotkey": "Ctrl+Alt+Shift+F11",
+    "toggleFullscreenHotkey": "Ctrl+Alt+Shift+F12"
   },
   "hostIsolation": {
     "requireBundledTools": true,

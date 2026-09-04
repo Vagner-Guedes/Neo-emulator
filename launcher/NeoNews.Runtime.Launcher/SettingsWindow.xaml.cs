@@ -35,7 +35,7 @@ public partial class SettingsWindow : Window
 
         if (!HotkeyService.TryParse(HotkeyInput.Text, out _, out _))
         {
-            new ErrorDialog("Hotkey inválida.", "Use um formato como Ctrl+Alt+Shift+F12.") { Owner = this }.ShowDialog();
+            new ErrorDialog("Hotkey inválida.", "Use um formato como Ctrl+Alt+Shift+F10.") { Owner = this }.ShowDialog();
             return;
         }
 

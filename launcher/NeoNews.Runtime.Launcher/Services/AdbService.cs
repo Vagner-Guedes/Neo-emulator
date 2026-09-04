@@ -19,6 +19,7 @@ public sealed class AdbService
     private AdbRuntimeState _lastLoggedState = AdbRuntimeState.Disconnected;
     private string _lastTransportDetail = "ADB ainda não foi executado.";
     private int? _lastTransportExitCode;
+    private DateTimeOffset? _lastDeviceSeenAt;
 
     public AdbService(RuntimeContext context, ProcessRunnerService runner, LogService logs)
     {
@@ -59,6 +60,7 @@ public sealed class AdbService
     public AdbRuntimeState State => _state;
     public string LastTransportDetail => _lastTransportDetail;
     public int? LastTransportExitCode => _lastTransportExitCode;
+    public DateTimeOffset? LastDeviceSeenAt => _lastDeviceSeenAt;
 
     public async Task<ProcessResult> ExecuteAsync(
         IEnumerable<string> arguments,
@@ -297,7 +299,7 @@ public sealed class AdbService
     private static HashSet<int> GetAdbProcessIds(string executable)
     {
         var ids = new HashSet<int>();
-        foreach (var process in Process.GetProcessesByName("adb"))
+        foreach (var process in Process.GetProcesses().Where(candidate => candidate.ProcessName.Equals("adb", StringComparison.OrdinalIgnoreCase)))
         {
             try
             {
@@ -312,7 +314,7 @@ public sealed class AdbService
 
     private static int? FindNewAdbProcessId(string executable, HashSet<int> beforeProcessIds)
     {
-        foreach (var process in Process.GetProcessesByName("adb"))
+        foreach (var process in Process.GetProcesses().Where(candidate => candidate.ProcessName.Equals("adb", StringComparison.OrdinalIgnoreCase)))
         {
             try
             {
@@ -334,7 +336,10 @@ public sealed class AdbService
         var wasOffline = _state == AdbRuntimeState.Offline;
         SetState(AdbRuntimeState.Connecting);
         if (wasOffline)
-            _ = await ReconnectOfflineAsync(cancellationToken);
+        {
+            var recovered = await RecoverTransportAsync(cancellationToken);
+            if (recovered) return true;
+        }
 
         var result = await ExecuteHostAsync(["connect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
         RecordTransportResult($"connect {Serial}", result);
@@ -360,6 +365,29 @@ public sealed class AdbService
         var result = await ExecuteHostAsync(["reconnect", "offline"], TimeSpan.FromSeconds(10), cancellationToken);
         RecordTransportResult($"reconnect offline {Serial}", result);
         return result.Succeeded;
+    }
+
+    /// <summary>
+    /// Bounded recovery for the private TCP transport. It deliberately uses
+    /// only transport-scoped commands; it never kills or restarts an ADB
+    /// server, so the global host endpoint remains outside this runtime's
+    /// ownership boundary.
+    /// </summary>
+    public async Task<bool> RecoverTransportAsync(CancellationToken cancellationToken = default)
+    {
+        if (!Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase)) return true;
+
+        SetState(AdbRuntimeState.Connecting);
+        var reconnect = await ReconnectOfflineAsync(cancellationToken);
+        var disconnect = await ExecuteHostAsync(["disconnect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+        RecordTransportResult($"disconnect {Serial} (recovery)", disconnect);
+        var connect = await ExecuteHostAsync(["connect", Serial], TimeSpan.FromSeconds(10), cancellationToken);
+        RecordTransportResult($"connect {Serial} (recovery)", connect);
+        var recovered = reconnect && disconnect.Succeeded && connect.Succeeded &&
+                        !connect.StandardOutput.Contains("failed", StringComparison.OrdinalIgnoreCase) &&
+                        !connect.StandardError.Contains("unable", StringComparison.OrdinalIgnoreCase);
+        if (!recovered) SetState(AdbRuntimeState.Disconnected);
+        return recovered;
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
@@ -456,6 +484,10 @@ public sealed class AdbService
         var deadline = DateTimeOffset.UtcNow + timeout;
         var nextConnect = DateTimeOffset.MinValue;
         var setupCompleteApplied = false;
+        var nextRecovery = DateTimeOffset.MinValue;
+        var recoveryAttempts = 0;
+        var consecutiveDeviceProbes = 0;
+        DateTimeOffset? lastDeviceProbe = null;
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -468,10 +500,16 @@ public sealed class AdbService
             var state = await GetStateAsync(cancellationToken);
             if (state.Equals("device", StringComparison.OrdinalIgnoreCase))
             {
+                var now = DateTimeOffset.UtcNow;
+                if (lastDeviceProbe is null || now - lastDeviceProbe.Value >= TimeSpan.FromSeconds(2))
+                    consecutiveDeviceProbes++;
+                lastDeviceProbe = now;
+                _lastDeviceSeenAt = now;
+                nextRecovery = now + TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds));
                 // Android-x86 may launch SetupWizard before sys.boot_completed
-                // becomes 1. Register the runtime as provisioned at the first
-                // stable ADB transport so its FRP/Welcome flow cannot show the
-                // known crash dialog. This changes settings metadata only.
+                // becomes 1. Apply the idempotent setup flags on the first
+                // device probe, while the three-probe readiness gate still
+                // prevents an unstable transport from being accepted.
                 if (!setupCompleteApplied)
                 {
                     var earlySetup = await TryEnsureAndroidSetupCompleteAsync(cancellationToken);
@@ -481,10 +519,17 @@ public sealed class AdbService
                         _logs.Info("provisioning", $"ANDROID_SETUP_COMPLETE_EARLY {earlySetup.Detail}");
                     }
                 }
-
+                if (consecutiveDeviceProbes < 3)
+                {
+                    SetState(AdbRuntimeState.Booting);
+                    ReportStateProgress(progress, "Aguardando transporte ADB", $"ADB device confirmado ({consecutiveDeviceProbes}/3); aguardando estabilidade...", 55);
+                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    continue;
+                }
                 var boot = await GetPropertyAsync("sys.boot_completed", cancellationToken);
                 if (boot == "1")
                 {
+                    recoveryAttempts = 0;
                     progress?.Report(new RuntimeProgress("Aguardando Package Manager", "Validando pm list packages e pm path android...", 62));
                     await WaitForPackageManagerAsync(TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.PackageManagerSeconds)), cancellationToken);
                     progress?.Report(new RuntimeProgress("Aguardando Settings Provider", "Validando settings antes do provisionamento...", 66));
@@ -506,6 +551,23 @@ public sealed class AdbService
             }
             else
             {
+                if (state.Equals("offline", StringComparison.OrdinalIgnoreCase))
+                {
+                    consecutiveDeviceProbes = 0;
+                    lastDeviceProbe = null;
+                    if (DateTimeOffset.UtcNow >= nextRecovery && recoveryAttempts < 5)
+                    {
+                        recoveryAttempts++;
+                        _logs.Warning("adb", $"RECOVERY_PRIVATE_TRANSPORT attempt={recoveryAttempts}/5 serial={Serial}; reconnect offline + disconnect serial + connect serial.");
+                        _ = await RecoverTransportAsync(cancellationToken);
+                        nextRecovery = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds));
+                    }
+                }
+                else if (state.Equals("disconnected", StringComparison.OrdinalIgnoreCase))
+                {
+                    consecutiveDeviceProbes = 0;
+                    lastDeviceProbe = null;
+                }
                 ReportStateProgress(progress, "Aguardando ADB", $"Estado ADB: {DescribeState(State)}; tentando reconectar...", null);
             }
 

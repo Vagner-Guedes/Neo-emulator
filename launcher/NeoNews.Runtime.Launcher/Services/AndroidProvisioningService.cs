@@ -30,10 +30,42 @@ public sealed class ProvisioningState
     public string TtsStatus { get; set; } = "unknown";
     public string NeoNewsVersion { get; set; } = string.Empty;
     public DateTimeOffset LastValidation { get; set; }
+    // ImageHash is retained as a backwards-compatible alias for the approved
+    // baseline. A persistent guest disk is expected to change after Android,
+    // NeoNews or a component writes to /data, so its live SHA must never be
+    // compared to this value as a normal-boot gate.
     public string ImageHash { get; set; } = string.Empty;
+    public string BaselineSha256 { get; set; } = string.Empty;
     public string DiskFingerprint { get; set; } = string.Empty;
+    public string DiskMutationStatus { get; set; } = "unknown";
+    public ActiveDiskMetadata ActiveDiskMetadata { get; set; } = new();
+    public int Attempt { get; set; }
+    public string LastSuccessfulStage { get; set; } = string.Empty;
+    public DateTimeOffset BootStartedAt { get; set; }
+    public DateTimeOffset AdbLastOnline { get; set; }
+    public bool RebootRequired { get; set; }
+    public bool ResumeAllowed { get; set; } = true;
     [JsonPropertyName("provenance")]
     public Dictionary<string, ProvisionedComponent> Provenance { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class ActiveDiskMetadata
+{
+    public string Role { get; set; } = "persistent-guest-disk";
+    public string Path { get; set; } = string.Empty;
+    public string Format { get; set; } = string.Empty;
+    public long VirtualSizeBytes { get; set; }
+    public long ActualSizeBytes { get; set; }
+    public long FileLengthBytes { get; set; }
+    public string BackingFile { get; set; } = string.Empty;
+    public bool Corrupt { get; set; }
+    public bool DirtyFlag { get; set; }
+    public int CheckErrors { get; set; }
+    public long AllocatedClusters { get; set; }
+    public long FragmentedClusters { get; set; }
+    public string CurrentSha256 { get; set; } = string.Empty;
+    public string Status { get; set; } = "unknown";
+    public DateTimeOffset ObservedAt { get; set; }
 }
 
 public sealed class ProvisionedComponent
@@ -47,12 +79,14 @@ public sealed class ProvisionedComponent
 public sealed class AndroidProvisioningService
 {
     private readonly RuntimeContext _context;
+    private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
     private readonly SemaphoreSlim _stateSaveGate = new(1, 1);
 
-    public AndroidProvisioningService(RuntimeContext context, LogService logs)
+    public AndroidProvisioningService(RuntimeContext context, ProcessRunnerService runner, LogService logs)
     {
         _context = context;
+        _runner = runner;
         _logs = logs;
     }
 
@@ -93,11 +127,21 @@ public sealed class AndroidProvisioningService
                 "O registro de provisionamento aponta para outra release Android.",
                 $"Release registrada={state.AndroidImageVersion}; esperada={_context.Config.Android.Release}; estado={_context.ResolveProvisioningStatePath()}.");
         }
-        if (!IsSha256(state.ImageHash))
+        var baselineSha256 = IsSha256(state.BaselineSha256)
+            ? state.BaselineSha256
+            : state.ImageHash;
+        if (!IsSha256(baselineSha256))
         {
             throw new RuntimeOperationException(
-                "O registro de provisionamento não possui SHA-256 forte do disco.",
-                "Reexecute scripts/provision/Provision-QemuAndroidRuntime.ps1; o boot normal não substitui esse hash por um marcador fraco.");
+                "O registro de provisionamento não possui SHA-256 forte do baseline.",
+                "Reexecute scripts/provision/Provision-QemuAndroidRuntime.ps1; o baseline aprovado precisa ser registrado antes do boot normal.");
+        }
+        if (IsSha256(state.BaselineSha256) && IsSha256(state.ImageHash) &&
+            !state.BaselineSha256.Equals(state.ImageHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RuntimeOperationException(
+                "O estado de integridade do disco é inconsistente.",
+                $"baselineSha256={state.BaselineSha256}; imageHash legado={state.ImageHash}. Reexecute o provisionamento aprovado para reconstruir o estado, sem substituir o qcow2 automaticamente.");
         }
         if (state.Provenance is null || state.Provenance.Count == 0)
         {
@@ -120,10 +164,10 @@ public sealed class AndroidProvisioningService
 
         var qemuHash = await ComputeSha256Async(qemu, cancellationToken);
         var adbHash = await ComputeSha256Async(adb, cancellationToken);
-        var imageHash = await ComputeSha256Async(image, cancellationToken);
         var registeredQemuHash = state.Provenance["qemu"].Sha256;
         var registeredAdbHash = state.Provenance["adb"].Sha256;
         var registeredImageHash = state.Provenance["installerImage"].Sha256;
+        var imageHash = await ComputeSha256Async(image, cancellationToken);
         if (!registeredQemuHash.Equals(qemuHash, StringComparison.OrdinalIgnoreCase) ||
             !registeredAdbHash.Equals(adbHash, StringComparison.OrdinalIgnoreCase) ||
             !registeredImageHash.Equals(imageHash, StringComparison.OrdinalIgnoreCase))
@@ -133,10 +177,42 @@ public sealed class AndroidProvisioningService
                 $"QEMU registrado={registeredQemuHash}; atual={qemuHash}; ADB registrado={registeredAdbHash}; atual={adbHash}; imagem registrada={registeredImageHash}; atual={imageHash}. Reexecute o provisionamento após uma troca aprovada.");
         }
 
+        var qemuImg = Path.Combine(Path.GetDirectoryName(qemu) ?? _context.RootDirectory, "qemu-img.exe");
+        if (!HasContent(qemuImg))
+        {
+            throw new RuntimeOperationException(
+                "O validador qemu-img não está disponível.",
+                $"Caminho esperado: {qemuImg}. A distribuição precisa manter qemu-img.exe ao lado de qemu-system-x86_64.exe.");
+        }
+
+        var activeDisk = await ReadActiveDiskMetadataAsync(qemuImg, disk, cancellationToken);
+        var fingerprint = await ComputeFingerprintAsync(disk, cancellationToken);
+        var previousActive = state.ActiveDiskMetadata ?? new ActiveDiskMetadata();
+        var currentDiskHash = previousActive.CurrentSha256 is { Length: 64 } &&
+                              previousActive.Path.Equals(_context.Config.Android.Qemu.Disk, StringComparison.OrdinalIgnoreCase) &&
+                              string.Equals(state.DiskFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase)
+            ? previousActive.CurrentSha256
+            : await ComputeSha256Async(disk, cancellationToken);
+
+        var expectedVirtualSize = previousActive.VirtualSizeBytes;
+        var structuralFailure = !activeDisk.Format.Equals("qcow2", StringComparison.OrdinalIgnoreCase) ||
+                                activeDisk.CheckErrors != 0 ||
+                                activeDisk.Corrupt ||
+                                activeDisk.DirtyFlag ||
+                                !string.IsNullOrWhiteSpace(activeDisk.BackingFile) ||
+                                (expectedVirtualSize > 0 && activeDisk.VirtualSizeBytes != expectedVirtualSize);
+        activeDisk.Path = _context.Config.Android.Qemu.Disk;
+        activeDisk.CurrentSha256 = currentDiskHash;
+        activeDisk.ObservedAt = DateTimeOffset.UtcNow;
+        activeDisk.Status = structuralFailure
+            ? "UNEXPECTED_IMAGE_MUTATION"
+            : currentDiskHash.Equals(baselineSha256, StringComparison.OrdinalIgnoreCase)
+                ? "BASELINE_UNCHANGED"
+                : "EXPECTED_PERSISTENT_MUTATION";
+
         state.Schema = 1;
         state.AndroidImageVersion = _context.Config.Android.Release;
         state.LastValidation = DateTimeOffset.UtcNow;
-        var fingerprint = await ComputeFingerprintAsync(disk, cancellationToken);
         if (!string.IsNullOrWhiteSpace(state.DiskFingerprint) &&
             !state.DiskFingerprint.Equals(fingerprint, StringComparison.OrdinalIgnoreCase))
         {
@@ -146,12 +222,20 @@ public sealed class AndroidProvisioningService
             // valid guest write into a boot blocker.
             _logs.Warning("provisioning", $"Fingerprint do qcow2 mudou desde a última validação; aceitando a mutação persistente. anterior={state.DiskFingerprint}; atual={fingerprint}; disco={disk}.");
         }
+        state.BaselineSha256 = baselineSha256;
+        state.ImageHash = baselineSha256;
         state.DiskFingerprint = fingerprint;
-        // Provision-QemuAndroidRuntime.ps1 records the strong SHA-256 in
-        // ImageHash. Keep it intact; DiskFingerprint is only a cheap,
-        // last-observed change marker for this mutable qcow2.
+        state.ActiveDiskMetadata = activeDisk;
+        state.DiskMutationStatus = activeDisk.Status;
+        if (structuralFailure)
+        {
+            await SaveAsync(state, cancellationToken);
+            throw new RuntimeOperationException(
+                "O qcow2 persistente falhou na validação estrutural.",
+                $"UNEXPECTED_IMAGE_MUTATION; format={activeDisk.Format}; virtualSizeBytes={activeDisk.VirtualSizeBytes}; expectedVirtualSizeBytes={expectedVirtualSize}; backingFile={activeDisk.BackingFile}; corrupt={activeDisk.Corrupt}; dirtyFlag={activeDisk.DirtyFlag}; checkErrors={activeDisk.CheckErrors}.");
+        }
         await SaveAsync(state, cancellationToken);
-        _logs.Info("provisioning", $"Estrutura local validada. QEMU={qemu}; disco={disk}; ADB={adb}.");
+        _logs.Info("provisioning", $"Estrutura local validada. diskMutationStatus={activeDisk.Status}; QEMU={qemu}; disco={disk}; ADB={adb}.");
         return state;
     }
 
@@ -201,6 +285,19 @@ public sealed class AndroidProvisioningService
         var state = await LoadAsync(cancellationToken) ?? new ProvisioningState();
         state.Stage = stage;
         state.LastAttempt = DateTimeOffset.UtcNow;
+        if (stage.Equals("HOST_VALIDATION", StringComparison.OrdinalIgnoreCase))
+        {
+            state.Attempt++;
+            state.Completed = false;
+            state.LastError = string.Empty;
+            state.ResumeAllowed = true;
+            state.RebootRequired = false;
+        }
+        if (stage.Equals("ANDROID_START", StringComparison.OrdinalIgnoreCase))
+        {
+            state.BootStartedAt = DateTimeOffset.UtcNow;
+            state.AdbLastOnline = default;
+        }
         switch (stage.ToUpperInvariant())
         {
             case "PACKAGE_MANAGER_READY":
@@ -236,16 +333,33 @@ public sealed class AndroidProvisioningService
         {
             state.Completed = false;
         }
+        else if (!stage.Equals("ADB_CONNECTING", StringComparison.OrdinalIgnoreCase) &&
+                 !stage.Equals("BOOTING", StringComparison.OrdinalIgnoreCase))
+        {
+            state.LastSuccessfulStage = stage;
+        }
         await SaveAsync(state, cancellationToken);
     }
 
     public async Task SetErrorAsync(Exception exception, CancellationToken cancellationToken = default)
     {
         var state = await LoadAsync(cancellationToken) ?? new ProvisioningState();
-        state.Stage = "Error";
         state.Completed = false;
         state.LastAttempt = DateTimeOffset.UtcNow;
         state.LastError = exception.Message;
+        state.ResumeAllowed = true;
+        // Keep a recoverable boot/provisioning stage visible while a transient
+        // guest failure is being cleaned up. Error is reserved for timeout,
+        // QEMU/WHPX/process failures and structural/runtime validation faults.
+        if (IsTerminalFailure(exception)) state.Stage = "Error";
+        await SaveAsync(state, cancellationToken);
+    }
+
+    public async Task RecordAdbLastOnlineAsync(DateTimeOffset? observedAt, CancellationToken cancellationToken = default)
+    {
+        if (observedAt is null) return;
+        var state = await LoadAsync(cancellationToken) ?? new ProvisioningState();
+        state.AdbLastOnline = observedAt.Value;
         await SaveAsync(state, cancellationToken);
     }
 
@@ -302,5 +416,115 @@ public sealed class AndroidProvisioningService
         try { return File.Exists(path) && new FileInfo(path).Length > 0; }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private async Task<ActiveDiskMetadata> ReadActiveDiskMetadataAsync(
+        string qemuImgPath,
+        string diskPath,
+        CancellationToken cancellationToken)
+    {
+        var info = await _runner.RunAsync(
+            qemuImgPath,
+            ["info", "--output=json", diskPath],
+            _context.RootDirectory,
+            "qemu-img",
+            TimeSpan.FromSeconds(60),
+            cancellationToken,
+            logOutput: false,
+            isolateEnvironment: _context.Config.HostIsolation.ClearHostToolEnvironment);
+        if (!info.Succeeded)
+            throw new RuntimeOperationException(
+                "Não foi possível ler a geometria do qcow2.",
+                $"qemu-img info falhou: exit={info.ExitCode}; timeout={info.TimedOut}; stderr={info.StandardError}; stdout={info.StandardOutput}");
+
+        var check = await _runner.RunAsync(
+            qemuImgPath,
+            ["check", "--output=json", diskPath],
+            _context.RootDirectory,
+            "qemu-img",
+            TimeSpan.FromSeconds(60),
+            cancellationToken,
+            logOutput: false,
+            isolateEnvironment: _context.Config.HostIsolation.ClearHostToolEnvironment);
+        if (!check.Succeeded)
+            throw new RuntimeOperationException(
+                "O qcow2 não passou no qemu-img check.",
+                $"UNEXPECTED_IMAGE_MUTATION; qemu-img check falhou: exit={check.ExitCode}; timeout={check.TimedOut}; stderr={check.StandardError}; stdout={check.StandardOutput}");
+
+        try
+        {
+            using var infoDocument = JsonDocument.Parse(info.StandardOutput);
+            using var checkDocument = JsonDocument.Parse(check.StandardOutput);
+            var infoRoot = infoDocument.RootElement;
+            var checkRoot = checkDocument.RootElement;
+            var formatSpecificData = infoRoot.TryGetProperty("format-specific", out var formatSpecific) &&
+                                     formatSpecific.TryGetProperty("data", out var data)
+                ? data
+                : default;
+            var backing = ReadString(infoRoot, "backing-filename");
+            if (string.IsNullOrWhiteSpace(backing)) backing = ReadString(infoRoot, "full-backing-filename");
+            return new ActiveDiskMetadata
+            {
+                Format = ReadString(infoRoot, "format"),
+                VirtualSizeBytes = ReadInt64(infoRoot, "virtual-size"),
+                ActualSizeBytes = ReadInt64(infoRoot, "actual-size"),
+                BackingFile = backing,
+                Corrupt = ReadBool(formatSpecificData, "corrupt"),
+                DirtyFlag = ReadBool(infoRoot, "dirty-flag"),
+                CheckErrors = (int)ReadInt64(checkRoot, "check-errors"),
+                AllocatedClusters = ReadInt64(checkRoot, "allocated-clusters"),
+                FragmentedClusters = ReadInt64(checkRoot, "fragmented-clusters")
+            };
+        }
+        catch (JsonException exception)
+        {
+            throw new RuntimeOperationException(
+                "O qemu-img retornou metadados inválidos para o qcow2.",
+                $"UNEXPECTED_IMAGE_MUTATION; falha ao interpretar qemu-img: {exception.Message}",
+                exception);
+        }
+    }
+
+    private static string ReadString(JsonElement element, string property)
+    {
+        return element.ValueKind == JsonValueKind.Object &&
+               element.TryGetProperty(property, out var value) &&
+               value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static long ReadInt64(JsonElement element, string property)
+    {
+        return element.ValueKind == JsonValueKind.Object &&
+               element.TryGetProperty(property, out var value) &&
+               value.ValueKind == JsonValueKind.Number &&
+               value.TryGetInt64(out var result)
+            ? result
+            : 0;
+    }
+
+    private static bool ReadBool(JsonElement element, string property)
+    {
+        return element.ValueKind == JsonValueKind.Object &&
+               element.TryGetProperty(property, out var value) &&
+               (value.ValueKind is JsonValueKind.True or JsonValueKind.False) &&
+               value.GetBoolean();
+    }
+
+    private static bool IsTerminalFailure(Exception exception)
+    {
+        if (exception is OperationCanceledException) return false;
+        var detail = exception is RuntimeOperationException runtime
+            ? $"{runtime.Message} {runtime.TechnicalDetails}"
+            : exception.ToString();
+        return detail.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("tempo", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("qemu", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("whpx", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("qcow2", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("UNEXPECTED_IMAGE_MUTATION", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("não foi possível conectar", StringComparison.OrdinalIgnoreCase) ||
+               detail.Contains("não foi possível iniciar", StringComparison.OrdinalIgnoreCase);
     }
 }

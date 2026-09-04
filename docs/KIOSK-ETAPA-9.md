@@ -18,7 +18,7 @@ O script suporta `-WhatIf` e sempre relata se o pacote NeoNews está instalado. 
 
 ## Atalho operacional
 
-No launcher publicado, `F12` e o atalho persistente para alternar entre a
+No launcher publicado, `Ctrl+Alt+Shift+F12` e o atalho persistente para alternar entre a
 janela normal e o modo fullscreen/kiosk. A configuracao do guest e o estado
 original da janela continuam transacionais e sao restaurados ao sair.
 

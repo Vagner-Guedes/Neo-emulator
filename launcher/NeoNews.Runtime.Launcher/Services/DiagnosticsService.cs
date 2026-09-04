@@ -172,6 +172,12 @@ public sealed class DiagnosticsService
                     watchdogActive = provisioningState.WatchdogActive,
                     lastAttempt = provisioningState.LastAttempt,
                     lastError = provisioningState.LastError,
+                    attempt = provisioningState.Attempt,
+                    lastSuccessfulStage = provisioningState.LastSuccessfulStage,
+                    bootStartedAt = provisioningState.BootStartedAt,
+                    adbLastOnline = provisioningState.AdbLastOnline,
+                    rebootRequired = provisioningState.RebootRequired,
+                    resumeAllowed = provisioningState.ResumeAllowed,
                     androidImageVersion = provisioningState.AndroidImageVersion,
                     nativeBridgeStatus = provisioningState.NativeBridgeStatus,
                     guestConfigurationStatus = provisioningState.GuestConfigurationStatus,
@@ -184,7 +190,10 @@ public sealed class DiagnosticsService
                     neoNewsVersion = provisioningState.NeoNewsVersion,
                     lastValidation = provisioningState.LastValidation,
                     imageHash = provisioningState.ImageHash,
+                    baselineSha256 = provisioningState.BaselineSha256,
                     diskFingerprint = provisioningState.DiskFingerprint,
+                    diskMutationStatus = provisioningState.DiskMutationStatus,
+                    activeDiskMetadata = provisioningState.ActiveDiskMetadata,
                     provenance = provisioningState.Provenance?.Keys.ToArray() ?? []
                 },
             android = new
@@ -196,7 +205,8 @@ public sealed class DiagnosticsService
                     state = _adb.State.ToString(),
                     serial = _adb.Serial,
                     lastExitCode = _adb.LastTransportExitCode,
-                    lastTransportDetail = _adb.LastTransportDetail
+                    lastTransportDetail = _adb.LastTransportDetail,
+                    lastDeviceSeenAt = _adb.LastDeviceSeenAt
                 },
                 release = guest.Release,
                 apiLevel = guest.ApiLevel,
@@ -457,7 +467,7 @@ public sealed class DiagnosticsService
 
     private async Task<ProvisioningState?> SafeProvisioningStateAsync(CancellationToken cancellationToken)
     {
-        try { return await new AndroidProvisioningService(_context, _logs).LoadAsync(cancellationToken); }
+        try { return await new AndroidProvisioningService(_context, _runner, _logs).LoadAsync(cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial do provisionamento: {exception.Message}"); return null; }
     }

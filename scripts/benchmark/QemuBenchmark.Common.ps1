@@ -32,6 +32,31 @@ function Test-QemuBenchmarkNonEmptyFile {
     try { return (Get-Item -LiteralPath $Path).Length -gt 0 } catch { return $false }
 }
 
+function Get-QemuBenchmarkImageJson {
+    param(
+        [string]$QemuPath,
+        [string]$Command,
+        [string]$DiskPath
+    )
+
+    $qemuImg = Join-Path (Split-Path -Parent $QemuPath) 'qemu-img.exe'
+    if (-not (Test-QemuBenchmarkNonEmptyFile $qemuImg)) {
+        throw "qemu-img.exe ausente ao lado do QEMU: $qemuImg"
+    }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $raw = @(& $qemuImg $Command '--output=json' $DiskPath 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $previousErrorActionPreference }
+    if ($exitCode -ne 0) {
+        throw "qemu-img $Command falhou: exit=$exitCode; output=$(($raw | Out-String).Trim())"
+    }
+    try { return (($raw | Out-String).Trim() | ConvertFrom-Json) }
+    catch { throw "qemu-img $Command retornou JSON inválido: $($_.Exception.Message)" }
+}
+
 function Assert-QemuBenchmarkProvisionedRuntime {
     param(
         [object]$Config,
@@ -57,8 +82,9 @@ function Assert-QemuBenchmarkProvisionedRuntime {
     if ([string]::IsNullOrWhiteSpace([string]$state.androidImageVersion) -or [string]$state.androidImageVersion -ne [string]$Config.android.release) {
         throw "A release do estado de provisionamento diverge da configuração: registrada=$($state.androidImageVersion); esperada=$($Config.android.release)."
     }
-    if ([string]$state.imageHash -notmatch '^[0-9a-fA-F]{64}$') {
-        throw "O estado de provisionamento não possui SHA-256 forte do disco persistente."
+    $baselineSha256 = if ([string]$state.baselineSha256 -match '^[0-9a-fA-F]{64}$') { [string]$state.baselineSha256 } else { [string]$state.imageHash }
+    if ($baselineSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+        throw "O estado de provisionamento não possui SHA-256 forte do baseline do disco persistente."
     }
     foreach ($name in @('qemu', 'adb', 'disk', 'installerImage')) {
         $record = $state.provenance.$name
@@ -76,6 +102,15 @@ function Assert-QemuBenchmarkProvisionedRuntime {
         if (-not $currentHash.Equals($registeredHash, [StringComparison]::OrdinalIgnoreCase)) {
             throw "O hash do componente-base '$($entry.Name)' diverge do provisionamento: registrado=$registeredHash; atual=$currentHash."
         }
+    }
+    $qemuInfo = Get-QemuBenchmarkImageJson -QemuPath $Paths.Qemu -Command 'info' -DiskPath $Paths.Disk
+    $qemuCheck = Get-QemuBenchmarkImageJson -QemuPath $Paths.Qemu -Command 'check' -DiskPath $Paths.Disk
+    $formatSpecificData = if ($qemuInfo.'format-specific'.data) { $qemuInfo.'format-specific'.data } else { $null }
+    $backingFile = [string]$qemuInfo.'backing-filename'
+    if ([string]::IsNullOrWhiteSpace($backingFile)) { $backingFile = [string]$qemuInfo.'full-backing-filename' }
+    $expectedVirtualSize = if ($state.activeDiskMetadata -and [long]$state.activeDiskMetadata.virtualSizeBytes -gt 0) { [long]$state.activeDiskMetadata.virtualSizeBytes } else { 0 }
+    if ([string]$qemuInfo.format -ne 'qcow2' -or [int]$qemuCheck.'check-errors' -ne 0 -or [bool]$formatSpecificData.corrupt -or [bool]$qemuInfo.'dirty-flag' -or -not [string]::IsNullOrWhiteSpace($backingFile) -or ($expectedVirtualSize -gt 0 -and [long]$qemuInfo.'virtual-size' -ne $expectedVirtualSize)) {
+        throw "UNEXPECTED_IMAGE_MUTATION: qemu-img validou uma estrutura inesperada; format=$($qemuInfo.format); virtual-size=$($qemuInfo.'virtual-size'); backing=$backingFile; corrupt=$($formatSpecificData.corrupt); dirty=$($qemuInfo.'dirty-flag'); check-errors=$($qemuCheck.'check-errors')."
     }
 }
 

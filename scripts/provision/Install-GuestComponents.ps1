@@ -44,7 +44,7 @@ if (-not (Test-Path -LiteralPath $statePath)) {
 }
 try { $existingState = Get-Content -LiteralPath $statePath -Raw -Encoding utf8 | ConvertFrom-Json }
 catch { throw "O estado de provisionamento existente não pôde ser lido: $statePath. $($_.Exception.Message)" }
-$existingImageHash = [string]$existingState.imageHash
+$existingImageHash = if ([string]$existingState.baselineSha256 -match '^[0-9a-fA-F]{64}$') { [string]$existingState.baselineSha256 } else { [string]$existingState.imageHash }
 $existingProvenance = if ($existingState.provenance) { @($existingState.provenance.PSObject.Properties) } else { @() }
 if ($existingImageHash -notmatch '^[0-9a-fA-F]{64}$' -or $existingProvenance.Count -eq 0) {
     throw "O estado base de provisionamento é incompleto ou não possui SHA-256/proveniência fortes: $statePath. Reexecute Provision-QemuAndroidRuntime.ps1."
@@ -353,6 +353,15 @@ $imageHash = ''
 if ($existingState -and $existingState.PSObject.Properties.Name -contains 'imageHash') {
     $imageHash = [string]$existingState.imageHash
 }
+$baselineSha256 = ''
+if ($existingState -and $existingState.PSObject.Properties.Name -contains 'baselineSha256') {
+    $baselineSha256 = [string]$existingState.baselineSha256
+}
+if ($baselineSha256 -notmatch '^[0-9a-fA-F]{64}$' -and $imageHash -match '^[0-9a-fA-F]{64}$') {
+    $baselineSha256 = $imageHash
+}
+$activeDiskMetadata = if ($existingState -and $existingState.PSObject.Properties.Name -contains 'activeDiskMetadata') { $existingState.activeDiskMetadata } else { $null }
+$diskMutationStatus = if ($existingState -and $existingState.PSObject.Properties.Name -contains 'diskMutationStatus') { [string]$existingState.diskMutationStatus } else { 'pending-revalidation' }
 $diskFingerprint = ''
 if ($existingState -and $existingState.PSObject.Properties.Name -contains 'diskFingerprint') {
     $diskFingerprint = [string]$existingState.diskFingerprint
@@ -377,8 +386,11 @@ $state = [ordered]@{
     androidSetup = $androidSetup
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
-    imageHash = $imageHash
+    imageHash = $baselineSha256
+    baselineSha256 = $baselineSha256
     diskFingerprint = $diskFingerprint
+    diskMutationStatus = $diskMutationStatus
+    activeDiskMetadata = $activeDiskMetadata
     files = $files
     provenance = $provenance
     guest = [ordered]@{ serial = $Serial; release = $guestRelease; apiLevel = $guestApi; identityMatches = $true; webViewProvider = $config.webView.provider; webViewVersion = if ($webViewVersionMatch.Success) { $webViewVersionMatch.Groups[1].Value } else { $null }; webViewPackagePresent = $webViewPackagePresent; webViewProviderActive = $webViewProviderActive; webViewVersionMatches = $webViewVersionMatches; rhvoicePackages = $rhvoicePackages; defaultTtsEngineBefore = $baselineDefaultEngine; defaultTtsEngine = $defaultEngine; defaultEnginePreserved = $defaultEnginePreserved; defaultChanged = $defaultChanged }
