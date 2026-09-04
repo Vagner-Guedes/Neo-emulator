@@ -285,7 +285,12 @@ public sealed class DiagnosticsService
                     .Where(line => line.Contains("rhvoice", StringComparison.OrdinalIgnoreCase) || line.Contains("tts", StringComparison.OrdinalIgnoreCase))
                     .ToArray()
             },
-            watchdog = new { active = _supervisor.IsActive, nativeBridgeStructuralError = _supervisor.HasNativeBridgeStructuralError },
+            watchdog = new
+            {
+                active = _supervisor.IsActive,
+                lastHeartbeat = _supervisor.LastHeartbeat,
+                nativeBridgeStructuralError = _supervisor.HasNativeBridgeStructuralError
+            },
             startup = new { registered = startupRegistered, valid = startupValid, executable = Environment.ProcessPath },
             memory,
             graphics,

@@ -19,6 +19,7 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
     private DateTimeOffset _lastActivityLossLog = DateTimeOffset.MinValue;
     private DateTimeOffset _lastKioskLossLog = DateTimeOffset.MinValue;
     private DateTimeOffset _lastClockSync = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastHeartbeat = DateTimeOffset.MinValue;
     private bool _nativeBridgeStructuralError;
 
     public RuntimeSupervisorService(
@@ -41,12 +42,14 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
 
     public bool IsActive => Volatile.Read(ref _started) == 1;
     public bool HasNativeBridgeStructuralError => _nativeBridgeStructuralError;
+    public DateTimeOffset? LastHeartbeat => _lastHeartbeat == DateTimeOffset.MinValue ? null : _lastHeartbeat;
 
     public Task StartAsync()
     {
         if (Interlocked.Exchange(ref _started, 1) == 0)
         {
             _shutdown = new CancellationTokenSource();
+            _lastHeartbeat = DateTimeOffset.UtcNow;
             _loop = Task.Run(() => MonitorAsync(_shutdown.Token));
             _logs.Info("watchdog", "Watchdog iniciado.");
         }
@@ -73,6 +76,8 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, _context.Config.Supervisor.PollSeconds)));
         while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
         {
+            _lastHeartbeat = DateTimeOffset.UtcNow;
+            _logs.Info("watchdog", $"WATCHDOG_HEARTBEAT {_lastHeartbeat:O}");
             try
             {
                 if (!await _backend.IsRunningAsync(cancellationToken).ConfigureAwait(false))

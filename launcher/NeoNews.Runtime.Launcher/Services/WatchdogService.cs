@@ -18,6 +18,7 @@ public sealed class WatchdogService : IAsyncDisposable
 
     public bool IsActive => _supervisor.IsActive;
     public bool HasNativeBridgeStructuralError => _supervisor.HasNativeBridgeStructuralError;
+    public DateTimeOffset? LastHeartbeat => _supervisor.LastHeartbeat;
     public Task StartAsync() => _supervisor.StartAsync();
     public Task StopAsync() => _supervisor.StopAsync();
     public ValueTask DisposeAsync() => _supervisor.DisposeAsync();
