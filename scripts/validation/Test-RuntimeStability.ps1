@@ -277,7 +277,10 @@ $result = [ordered]@{
     evidence = $evidence
     sampleCount = $samples.Count
     failedSampleCount = $sampleFailures.Count
-    samples = @($samples)
+    # Convert the generic List explicitly. PowerShell's ConvertTo-Json throws
+    # "Os tipos de argumento não correspondem" when a List[object] is wrapped
+    # directly in @(...), which used to discard the completed endurance report.
+    samples = $samples.ToArray()
     error = $failure
     status = $status
 }
