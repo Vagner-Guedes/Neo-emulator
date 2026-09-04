@@ -6,6 +6,32 @@
 **Tag Chromium alvo:** `119.0.6045.193`
 **Commit da tag:** `baf84c2d246a45577b7ddd2b8d8d2e2cf36e12e2`
 
+## Evidence update — continuous stability gate — 2026-09-04
+
+The provisional statement later in this document that the 600-second gate was
+pending is superseded by the continuous run recorded in
+`reports/webview-integration-119-stability-600s.json`.
+
+| Gate | Result |
+|---|---|
+| Continuous stability window | PASS — 600 seconds, 120 samples |
+| QEMU process / ADB / boot | PASS — 0 failure samples |
+| NeoNews process | PASS — PID remained `3423` in every sample |
+| `TerminalActivity` foreground | PASS — 0 focus failures |
+| Restart cycles | PASS — 3 cycles completed before the continuous window |
+| Logcat fatal crash indicators | PASS — no fatal exception, linker failure, native signal or ANR |
+
+The filtered logcat still contains known Android-x86/Chromium compatibility
+warnings: Houdini initialization is successful, while Chromium reports a
+missing variations seed and Android API 25 reports unavailable optional
+WebView classes (`PacProcessor` and `WebViewRenderProcessClient`). These
+warnings were retained in
+`reports/webview-integration-119-stability-600s.logcat-filtered.txt`.
+
+This gate does not by itself change the overall release decision to production;
+the remaining media/HLS, recovery, kiosk/watchdog, startup, packaging and
+zero-touch gates must still be completed.
+
 ## Resultado anterior (baseline do guest)
 
 | Campo | Resultado |
