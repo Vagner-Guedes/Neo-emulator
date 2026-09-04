@@ -609,7 +609,12 @@ public sealed class AdbService
         var hostAfterSet = DateTimeOffset.Now;
         var hostEpoch = hostAfterSet.ToUnixTimeSeconds();
         var skewSeconds = guestEpoch - hostEpoch;
-        var guestTimezone = await GetPropertyAsync("persist.sys.timezone", cancellationToken);
+        var guestTimezoneResult = await ExecuteClockCommandAsync(
+            ["getprop", "persist.sys.timezone"],
+            TimeSpan.FromSeconds(10),
+            cancellationToken,
+            "getprop persist.sys.timezone");
+        var guestTimezone = guestTimezoneResult.StandardOutput.Trim();
         var allowedSkew = Math.Max(0, maxSkewSeconds);
         var validated = guestTimezone.Equals(configuredTimezone, StringComparison.OrdinalIgnoreCase) &&
                         Math.Abs(skewSeconds) <= allowedSkew;
