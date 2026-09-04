@@ -352,6 +352,7 @@ function Invoke-BootRun {
             $setupFlags.postRoot = [ordered]@{ globalWrite = Get-TextResult $postRootGlobal; secureWrite = Get-TextResult $postRootSecure }
             $clockEvidence = Sync-BootGuestClock -Serial $serial -ServerPort $adbServerPort -Timezone ([string]$config.runtime.timezone)
             if (-not $clockEvidence.validated) { throw "Relógio do guest não foi homologado: $($clockEvidence | ConvertTo-Json -Compress -Depth 8)" }
+            Start-Sleep -Seconds 10
             $pmResult = [ordered]@{ packages = Get-TextResult $pmPackages; androidPath = Get-TextResult $pmAndroid; ready = $pmPackages.ExitCode -eq 0 -and $pmPackages.Text -match '(?i)package:' -and $pmAndroid.ExitCode -eq 0 -and $pmAndroid.Text -match '(?i)package:' }
             $settingsGlobal = Get-TextResult $global
             $settingsSecure = Get-TextResult $secure
@@ -371,7 +372,7 @@ function Invoke-BootRun {
             $neoNews = [ordered]@{ packagePresent = $neoPath.ExitCode -eq 0 -and $neoPath.Text -match '(?i)package:'; primaryCpuAbi = $primaryCpuAbi; expectedAbi = 'armeabi-v7a'; activity = $launchActivity; launch = $null; stable60s = $null }
             if ($ValidateNeoNews -and $neoNews.packagePresent) {
                 $preLaunchStop = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'force-stop', $config.neonews.packageName) -ServerPort $adbServerPort
-                Start-Sleep -Seconds 3
+                Start-Sleep -Seconds 5
                 $launchResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'start', '-n', $launchActivity) -ServerPort $adbServerPort
                 $stable = Test-QemuBenchmarkStability -Process $started.Process -AdbPath $adbPath -Serial $serial -ActivityComponent $launchActivity -DurationSeconds 60 -PollSeconds 5 -ServerPort $adbServerPort
                 $neoNews.launch = [ordered]@{ result = Get-TextResult $launchResult; succeeded = ($launchResult.ExitCode -eq 0 -or $launchResult.Text -match '(?im)Starting: Intent') -and $launchResult.Text -notmatch '(?im)(^|[\r\n])\s*Error:|ActivityNotFound|does not exist|Unable to resolve Intent' }
