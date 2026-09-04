@@ -89,7 +89,7 @@ function Ensure-BootAdbRoot {
         [int]$ServerPort
     )
 
-    $rootRequest = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('root') -ServerPort $ServerPort
+    $rootRequest = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('root') -ServerPort $ServerPort
     $deadline = (Get-Date).AddSeconds(45)
     $state = $null
     do {
