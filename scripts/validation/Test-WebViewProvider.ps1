@@ -27,14 +27,29 @@ function Resolve-ConfiguredPath {
 
 function Invoke-AdbCommand {
     param([string[]]$Arguments)
-    $output = & $script:adbPath -P $script:adbServerPort @Arguments 2>&1
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $script:adbPath -P $script:adbServerPort @Arguments 2>&1)
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     return (($output | Out-String).Trim())
 }
 
 function Invoke-AdbResult {
     param([string[]]$Arguments)
-    $output = & $script:adbPath -P $script:adbServerPort @Arguments 2>&1
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $script:adbPath -P $script:adbServerPort @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    [pscustomobject]@{ ExitCode = $exitCode; Text = (($output | Out-String).Trim()) }
 }
 
 function Wait-ForBoot {

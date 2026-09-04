@@ -93,8 +93,20 @@ foreach ($baseName in $basePaths.Keys) {
 
 function Invoke-Adb {
     param([string[]]$Arguments)
-    $output = & $script:adbPath -P $script:adbServerPort @Arguments 2>&1
-    [pscustomobject]@{ ExitCode = $LASTEXITCODE; Text = (($output | Out-String).Trim()) }
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # ADB writes its daemon banner and expected transport diagnostics to
+        # stderr. Capture them without converting native stderr into a
+        # terminating PowerShell error; the real process exit code remains
+        # authoritative for each provisioning step.
+        $ErrorActionPreference = 'Continue'
+        $output = @(& $script:adbPath -P $script:adbServerPort @Arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    [pscustomobject]@{ ExitCode = $exitCode; Text = (($output | Out-String).Trim()) }
 }
 
 function Wait-ForBoot {

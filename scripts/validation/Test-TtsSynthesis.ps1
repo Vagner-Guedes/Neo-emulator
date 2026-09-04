@@ -149,11 +149,22 @@ if ($start.ExitCode -ne 0 -or $start.Text -match '(?i)Error:|Exception|does not 
 $deadline = (Get-Date).AddSeconds($SynthesisTimeoutSeconds)
 $probeResult = ''
 while ((Get-Date) -lt $deadline) {
-    $probeResult = (Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'cat', 'files/tts-result.txt')).Text
+    $probeRead = Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'cat', 'files/tts-result.txt')
+    $probeResult = $probeRead.Text
+    if ($probeRead.ExitCode -ne 0 -and $probeResult -match '(?i)Could not set capabilities|not debuggable|run-as:') {
+        # Android-x86 7.1 may reject run-as even for the local probe. The
+        # guest is intentionally rooted; read only the probe-owned evidence
+        # through the supported root shell path instead of treating that
+        # transport limitation as a failed RHVoice synthesis.
+        $probeResult = (Invoke-Adb @('-s', $Serial, 'shell', 'su', '0', 'cat', "/data/data/$probePackage/files/tts-result.txt")).Text
+    }
     if ($probeResult -match '^status=(ok|error)') { break }
     Start-Sleep -Seconds 1
 }
 $audioStat = Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'stat', '-c', '%s', 'files/tts.wav')
+if ($audioStat.ExitCode -ne 0 -and $audioStat.Text -match '(?i)Could not set capabilities|not debuggable|run-as:') {
+    $audioStat = Invoke-Adb @('-s', $Serial, 'shell', 'su', '0', 'stat', '-c', '%s', "/data/data/$probePackage/files/tts.wav")
+}
 $audioBytes = 0L
 if ($audioStat.ExitCode -eq 0 -and $audioStat.Text -match '(?m)^\s*(\d+)\s*$') {
     $audioBytes = [int64]$Matches[1]
@@ -161,7 +172,11 @@ if ($audioStat.ExitCode -eq 0 -and $audioStat.Text -match '(?m)^\s*(\d+)\s*$') {
     # Android-x86 7.1 images can expose different toybox/stat behavior;
     # retain a conservative ls fallback without treating a parse failure as
     # successful synthesis.
-    $audioListing = (Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'ls', '-l', 'files/tts.wav')).Text
+    $audioListingResult = Invoke-Adb @('-s', $Serial, 'shell', 'run-as', $probePackage, 'ls', '-l', 'files/tts.wav')
+    if ($audioListingResult.ExitCode -ne 0 -and $audioListingResult.Text -match '(?i)Could not set capabilities|not debuggable|run-as:') {
+        $audioListingResult = Invoke-Adb @('-s', $Serial, 'shell', 'su', '0', 'ls', '-l', "/data/data/$probePackage/files/tts.wav")
+    }
+    $audioListing = $audioListingResult.Text
     $audioSizeMatch = [regex]::Match($audioListing, '(?m)\s(\d+)\s+(?:\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}|tts\.wav)')
     if ($audioSizeMatch.Success) { $audioBytes = [int64]$audioSizeMatch.Groups[1].Value }
 }
