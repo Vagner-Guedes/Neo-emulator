@@ -239,11 +239,8 @@ function Get-ProcessObservation {
     param([string]$ExpectedPath, [string]$Name)
     $records = @()
     try {
-        $records = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.Name -ieq $Name -and (
-                ([string]$_.ExecutablePath).Equals($ExpectedPath, [StringComparison]::OrdinalIgnoreCase) -or
-                [string]$_.CommandLine -match [regex]::Escape($ExpectedPath)
-            )
+        $records = @(Get-Process -Name ([System.IO.Path]::GetFileNameWithoutExtension($Name)) -ErrorAction SilentlyContinue | Where-Object {
+            try { [string]$_.Path -eq $ExpectedPath } catch { $false }
         })
     }
     catch { $records = @() }
