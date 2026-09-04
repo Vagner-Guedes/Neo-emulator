@@ -600,9 +600,14 @@ function Test-QemuBenchmarkStability {
         $samples.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); processAlive = $processAlive; adbState = $adbState.Text; activityRunning = $activityRunning })
         if ((Get-Date) -lt $deadline) { Start-Sleep -Seconds ([math]::Max(1, $PollSeconds)) }
     } while ((Get-Date) -lt $deadline)
+    $unstableSampleCount = @($samples | Where-Object {
+        -not $_.processAlive -or
+        $_.adbState -notmatch '(?im)^device$' -or
+        -not $_.activityRunning
+    }).Count
     [ordered]@{
         durationSeconds = [math]::Max(0, $DurationSeconds)
-        samples = @($samples)
-        stable = @($samples | Where-Object { -not $_.processAlive -or $_.adbState -notmatch '(?im)^device$' -or -not $_.activityRunning }).Count -eq 0
+        samples = $samples.ToArray()
+        stable = [bool]($unstableSampleCount -eq 0)
     }
 }

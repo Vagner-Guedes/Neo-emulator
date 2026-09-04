@@ -38,3 +38,17 @@ does not approve the release.
 Shutdown negotiates QMP, confirms the positive response to `quit`, and never
 uses `adb emu kill`. The response reader skips asynchronous QMP events and
 accepts only the `return`/`error` message associated with each command.
+
+## Evidência atual — runtime WebView 119
+
+Em 04/09/2026, na cópia descartável publicada em
+`tmp/NeoNewsRuntime-CycleTest`, foram concluídos três ciclos com o qcow2
+`webview-integration-119.qcow2`: boot Android 7.1.2/API 25, ADB TCP privado
+`127.0.0.1:5556`, NeoNews presente, `primaryCpuAbi=armeabi-v7a`,
+`TerminalActivity` em primeiro plano por 60 segundos e desligamento QMP sem
+força em todos os ciclos. O relatório bruto foi
+`tmp/NeoNewsRuntime-CycleTest/reports/qemu-runtime-cycles-final.json`.
+
+O benchmark também reinicia apenas o daemon ADB privado na porta 5038 entre
+iterações. Isso evita que um serial TCP antigo permaneça `offline` depois de
+um shutdown do QEMU e não interfere no daemon ADB global da máquina.

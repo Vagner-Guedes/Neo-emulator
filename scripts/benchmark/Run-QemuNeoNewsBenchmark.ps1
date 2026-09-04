@@ -29,6 +29,14 @@ $serial = "$($config.android.adb.host):$($config.android.adb.hostPort)"
 $arguments = New-QemuBenchmarkArguments -Config $config -DiskPath $paths.Disk -RepositoryRoot $repositoryRoot
 $runs = @()
 for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
+    # QEMU can leave a TCP serial in the private ADB daemon's offline list
+    # for a short time after a QMP shutdown. Reset only the runtime-owned
+    # daemon before the next disposable cycle; never touch the host daemon
+    # on port 5037.
+    $null = Invoke-QemuBenchmarkAdbHost -AdbPath $paths.Adb -Arguments @('kill-server')
+    Start-Sleep -Milliseconds 500
+    $null = Invoke-QemuBenchmarkAdbHost -AdbPath $paths.Adb -Arguments @('start-server')
+    $null = Invoke-QemuBenchmarkAdbHost -AdbPath $paths.Adb -Arguments @('disconnect', $serial)
     $startedAt = Get-Date
     $process = $null
     $processId = $null
