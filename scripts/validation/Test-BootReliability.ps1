@@ -248,7 +248,7 @@ function Invoke-BootRun {
         $testConfig.android.qemu.showWindow = $false
         $testConfig.android.qemu.qmpPort = $qmpPort
         if ($CpuCoresOverride -gt 0) { $testConfig.android.qemu.cpuCores = $CpuCoresOverride }
-        if (-not [string]::IsNullOrWhiteSpace($CpuModelOverride)) { $testConfig.android.qemu.cpuModel = $CpuModelOverride.Trim() }
+        if (-not [string]::IsNullOrWhiteSpace($CpuModelOverride)) { $testConfig.android.qemu | Add-Member -NotePropertyName cpuModel -NotePropertyValue $CpuModelOverride.Trim() -Force }
     $testConfig.android.adb.hostPort = $adbHostPort
     $testConfig.android.adb.serverPort = $adbServerPort
     $arguments = New-QemuBenchmarkArguments -Config $testConfig -DiskPath $overlayPath -RepositoryRoot $RepositoryRoot -Acceleration $Acceleration
