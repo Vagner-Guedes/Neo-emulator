@@ -320,9 +320,6 @@ public sealed class RuntimeController : IAsyncDisposable
         });
     }
 
-    public Task ToggleKioskAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken = default) =>
-        _kiosk.IsActive ? ExitKioskAsync(cancellationToken) : EnterKioskAsync(progress, cancellationToken);
-
     public Task EnterKioskAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
         _intent.ClearUserStop();

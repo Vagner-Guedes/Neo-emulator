@@ -136,7 +136,7 @@ public partial class MainWindow : Window
         else if (_toggleFullscreenHotkey.IsHotKeyMessage(message, wParam, lParam))
         {
             handled = true;
-            _ = _controller.ToggleKioskAsync(null);
+            _ = _viewModel.ExecuteCommandAsync(_controller.IsKioskActive ? RuntimeCommand.ExitKiosk : RuntimeCommand.Kiosk);
         }
         else if (_hotkeyService.IsHotKeyMessage(message, wParam, lParam))
         {
