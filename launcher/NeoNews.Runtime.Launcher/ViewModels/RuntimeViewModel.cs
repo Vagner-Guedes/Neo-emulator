@@ -306,8 +306,10 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
         ProgressIndeterminate = true;
         try
         {
+            _controller.Logs.Info("launcher", "Coleta de diagnóstico iniciada.");
             var report = await _controller.CollectDiagnosticsAsync();
             Logs = $"Relatório salvo em:{Environment.NewLine}{report}{Environment.NewLine}{Environment.NewLine}{Logs}".Trim();
+            _controller.Logs.Info("launcher", $"Coleta de diagnóstico concluída: {report}.");
             await RefreshAsync();
         }
         catch (Exception exception) { ReportError(exception); }

@@ -95,6 +95,7 @@ public partial class App : System.Windows.Application
         {
             var command = RuntimeCommandParser.Parse([text]);
             if (_mainWindow is null) return;
+            _controller?.Logs.Info("launcher", $"Comando remoto recebido: {command} ({text}).");
             var operation = await Dispatcher.InvokeAsync(() => _mainWindow.ViewModel.ExecuteCommandAsync(command));
             if (command == RuntimeCommand.Diagnostics)
             {
@@ -102,6 +103,7 @@ public partial class App : System.Windows.Application
                 // --start finishes its UI refresh. Do not block the named-pipe
                 // server on that operation, otherwise the endurance harness can
                 // never receive its first report.
+                _controller?.Logs.Info("launcher", "Diagnóstico remoto agendado para execução independente.");
                 _ = ObserveRemoteOperationAsync(operation, text);
                 return;
             }
