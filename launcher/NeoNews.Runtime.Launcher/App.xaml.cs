@@ -96,11 +96,29 @@ public partial class App : System.Windows.Application
             var command = RuntimeCommandParser.Parse([text]);
             if (_mainWindow is null) return;
             var operation = await Dispatcher.InvokeAsync(() => _mainWindow.ViewModel.ExecuteCommandAsync(command));
+            if (command == RuntimeCommand.Diagnostics)
+            {
+                // A diagnostic collection may wait for the controller gate while
+                // --start finishes its UI refresh. Do not block the named-pipe
+                // server on that operation, otherwise the endurance harness can
+                // never receive its first report.
+                _ = ObserveRemoteOperationAsync(operation, text);
+                return;
+            }
             await operation.ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             try { _controller?.Logs.Error("launcher", $"Falha ao processar comando remoto '{text}'.", exception); } catch { }
+        }
+    }
+
+    private async Task ObserveRemoteOperationAsync(Task operation, string text)
+    {
+        try { await operation.ConfigureAwait(false); }
+        catch (Exception exception)
+        {
+            try { _controller?.Logs.Error("launcher", $"Falha ao concluir comando remoto '{text}'.", exception); } catch { }
         }
     }
 
