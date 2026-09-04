@@ -551,7 +551,7 @@ catch {
 finally {
     if ($main -and -not $main.HasExited) {
         try { $null = Send-LauncherCommand '--exit' -TimeoutSeconds 15 } catch { }
-        try { $main.WaitForExit(30000) } catch { }
+        try { $null = $main.WaitForExit(30000) } catch { }
     }
 }
 
@@ -562,6 +562,8 @@ $allAttempts = @($sampleArray) + @($readinessArray)
 $sampleFailures = @($sampleArray | Where-Object { -not $_.effectiveStable })
 $transientProbeFailures = @($allAttempts | Where-Object { $_.failureClassification -eq 'TRANSIENT_PROBE_FAILURE' })
 $realRuntimeFailures = @($allAttempts | Where-Object { $_.failureClassification -eq 'REAL_RUNTIME_FAILURE' })
+$representativeReadinessAttempts = @($readinessArray | Select-Object -First 3) + @($readinessArray | Select-Object -Last 1)
+$representativeSamples = @($sampleArray | Select-Object -First 1) + @($sampleFailures | Select-Object -First 5) + @($sampleArray | Select-Object -Last 1)
 $runtimeEvidenceReady = @($evidence.GetEnumerator() | Where-Object { $_.Key -ne 'neoNewsContent' -and -not $_.Value.ready }).Count -eq 0
 $stableForDuration = $sampleArray.Count -gt 0 -and $observedSeconds -ge $DurationSeconds -and $sampleFailures.Count -eq 0
 $status = if ([string]::IsNullOrWhiteSpace($failure) -and $startCommandExitCode -eq 0 -and $runtimeEvidenceReady -and $stableForDuration) { 'validated' } else { 'not-validated' }
@@ -590,8 +592,10 @@ $result = [ordered]@{
     # Convert the generic List explicitly. PowerShell's ConvertTo-Json throws
     # "Os tipos de argumento não correspondem" when a List[object] is wrapped
     # directly in @(...), which used to discard the completed endurance report.
-    readinessAttempts = $readinessArray
-    samples = $sampleArray
+    # Keep the report bounded while retaining the first, last and failed
+    # observations. The aggregate counters above preserve the full gate.
+    readinessAttempts = $representativeReadinessAttempts
+    samples = $representativeSamples
     error = $failure
     status = $status
 }
