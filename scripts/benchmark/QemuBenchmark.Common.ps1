@@ -275,7 +275,9 @@ function Start-QemuBenchmarkProcess {
     $startInfo.FileName = $Executable
     $startInfo.WorkingDirectory = $WorkingDirectory
     $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
+    $showWindow = $Arguments -contains 'gtk'
+    $startInfo.CreateNoWindow = -not $showWindow
+    $startInfo.WindowStyle = if ($showWindow) { [System.Diagnostics.ProcessWindowStyle]::Normal } else { [System.Diagnostics.ProcessWindowStyle]::Hidden }
     # Windows PowerShell 5.1 runs on .NET Framework, whose
     # ProcessStartInfo has no ArgumentList property. The configured runtime
     # paths may contain spaces, so quote each argument for the Win32 parser.

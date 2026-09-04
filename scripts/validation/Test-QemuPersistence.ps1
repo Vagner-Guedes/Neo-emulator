@@ -2,7 +2,7 @@
 param(
     [string]$ConfigPath,
     [int]$BootTimeoutSeconds = 180,
-    [string]$GuestPath = '/sdcard/NeoNewsRuntime/persistence-marker.txt',
+    [string]$GuestPath = '/data/local/tmp/NeoNewsRuntime/persistence-marker.txt',
     [string]$ReportPath = 'reports/qemu-persistence.json'
 )
 
@@ -56,17 +56,27 @@ try {
     $firstProcess = Start-QemuBenchmarkProcess -Executable $paths.Qemu -Arguments $arguments -WorkingDirectory $repositoryRoot
     $firstBooted = Wait-QemuBenchmarkBoot -AdbPath $paths.Adb -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
     if (-not $firstBooted) { throw 'O primeiro boot não confirmou ADB e sys.boot_completed=1.' }
-    $directory = Split-Path -Parent $GuestPath -ErrorAction Stop
+    # Split-Path is Windows-aware and turns an Android path such as
+    # /sdcard/NeoNewsRuntime into a malformed host-style value. Keep the
+    # guest path in POSIX form before passing it to adb shell.
+    $lastSeparator = $GuestPath.LastIndexOf('/')
+    $directory = if ($lastSeparator -gt 0) { $GuestPath.Substring(0, $lastSeparator) } else { '/' }
     $mkdir = Invoke-QemuBenchmarkAdb -AdbPath $paths.Adb -Serial $serial -Arguments @('shell', 'mkdir', '-p', $directory)
     if ($mkdir.ExitCode -ne 0) { throw "Não foi possível preparar o diretório persistente: $($mkdir.Text)" }
-    $push = & $paths.Adb -P ([int]$config.android.adb.serverPort) -s $serial push $markerFile $GuestPath 2>&1
-    $pushCode = $LASTEXITCODE
-    if ($pushCode -ne 0) { throw "Não foi possível gravar o marcador no guest: $(($push | Out-String).Trim())" }
+    $push = Invoke-QemuBenchmarkAdb -AdbPath $paths.Adb -Serial $serial -Arguments @('push', $markerFile, $GuestPath)
+    if ($push.ExitCode -ne 0) { throw "Não foi possível gravar o marcador no guest: $($push.Text)" }
+    $sync = Invoke-QemuBenchmarkAdb -AdbPath $paths.Adb -Serial $serial -Arguments @('shell', 'sync')
+    if ($sync.ExitCode -ne 0) { throw "Não foi possível sincronizar o filesystem do guest: $($sync.Text)" }
     $firstStopResult = Stop-QemuBenchmarkProcess -Process $firstProcess -QmpPort ([int]$config.android.qemu.qmpPort) -TimeoutSeconds ([int]$config.timeouts.qemuShutdownSeconds)
     $firstStopped = $firstStopResult.Exited
     $firstProcess = $null
     if (-not $firstStopped) { throw 'O primeiro processo QEMU não encerrou.' }
 
+    # Let the host-forwarded ADB socket close and discard the old TCP
+    # transport before starting the second QEMU instance. Otherwise adb can
+    # keep reporting the first guest while the new forward is being created.
+    Start-Sleep -Seconds 3
+    $null = Invoke-QemuBenchmarkAdbHost -AdbPath $paths.Adb -Arguments @('disconnect', $serial)
     $secondProcess = Start-QemuBenchmarkProcess -Executable $paths.Qemu -Arguments $arguments -WorkingDirectory $repositoryRoot
     $secondBooted = Wait-QemuBenchmarkBoot -AdbPath $paths.Adb -Serial $serial -TimeoutSeconds $BootTimeoutSeconds
     if ($secondBooted) { $readBack = (Invoke-QemuBenchmarkAdb -AdbPath $paths.Adb -Serial $serial -Arguments @('shell', 'cat', $GuestPath)).Text }
@@ -105,6 +115,8 @@ $result = [ordered]@{
     secondQmpQuitResponseSucceeded = $secondStopResult.QmpQuitResponseSucceeded
     secondForcedKill = $secondStopResult.ForcedKill
     secondQmpDetail = $secondStopResult.QmpDetail
+    markerValue = $markerValue
+    readBack = $readBack.Trim()
     markerPersisted = $persisted
     status = if ($persisted -and $firstStopped -and $secondStopped -and $firstStopResult.QmpShutdownSucceeded -and $secondStopResult.QmpShutdownSucceeded) { 'validated' } else { 'not-validated' }
 }
