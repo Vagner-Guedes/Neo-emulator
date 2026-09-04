@@ -93,9 +93,11 @@ function Ensure-BootAdbRoot {
     $rootRequest = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('root') -ServerPort $ServerPort -TimeoutSeconds 30
     $deadline = (Get-Date).AddSeconds(45)
     $state = $null
+    $consecutiveDeviceProbes = 0
     do {
         $state = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('get-state') -ServerPort $ServerPort
-        if ($state.Text -match '(?im)^device$') { break }
+        if ($state.Text -match '(?im)^device$') { $consecutiveDeviceProbes++ } else { $consecutiveDeviceProbes = 0 }
+        if ($consecutiveDeviceProbes -ge 3) { break }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
     $identity = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'id') -ServerPort $ServerPort
@@ -103,7 +105,8 @@ function Ensure-BootAdbRoot {
         request = Get-TextResult $rootRequest
         state = Get-TextResult $state
         identity = Get-TextResult $identity
-        ready = $state.Text -match '(?im)^device$' -and $identity.Text -match 'uid=0\(root\)'
+        consecutiveDeviceProbes = $consecutiveDeviceProbes
+        ready = $consecutiveDeviceProbes -ge 3 -and $state.Text -match '(?im)^device$' -and $identity.Text -match 'uid=0\(root\)'
     }
 }
 
