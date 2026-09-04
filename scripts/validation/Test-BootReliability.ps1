@@ -6,6 +6,7 @@ param(
     [int]$TimeoutSeconds = 240,
     [int]$ColdBootCount = 3,
     [int]$CpuCoresOverride = 0,
+    [string]$CpuModelOverride = '',
     [string]$ReportPath = 'reports/boot-diagnostics.json',
     [string]$WhpxReportPath = 'reports/whpx-diagnostics.json',
     [switch]$KeepOverlays
@@ -247,6 +248,7 @@ function Invoke-BootRun {
         $testConfig.android.qemu.showWindow = $false
         $testConfig.android.qemu.qmpPort = $qmpPort
         if ($CpuCoresOverride -gt 0) { $testConfig.android.qemu.cpuCores = $CpuCoresOverride }
+        if (-not [string]::IsNullOrWhiteSpace($CpuModelOverride)) { $testConfig.android.qemu.cpuModel = $CpuModelOverride.Trim() }
     $testConfig.android.adb.hostPort = $adbHostPort
     $testConfig.android.adb.serverPort = $adbServerPort
     $arguments = New-QemuBenchmarkArguments -Config $testConfig -DiskPath $overlayPath -RepositoryRoot $RepositoryRoot -Acceleration $Acceleration
@@ -384,6 +386,7 @@ function Invoke-BootRun {
         acceleration = $Acceleration
         iteration = $Iteration
         cpuCores = [int]$testConfig.android.qemu.cpuCores
+        cpuModel = if ($testConfig.android.qemu.cpuModel) { [string]$testConfig.android.qemu.cpuModel } else { $null }
         classification = $classification
         startedAt = $startedAt.ToString('o')
         completedAt = (Get-Date).ToUniversalTime().ToString('o')

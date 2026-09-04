@@ -253,6 +253,10 @@ function New-QemuBenchmarkArguments {
     $arguments.Add($qemuShareDirectory)
     $arguments.Add('-m')
     $arguments.Add([string]$effectiveMemoryMb)
+    if ($qemu.cpuModel) {
+        $arguments.Add('-cpu')
+        $arguments.Add([string]$qemu.cpuModel)
+    }
     $arguments.Add('-smp')
     $arguments.Add([string][math]::Max(1, [math]::Min([int]$qemu.cpuCores, [Environment]::ProcessorCount)))
     $arguments.Add('-drive')
