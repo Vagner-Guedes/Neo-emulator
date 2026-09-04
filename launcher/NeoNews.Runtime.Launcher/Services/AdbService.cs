@@ -158,14 +158,31 @@ public sealed class AdbService
             string.Equals(previousOwner.WorkingDirectory, _context.RootDirectory, StringComparison.OrdinalIgnoreCase) &&
             await IsPrivateServerListeningAsync(cancellationToken))
         {
-            // Windows ADB forks the daemon outside the launcher process. If a
-            // previous instance ended after QEMU shutdown, recover only the
-            // exact endpoint recorded for this same runtime bundle; unrelated
-            // listeners remain protected by HostPortGuard below.
-            _serverOwned = true;
-            _serverProcessId = previousOwner.ProcessId;
-            _logs.Info("adb", $"Servidor ADB privado recuperado por posse registrada: PID {previousOwner.ProcessId}; endpoint={ServerEndpoint}.");
-            return new ProcessResult(0, "servidor ADB privado recuperado", string.Empty, false, TimeSpan.Zero);
+            // A new launcher instance must not inherit a stale transport from
+            // a previous guest. Restart only the exact private server owned by
+            // this bundle; the global ADB endpoint remains out of scope.
+            _logs.Info("adb", $"Servidor ADB privado anterior encontrado por posse registrada: PID {previousOwner.ProcessId}; reiniciando endpoint={ServerEndpoint}.");
+            var resetResult = await _runner.RunAsync(
+                executable,
+                BuildArguments(["kill-server"]),
+                _context.RootDirectory,
+                "adb-server",
+                TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.AdbSeconds)),
+                cancellationToken,
+                false,
+                BuildEnvironment(),
+                _context.Config.HostIsolation.ClearHostToolEnvironment);
+            if (!resetResult.Succeeded)
+                throw new RuntimeOperationException(
+                    "Não foi possível reiniciar o servidor ADB privado.",
+                    $"Endpoint: {ServerEndpoint}; exit={resetResult.ExitCode}; stderr={resetResult.StandardError}; stdout={resetResult.StandardOutput}");
+
+            await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, previousOwner.ProcessId, cancellationToken);
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                if (!await IsPrivateServerListeningAsync(cancellationToken)) break;
+                await Task.Delay(100, cancellationToken);
+            }
         }
 
         HostPortGuard.EnsureAvailable(
