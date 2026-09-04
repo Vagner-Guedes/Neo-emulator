@@ -283,7 +283,7 @@ function Invoke-BootRun {
             }
             $logResult = Invoke-BoundedLogcat -Serial $serial -ServerPort $adbServerPort
             $logcat = $logResult.text
-            $classification = if ($ValidateNeoNews -and $neoNews.stable60s.stable -and $neoNews.primaryCpuAbi -eq 'armeabi-v7a') { 'BOOT_RELIABILITY_PASS' } else { 'BOOTED_GUEST_VALIDATION_INCOMPLETE' }
+            $classification = if ($ValidateNeoNews -and $neoNews.launch.succeeded -and $neoNews.stable60s.stable -and $neoNews.primaryCpuAbi -eq 'armeabi-v7a') { 'BOOT_RELIABILITY_PASS' } else { 'BOOTED_GUEST_VALIDATION_INCOMPLETE' }
             if ($Mode -eq 'Matrix' -and $Acceleration -eq 'tcg') { $classification = 'TCG_DIAGNOSTIC_BOOT' }
         }
         else {
