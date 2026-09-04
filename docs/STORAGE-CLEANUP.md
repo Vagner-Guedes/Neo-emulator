@@ -36,7 +36,7 @@ consolidados. Arquivos não rastreados do usuário (`.gclient`, `.tmp-network/`,
 ## Verificação pós-limpeza
 
 - SSD: `SAMSUNG MZALQ256HAJD-000L2`, status `OK`.
-- `C:` livre: `69,48 GB`.
+- `C:` livre: `75,51 GB` após a publicação final.
 - `E:` livre: `142,02 GB`.
 - QCOW2 grandes restantes no projeto: somente a imagem canônica e a imagem
   embutida na publicação vigente.

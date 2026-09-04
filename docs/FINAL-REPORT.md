@@ -126,6 +126,16 @@ caminho contendo espaços e o zero-touch em PC externo continuam pendentes.
 A publicação não contém APKs nas pastas `packages/` e mantém o disco
 persistente configurado como `runtime/android/neonews-runtime-v1.qcow2`.
 
+## Console técnico visível
+
+O runner de processos agora força `CreateNoWindow=true` para subprocessos e
+mantém stdout/stderr redirecionados para o log; `showWindow` controla somente
+a janela gráfica intencional do Android. PowerShell de diagnóstico também é
+iniciado com `WindowStyle Hidden`. O gate `NO_VISIBLE_CONSOLE_PASS` registrou
+9/9 contratos estáticos aprovados e observação real do diagnóstico no
+`dist/NeoNewsRuntime-current` sem janela de console. O gate permanece
+`pending-evidence` até a observação visual de todas as operações exigidas.
+
 ## Próximos passos obrigatórios
 
 1. Repetir o endurance em um único workspace temporário e investigar a origem das quedas ADB/backend antes de aceitar 600 s.
@@ -139,7 +149,7 @@ persistente configurado como `runtime/android/neonews-runtime-v1.qcow2`.
 Em 2026-09-04 foram removidos os conteúdos das cópias descartáveis já
 testadas em `tmp`, das publicações antigas em `dist`, das imagens QCOW2
 experimentais em `runtime/android` e das duas cópias de homologação em E:.
-O espaço livre medido após a limpeza é 69,48 GB em C: e 142,02 GB em E:.
+O espaço livre medido após a publicação final é 75,51 GB em C: e 142,02 GB em E:.
 O diretório
 `dist/NeoNewsRuntime-current`, o projeto canônico, o qcow2 raiz e
 `E:\NeoNewsRuntime-Archived-20260904` foram preservados. O executável ADB
