@@ -90,7 +90,7 @@ function Ensure-BootAdbRoot {
         [int]$ServerPort
     )
 
-    $rootRequest = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('root') -ServerPort $ServerPort
+    $rootRequest = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('root') -ServerPort $ServerPort -TimeoutSeconds 30
     $deadline = (Get-Date).AddSeconds(45)
     $state = $null
     do {
@@ -98,11 +98,31 @@ function Ensure-BootAdbRoot {
         if ($state.Text -match '(?im)^device$') { break }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
+    $identity = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'id') -ServerPort $ServerPort
     [ordered]@{
         request = Get-TextResult $rootRequest
         state = Get-TextResult $state
-        ready = $rootRequest.ExitCode -eq 0 -and $state.Text -match '(?im)^device$'
+        identity = Get-TextResult $identity
+        ready = $state.Text -match '(?im)^device$' -and $identity.Text -match 'uid=0\(root\)'
     }
+}
+
+function Wait-BootAdbSuccess {
+    param(
+        [string]$Serial,
+        [int]$ServerPort,
+        [string[]]$Arguments,
+        [int]$TimeoutSeconds = 60
+    )
+
+    $deadline = (Get-Date).AddSeconds([math]::Max(1, $TimeoutSeconds))
+    $last = $null
+    do {
+        $last = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments $Arguments -ServerPort $ServerPort
+        if ($last.ExitCode -eq 0 -and $last.Text -notmatch '(?i)Error while|NullPointerException|Operation not permitted|device offline') { return $last }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+    return $last
 }
 
 function Sync-BootGuestClock {
@@ -320,16 +340,16 @@ function Invoke-BootRun {
             $rootEvidence = Ensure-BootAdbRoot -Serial $serial -ServerPort $adbServerPort
             if (-not $rootEvidence.ready) { throw "ADB root não foi confirmado: $($rootEvidence | ConvertTo-Json -Compress -Depth 8)" }
             Start-Sleep -Seconds 5
+            $pmPackages = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'pm', 'list', 'packages')
+            $pmAndroid = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'pm', 'path', 'android')
+            $global = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'settings', 'list', 'global')
+            $secure = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'settings', 'list', 'secure')
             $postRootGlobal = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'global', 'device_provisioned', '1') -ServerPort $adbServerPort
             $postRootSecure = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'secure', 'user_setup_complete', '1') -ServerPort $adbServerPort
             $setupFlags.postRoot = [ordered]@{ globalWrite = Get-TextResult $postRootGlobal; secureWrite = Get-TextResult $postRootSecure }
             $clockEvidence = Sync-BootGuestClock -Serial $serial -ServerPort $adbServerPort -Timezone ([string]$config.runtime.timezone)
             if (-not $clockEvidence.validated) { throw "Relógio do guest não foi homologado: $($clockEvidence | ConvertTo-Json -Compress -Depth 8)" }
-            $pmPackages = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'list', 'packages') -ServerPort $adbServerPort
-            $pmAndroid = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'path', 'android') -ServerPort $adbServerPort
             $pmResult = [ordered]@{ packages = Get-TextResult $pmPackages; androidPath = Get-TextResult $pmAndroid; ready = $pmPackages.ExitCode -eq 0 -and $pmPackages.Text -match '(?i)package:' -and $pmAndroid.ExitCode -eq 0 -and $pmAndroid.Text -match '(?i)package:' }
-            $global = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'list', 'global') -ServerPort $adbServerPort
-            $secure = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'list', 'secure') -ServerPort $adbServerPort
             $settingsGlobal = Get-TextResult $global
             $settingsSecure = Get-TextResult $secure
             $settingsReady = $global.ExitCode -eq 0 -and $secure.ExitCode -eq 0 -and $global.Text -notmatch '(?i)error' -and $secure.Text -notmatch '(?i)error'
