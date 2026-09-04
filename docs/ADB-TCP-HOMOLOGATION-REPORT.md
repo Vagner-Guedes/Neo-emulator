@@ -156,6 +156,23 @@ com o mesmo comando QEMU, o mesmo artefato configurado e o mesmo `adb.exe` que
 o backend usa; a recompilação deve ser feita no ambiente de build antes da
 publicação do executável.
 
+## Evidencia adicional - recovery controlado - 2026-09-04
+
+Foi executado um teste independente na copia descartavel com WebView 119,
+usando somente o ADB privado `127.0.0.1:5038` e o guest `127.0.0.1:5556`.
+
+| Verificacao | Resultado |
+| --- | --- |
+| Guest boot antes da queda | PASS |
+| `adb disconnect 127.0.0.1:5556` | PASS |
+| Estado apos a queda | sem dispositivo (`not found`) |
+| `adb connect 127.0.0.1:5556` | PASS |
+| Estado apos reconnect | `device` |
+| Continuidade de rede | PASS - ping externo recebido |
+| Encerramento QEMU | PASS - QMP confirmado, sem forced kill |
+
+Evidencia completa: `reports/adb-recovery-final.json`.
+
 ## Rollback e limites
 
 O rollback é selecionar novamente o qcow2 original no `runtime.json` ou
