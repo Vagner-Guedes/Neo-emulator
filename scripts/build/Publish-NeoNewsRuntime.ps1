@@ -91,4 +91,61 @@ $targetStateDirectory = Join-Path $outputPath "runtime\state"
 if (Test-Path -LiteralPath $sourceStateDirectory) {
     Copy-Item -Path (Join-Path $sourceStateDirectory '*') -Destination $targetStateDirectory -Recurse -Force
 }
+
+# A provisioning state can contain evidence captured with absolute paths from
+# the build machine. Those paths are useful locally, but would make a portable
+# publication point back to this workstation. Normalize only the copied state
+# and keep the original repository state untouched.
+$publishedStatePath = Join-Path $targetStateDirectory "provisioning.json"
+if (Test-Path -LiteralPath $publishedStatePath) {
+    $publishedState = Get-Content -LiteralPath $publishedStatePath -Raw -Encoding utf8 | ConvertFrom-Json
+    $publishedRelativePaths = @{
+        qemu = [string]$runtimeConfig.android.qemu.executable
+        adb = (Join-Path ([string]$runtimeConfig.android.tooling.sdkRoot) ([string]$runtimeConfig.android.tooling.adbRelativePath)) -replace '\\', '/'
+        disk = [string]$runtimeConfig.android.qemu.disk
+        installerImage = [string]$runtimeConfig.android.qemu.androidImage
+        nativeBridge = [string]$runtimeConfig.android.provisioning.nativeBridgePackagePath
+        webView = [string]$runtimeConfig.android.provisioning.webViewPackagePath
+        tts = [string]$runtimeConfig.android.provisioning.ttsPackagePath
+        RHVoice = [string]$runtimeConfig.android.provisioning.ttsPackagePath
+    }
+
+    function Set-PublishedStateEntryPath {
+        param(
+            [AllowNull()][object]$Section,
+            [string]$EntryName,
+            [string]$RelativePath
+        )
+
+        if ($null -eq $Section -or [string]::IsNullOrWhiteSpace($RelativePath)) { return }
+        $directProperty = $Section.PSObject.Properties[$EntryName]
+        if ($null -ne $directProperty -and $null -ne $directProperty.Value) {
+            $entry = $directProperty.Value
+            if ($null -ne $entry.PSObject.Properties['path']) { $entry.path = $RelativePath }
+            return
+        }
+
+        if ($Section -is [System.Collections.IEnumerable] -and $Section -isnot [string]) {
+            foreach ($entry in $Section) {
+                $nameProperty = $entry.PSObject.Properties['name']
+                if ($null -eq $nameProperty) { $nameProperty = $entry.PSObject.Properties['key'] }
+                if ($null -eq $nameProperty) { $nameProperty = $entry.PSObject.Properties['id'] }
+                if ($null -ne $nameProperty -and [string]::Equals([string]$nameProperty.Value, $EntryName, [StringComparison]::OrdinalIgnoreCase)) {
+                    if ($null -ne $entry.PSObject.Properties['path']) { $entry.path = $RelativePath }
+                }
+            }
+        }
+    }
+
+    foreach ($sectionName in @('files', 'provenance')) {
+        $sectionProperty = $publishedState.PSObject.Properties[$sectionName]
+        if ($null -eq $sectionProperty) { continue }
+        foreach ($entryName in $publishedRelativePaths.Keys) {
+            Set-PublishedStateEntryPath -Section $sectionProperty.Value -EntryName $entryName -RelativePath $publishedRelativePaths[$entryName]
+        }
+    }
+
+    $publishedJson = $publishedState | ConvertTo-Json -Depth 12
+    [System.IO.File]::WriteAllText($publishedStatePath, $publishedJson, [System.Text.UTF8Encoding]::new($false))
+}
 Write-Host "NeoNewsRuntime publicado em $outputPath"
