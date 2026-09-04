@@ -266,6 +266,7 @@ function Invoke-BootRun {
     $setupFlags = $null
     $rootEvidence = $null
     $clockEvidence = $null
+    $preLaunchStop = $null
     $bootProperty = $null
     $pmResult = $null
     $settingsGlobal = $null
@@ -318,6 +319,10 @@ function Invoke-BootRun {
         if ($bootCompleted) {
             $rootEvidence = Ensure-BootAdbRoot -Serial $serial -ServerPort $adbServerPort
             if (-not $rootEvidence.ready) { throw "ADB root não foi confirmado: $($rootEvidence | ConvertTo-Json -Compress -Depth 8)" }
+            Start-Sleep -Seconds 5
+            $postRootGlobal = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'global', 'device_provisioned', '1') -ServerPort $adbServerPort
+            $postRootSecure = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'secure', 'user_setup_complete', '1') -ServerPort $adbServerPort
+            $setupFlags.postRoot = [ordered]@{ globalWrite = Get-TextResult $postRootGlobal; secureWrite = Get-TextResult $postRootSecure }
             $clockEvidence = Sync-BootGuestClock -Serial $serial -ServerPort $adbServerPort -Timezone ([string]$config.runtime.timezone)
             if (-not $clockEvidence.validated) { throw "Relógio do guest não foi homologado: $($clockEvidence | ConvertTo-Json -Compress -Depth 8)" }
             $pmPackages = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'list', 'packages') -ServerPort $adbServerPort
@@ -342,6 +347,8 @@ function Invoke-BootRun {
             $primaryCpuAbi = [regex]::Match($neoDump.Text, '(?im)primaryCpuAbi=([^\s\r\n]+)').Groups[1].Value
             $neoNews = [ordered]@{ packagePresent = $neoPath.ExitCode -eq 0 -and $neoPath.Text -match '(?i)package:'; primaryCpuAbi = $primaryCpuAbi; expectedAbi = 'armeabi-v7a'; activity = $launchActivity; launch = $null; stable60s = $null }
             if ($ValidateNeoNews -and $neoNews.packagePresent) {
+                $preLaunchStop = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'force-stop', $config.neonews.packageName) -ServerPort $adbServerPort
+                Start-Sleep -Seconds 3
                 $launchResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'start', '-n', $launchActivity) -ServerPort $adbServerPort
                 $stable = Test-QemuBenchmarkStability -Process $started.Process -AdbPath $adbPath -Serial $serial -ActivityComponent $launchActivity -DurationSeconds 60 -PollSeconds 5 -ServerPort $adbServerPort
                 $neoNews.launch = [ordered]@{ result = Get-TextResult $launchResult; succeeded = ($launchResult.ExitCode -eq 0 -or $launchResult.Text -match '(?im)Starting: Intent') -and $launchResult.Text -notmatch '(?im)(^|[\r\n])\s*Error:|ActivityNotFound|does not exist|Unable to resolve Intent' }
@@ -393,7 +400,7 @@ function Invoke-BootRun {
         qemu = [ordered]@{ executable = $qemuPath; processId = $processId; exitCode = $processExitCode; arguments = $arguments; stdoutPath = $stdoutPath; stderrPath = $stderrPath; qemuMatches = $qemuMatches; stop = $stop }
         adb = [ordered]@{ serverPort = $adbServerPort; serial = $serial; hostPort = $adbHostPort; firstAdbSeen = if ($firstAdbSeen) { $firstAdbSeen.ToString('o') } else { $null }; firstDeviceState = if ($firstDeviceState) { $firstDeviceState.ToString('o') } else { $null }; observations = $observations.ToArray() }
         boot = [ordered]@{ bootCompleted = if ($bootCompleted) { $bootCompleted.ToString('o') } else { $null }; sysBootCompleted = $bootProperty; consecutiveDeviceProbes = $deviceProbes; setupFlags = $setupFlags; packageManager = $pmResult; settingsGlobal = $settingsGlobal; settingsSecure = $settingsSecure; androidReady = [bool]($bootCompleted -and $deviceProbes -ge 3 -and $pmResult.ready -and $settingsGlobal.exitCode -eq 0 -and $settingsSecure.exitCode -eq 0) }
-        guest = [ordered]@{ root = $rootEvidence; clock = $clockEvidence; nativeBridgeProperty = if ($nativeBridge) { $nativeBridge.Text.Trim() } else { $null }; locale = if ($locale) { $locale.Text.Trim() } else { $null }; packages = $packageEvidence; neoNews = $neoNews }
+        guest = [ordered]@{ root = $rootEvidence; clock = $clockEvidence; setupAfterRoot = if ($setupFlags.postRoot) { $setupFlags.postRoot } else { $null }; preLaunchStop = if ($preLaunchStop) { Get-TextResult $preLaunchStop } else { $null }; nativeBridgeProperty = if ($nativeBridge) { $nativeBridge.Text.Trim() } else { $null }; locale = if ($locale) { $locale.Text.Trim() } else { $null }; packages = $packageEvidence; neoNews = $neoNews }
         logcat = [ordered]@{ result = $logResult; matches = $logMatches }
         overlay = [ordered]@{ path = $overlayPath; check = $overlayCheck }
     }
