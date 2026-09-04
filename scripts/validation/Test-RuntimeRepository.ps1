@@ -93,6 +93,11 @@ $requiredPaths = @(
     'launcher/NeoNews.Runtime.Launcher/Services/RuntimeIntentService.cs',
     'launcher/NeoNews.Runtime.Launcher/Services/RuntimePaths.cs',
     'launcher/NeoNews.Runtime.Launcher/Services/RuntimeSupervisorService.cs',
+    'installer/NeoNews.Runtime.Installer/NeoNews.Runtime.Installer.csproj',
+    'installer/NeoNews.Runtime.Installer/app.manifest',
+    'installer/NeoNews.Runtime.Installer/MainWindow.xaml',
+    'installer/NeoNews.Runtime.Installer/MainWindow.xaml.cs',
+    'scripts/build/Publish-NeoNewsInstaller.ps1',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })
@@ -107,6 +112,17 @@ $runtimeIntentPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launche
 $runtimeIntentSource = if (Test-Path -LiteralPath $runtimeIntentPath) { Get-Content -LiteralPath $runtimeIntentPath -Raw -Encoding utf8 } else { '' }
 $mainWindowPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\MainWindow.xaml.cs'
 $mainWindowSource = if (Test-Path -LiteralPath $mainWindowPath) { Get-Content -LiteralPath $mainWindowPath -Raw -Encoding utf8 } else { '' }
+$installerProjectPath = Join-Path $RepositoryRoot 'installer\NeoNews.Runtime.Installer\NeoNews.Runtime.Installer.csproj'
+$installerProjectSource = if (Test-Path -LiteralPath $installerProjectPath) { Get-Content -LiteralPath $installerProjectPath -Raw -Encoding utf8 } else { '' }
+$installerManifestPath = Join-Path $RepositoryRoot 'installer\NeoNews.Runtime.Installer\app.manifest'
+$installerManifestSource = if (Test-Path -LiteralPath $installerManifestPath) { Get-Content -LiteralPath $installerManifestPath -Raw -Encoding utf8 } else { '' }
+$installerSourcePaths = @(
+    (Join-Path $RepositoryRoot 'installer\NeoNews.Runtime.Installer\MainWindow.xaml.cs'),
+    (Join-Path $RepositoryRoot 'installer\NeoNews.Runtime.Installer\MainWindow.xaml')
+)
+$installerSource = (($installerSourcePaths | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { Get-Content -LiteralPath $_ -Raw -Encoding utf8 }) -join "`n")
+$installerPublishPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsInstaller.ps1'
+$installerPublishSource = if (Test-Path -LiteralPath $installerPublishPath) { Get-Content -LiteralPath $installerPublishPath -Raw -Encoding utf8 } else { '' }
 $runtimeConfigSource = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding utf8 } else { '' }
 $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRuntime.ps1'
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
@@ -212,6 +228,11 @@ $contractChecks = [ordered]@{
     autostartHonorsUserStopIntent = $runtimeControllerSource -match 'Autostart ignorado' -and $runtimeControllerSource -match 'USER_STOPPED_RUNTIME' -and $runtimeControllerSource -match 'ClearUserStop'
     operationalHotkeysAreConfigured = $runtimeConfigSource -match 'stopRuntimeHotkey' -and $runtimeConfigSource -match 'toggleFullscreenHotkey' -and $mainWindowSource -match 'StopRuntimeHotkey' -and $mainWindowSource -match 'ToggleFullscreenHotkey' -and $mainWindowSource -match '_stopRuntimeHotkey' -and $mainWindowSource -match '_toggleFullscreenHotkey'
     diagnosticsIncludesRuntimeIntent = $launcherSourceText -match 'recoverySuppressed' -and $launcherSourceText -match 'intentUpdatedAtUtc'
+    installerIsGraphicalWinExe = $installerProjectSource -match '<OutputType>WinExe</OutputType>' -and $installerProjectSource -match 'TargetFramework>net8.0-windows'
+    installerRequestsGraphicalUac = $installerManifestSource -match 'requestedExecutionLevel level="requireAdministrator"' -and $installerProjectSource -match 'ApplicationManifest'
+    installerCopiesPayloadWithoutShell = $installerSource -match 'File\.Copy\(file, target, true\)' -and $installerSource -notmatch 'UseShellExecute\s*=\s*true'
+    installerResolvesAdjacentPayload = $installerSource -match 'NeoNewsRuntime-current' -and $installerSource -match 'config.*runtime\.json' -and $installerSource -match 'PathsOverlap'
+    installerPublicationIsSeparateAndPinned = $installerPublishSource -match 'NeoNews\.Runtime\.Installer\.csproj' -and $installerPublishSource -match 'NeoNewsRuntime-Setup\.exe' -and $installerPublishSource -match 'PayloadDirectory'
     firstRunPersistsStateMachine = $launcherSourceText -match 'SetStageAsync' -and $launcherSourceText -match 'SetErrorAsync' -and $launcherSourceText -match 'SetReadinessAsync' -and $launcherSourceText -match 'NEONEWS_RUNTIME_VALIDATION'
     firstBootUsesSeparateTimeout = $runtimeConfigSource -match 'FirstBootSeconds' -and $runtimeControllerSource -match 'WaitForConfiguredBootAsync' -and $runtimeControllerSource -match 'PackageManagerReady'
     diagnosticsIncludesFirstRunState = $launcherSourceText -match 'packageManagerReady = provisioningState\.PackageManagerReady' -and $launcherSourceText -match 'localeValidated = provisioningState\.LocaleValidated' -and $launcherSourceText -match 'lastError = provisioningState\.LastError'

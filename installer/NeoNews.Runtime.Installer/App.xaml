@@ -1,0 +1,12 @@
+<Application x:Class="NeoNews.Runtime.Installer.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <SolidColorBrush x:Key="WindowBrush" Color="#07131D" />
+        <SolidColorBrush x:Key="PanelBrush" Color="#102431" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#F4FAFC" />
+        <SolidColorBrush x:Key="SecondaryBrush" Color="#A8BBC4" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#0C91B3" />
+    </Application.Resources>
+</Application>

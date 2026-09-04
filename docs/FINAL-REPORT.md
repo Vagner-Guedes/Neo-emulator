@@ -42,7 +42,8 @@ estabilidade contínua.
 | Três ciclos QEMU | PASS observado | 3/3 ciclos, 60 s por ciclo, QMP confirmado e `forcedKill=false`. |
 | Persistência do qcow2 | PASS observado | Boot/reboot e marcador persistente confirmados em publicação de prova. |
 | Endurance integrado de 600 s | NOT VALIDATED | Primeira execução: 628,19 s/1 falha; retry: 625,03 s/2 falhas. |
-| Kiosk/watchdog/startup/tray | Parcial | Contratos e alguns smoke checks passaram; observação integral em PC limpo ainda não foi feita. |
+| Kiosk/watchdog/startup/tray | Parcial | Contratos, intenção persistente e alguns smoke checks passaram; observação integral em PC limpo ainda não foi feita. |
+| Instalador gráfico | Parcial | `NeoNewsRuntime-Setup.exe` WinExe com UAC e cópia de payload foi publicado localmente; instalação/upgrade em PC limpo ainda não foi observado. |
 | Superuser silencioso | Configuração PASS | `notification=false` persistido; nova prova visual de ausência do toast ainda pendente. |
 | Isolamento do host | PASS estático | Ferramentas empacotadas, ADB privado, QMP privado e ownership por processo. |
 | PC Windows novo / zero-touch | NOT RUN | Exige computador externo limpo. |

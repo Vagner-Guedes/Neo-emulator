@@ -156,6 +156,22 @@ com `UserStoppedRuntime`; o autostart e o Guardian respeitam esse marcador e
 nao reconectam ADB, reiniciam QEMU ou relancam a activity ate que uma acao
 explicita de iniciar/reiniciar limpe a intencao.
 
+## Instalador grafico
+
+Depois de publicar o runtime, gere o instalador com:
+
+```powershell
+.\scripts\build\Publish-NeoNewsInstaller.ps1 `
+  -PayloadDirectory .\dist\NeoNewsRuntime-current `
+  -OutputDirectory .\dist\installer
+```
+
+O resultado e `dist/installer/NeoNewsRuntime-Setup.exe`. Ele solicita UAC por
+janela grafica e instala o payload ao lado em `C:\ProgramData\NeoNewsRuntime`
+por padrao. Para uma distribuicao transportavel, entregue a pasta
+`NeoNewsRuntime-current` junto com o instalador ou use `--payload="..."`.
+Nenhum payload adicional e copiado para dentro do executavel do instalador.
+
 ## Checklist manual de zero-console
 
 1. Publique em `dist/NeoNewsRuntime`.

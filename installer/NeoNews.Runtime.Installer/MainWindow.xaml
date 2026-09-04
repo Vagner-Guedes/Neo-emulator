@@ -1,0 +1,38 @@
+<Window x:Class="NeoNews.Runtime.Installer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="NeoNews Runtime Setup"
+        Width="760"
+        Height="500"
+        MinWidth="680"
+        MinHeight="440"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource WindowBrush}"
+        Foreground="{StaticResource PrimaryBrush}">
+    <Grid Margin="34">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="NeoNews Runtime" FontSize="30" FontWeight="SemiBold" />
+        <TextBlock Grid.Row="1" Margin="0,8,0,24" Text="Instalacao e atualizacao do runtime Android dedicado." FontSize="15" Foreground="{StaticResource SecondaryBrush}" />
+        <Border Grid.Row="2" Padding="22" Background="{StaticResource PanelBrush}" CornerRadius="10">
+            <StackPanel>
+                <TextBlock Text="Destino da instalacao" FontSize="15" FontWeight="SemiBold" />
+                <TextBox x:Name="DestinationBox" Margin="0,10,0,18" Height="34" Padding="9" FontSize="14" />
+                <TextBlock Text="O instalador usa somente o payload ao lado desta pasta. Arquivos existentes sao atualizados sem remover dados do runtime." TextWrapping="Wrap" Foreground="{StaticResource SecondaryBrush}" />
+                <TextBlock x:Name="PayloadLabel" Margin="0,18,0,0" TextWrapping="Wrap" Foreground="{StaticResource SecondaryBrush}" />
+                <ProgressBar x:Name="InstallProgress" Margin="0,22,0,0" Height="12" Minimum="0" Maximum="100" />
+                <TextBlock x:Name="StatusLabel" Margin="0,10,0,0" Text="Pronto para instalar." Foreground="{StaticResource SecondaryBrush}" />
+            </StackPanel>
+        </Border>
+        <TextBlock Grid.Row="3" Margin="0,18,0,14" Text="A elevacao e solicitada pelo Windows de forma grafica." Foreground="{StaticResource SecondaryBrush}" />
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="InstallButton" Width="140" Height="36" Margin="0,0,10,0" Content="Instalar" Click="Install_Click" />
+            <Button x:Name="CloseButton" Width="140" Height="36" Content="Concluir" Click="Close_Click" IsEnabled="False" />
+        </StackPanel>
+    </Grid>
+</Window>
