@@ -1,5 +1,7 @@
 using System.IO.Compression;
 using System.Globalization;
+using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 using NeoNews.Runtime.Launcher.Models;
 
@@ -11,7 +13,8 @@ public sealed class AdbService
     private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
     private readonly SemaphoreSlim _serverGate = new(1, 1);
-    private ManagedProcess? _serverProcess;
+    private bool _serverOwned;
+    private int? _serverProcessId;
     private AdbRuntimeState _state = AdbRuntimeState.Disconnected;
     private AdbRuntimeState _lastLoggedState = AdbRuntimeState.Disconnected;
     private string _lastTransportDetail = "ADB ainda não foi executado.";
@@ -34,8 +37,7 @@ public sealed class AdbService
     {
         get
         {
-            try { return _serverProcess is { HasExited: false }; }
-            catch (InvalidOperationException) { return false; }
+            return _serverOwned;
         }
     }
 
@@ -99,7 +101,9 @@ public sealed class AdbService
 
     private async Task EnsureOwnedServerAsync(CancellationToken cancellationToken)
     {
-        if (_serverProcess is { HasExited: false }) return;
+        if (_serverOwned && await IsPrivateServerListeningAsync(cancellationToken)) return;
+        _serverOwned = false;
+        _serverProcessId = null;
         await StartServerAsync(cancellationToken);
     }
 
@@ -119,7 +123,7 @@ public sealed class AdbService
         try
         {
         var result = await StartOwnedServerAsync(cancellationToken);
-        RecordTransportResult($"nodaemon server {ServerEndpoint}", result);
+        RecordTransportResult($"start-server {ServerEndpoint}", result);
         if (!result.Succeeded)
         {
             SetState(AdbRuntimeState.Disconnected);
@@ -134,16 +138,11 @@ public sealed class AdbService
 
     private async Task<ProcessResult> StartOwnedServerAsync(CancellationToken cancellationToken)
     {
-        if (_serverProcess is { HasExited: false })
+        if (_serverOwned && await IsPrivateServerListeningAsync(cancellationToken))
             return new ProcessResult(0, "servidor ADB privado já ativo", string.Empty, false, TimeSpan.Zero);
 
-        if (_serverProcess is not null)
-        {
-            var staleProcessId = _serverProcess.ProcessId;
-            try { await _serverProcess.DisposeAsync(); } catch { }
-            try { await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, staleProcessId); } catch { }
-            _serverProcess = null;
-        }
+        _serverOwned = false;
+        _serverProcessId = null;
 
         var executable = AdbPath;
         if (!File.Exists(executable))
@@ -159,18 +158,41 @@ public sealed class AdbService
 
         try
         {
-            // `nodaemon server` keeps the private daemon owned by this
-            // launcher process. `start-server` could attach to an unrelated
-            // daemon already listening on the configured port.
-            _serverProcess = _runner.StartLongRunning(
+            // On Windows, `nodaemon server` forks a child and the process
+            // returned by ProcessStartInfo exits. Track ownership through the
+            // private endpoint so the child cannot look like a dead server.
+            var beforeProcessIds = GetAdbProcessIds(executable);
+            var result = await _runner.RunAsync(
                 executable,
-                ["-L", $"tcp:{ServerPort}", "nodaemon", "server"],
+                ["-L", $"tcp:{ServerPort}", "start-server"],
                 _context.RootDirectory,
                 "adb-server",
+                TimeSpan.FromSeconds(Math.Max(10, _context.Config.Timeouts.AdbSeconds)),
+                cancellationToken,
+                false,
                 BuildEnvironment(),
                 _context.Config.HostIsolation.ClearHostToolEnvironment);
 
-            var processId = _serverProcess.ProcessId;
+            if (!result.Succeeded) return result;
+
+            var listening = false;
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                if (await IsPrivateServerListeningAsync(cancellationToken))
+                {
+                    listening = true;
+                    break;
+                }
+                await Task.Delay(100, cancellationToken);
+            }
+            if (!listening)
+                throw new RuntimeOperationException(
+                    "O servidor ADB privado não abriu a porta configurada.",
+                    $"Executável: {executable}; endpoint: {ServerEndpoint}.");
+
+            _serverOwned = true;
+            _serverProcessId = FindNewAdbProcessId(executable, beforeProcessIds);
+            var processId = _serverProcessId ?? 0;
             await HostProcessOwnership.WriteAsync(
                 _context.AdbServerStatePath,
                 new HostProcessRecord(
@@ -184,23 +206,12 @@ public sealed class AdbService
                     ServerPort),
                 cancellationToken);
 
-            await Task.Delay(300, cancellationToken);
-            if (_serverProcess.HasExited)
-                throw new RuntimeOperationException(
-                    "O servidor ADB privado encerrou durante a inicialização.",
-                    $"Executável: {executable}; endpoint: {ServerEndpoint}.");
-
             return new ProcessResult(0, "servidor ADB privado ativo", string.Empty, false, TimeSpan.Zero);
         }
         catch
         {
-            if (_serverProcess is not null)
-            {
-                var processId = _serverProcess.ProcessId;
-                try { await _serverProcess.DisposeAsync(); } catch { }
-                try { await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, processId); } catch { }
-                _serverProcess = null;
-            }
+            _serverOwned = false;
+            _serverProcessId = null;
             SetState(AdbRuntimeState.Disconnected);
             throw;
         }
@@ -208,20 +219,78 @@ public sealed class AdbService
 
     public async Task StopServerAsync(CancellationToken cancellationToken = default)
     {
-        if (_serverProcess is null) return;
+        if (!_serverOwned) return;
 
-        var process = _serverProcess;
-        _serverProcess = null;
-        var processId = process.ProcessId;
+        _serverOwned = false;
+        var processId = _serverProcessId ?? 0;
+        _serverProcessId = null;
         try
         {
-            await process.StopAsync(TimeSpan.FromSeconds(5), cancellationToken);
+            var result = await _runner.RunAsync(
+                AdbPath,
+                BuildArguments(["kill-server"]),
+                _context.RootDirectory,
+                "adb-server",
+                TimeSpan.FromSeconds(Math.Max(5, _context.Config.Timeouts.AdbSeconds)),
+                cancellationToken,
+                false,
+                BuildEnvironment(),
+                _context.Config.HostIsolation.ClearHostToolEnvironment);
+            if (!result.Succeeded)
+                _logs.Warning("adb", $"O servidor ADB privado retornou falha ao encerrar: exit={result.ExitCode}; timeout={result.TimedOut}.");
         }
         finally
         {
-            await process.DisposeAsync();
             await HostProcessOwnership.ClearAsync(_context.AdbServerStatePath, processId, cancellationToken);
         }
+    }
+
+    private async Task<bool> IsPrivateServerListeningAsync(CancellationToken cancellationToken)
+    {
+        using var client = new TcpClient();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMilliseconds(600));
+        try
+        {
+            await client.ConnectAsync("127.0.0.1", ServerPort, timeout.Token);
+            return client.Connected;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }
+        catch (SocketException) { return false; }
+        catch (IOException) { return false; }
+    }
+
+    private static HashSet<int> GetAdbProcessIds(string executable)
+    {
+        var ids = new HashSet<int>();
+        foreach (var process in Process.GetProcessesByName("adb"))
+        {
+            try
+            {
+                if (string.Equals(process.MainModule?.FileName, executable, StringComparison.OrdinalIgnoreCase)) ids.Add(process.Id);
+            }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+            finally { process.Dispose(); }
+        }
+        return ids;
+    }
+
+    private static int? FindNewAdbProcessId(string executable, HashSet<int> beforeProcessIds)
+    {
+        foreach (var process in Process.GetProcessesByName("adb"))
+        {
+            try
+            {
+                if (!beforeProcessIds.Contains(process.Id) &&
+                    string.Equals(process.MainModule?.FileName, executable, StringComparison.OrdinalIgnoreCase))
+                    return process.Id;
+            }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+            finally { process.Dispose(); }
+        }
+        return null;
     }
 
     public async Task<bool> ConnectAsync(CancellationToken cancellationToken = default)
