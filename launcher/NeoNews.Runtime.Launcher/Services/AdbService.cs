@@ -716,25 +716,40 @@ public sealed class AdbService
 
     public async Task EnsureRootAsync(CancellationToken cancellationToken = default)
     {
-        var identity = await ShellAsync(["id"], TimeSpan.FromSeconds(10), cancellationToken);
-        if (identity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase)) return;
-
-        var result = await ExecuteAsync(["root"], TimeSpan.FromSeconds(20), cancellationToken);
-        if (!result.Succeeded && !result.StandardOutput.Contains("already running as root", StringComparison.OrdinalIgnoreCase))
+        var lastDetail = "Nenhuma tentativa foi concluída.";
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
-            throw new RuntimeOperationException(
-                "O guest Android não forneceu ADB root.",
-                $"adb root falhou: exit={result.ExitCode}; stdout={result.StandardOutput}; stderr={result.StandardError}");
+            var identityResult = await ExecuteAsync(["shell", "id"], TimeSpan.FromSeconds(10), cancellationToken, logOutput: false);
+            var identity = identityResult.StandardOutput.Trim();
+            if (identity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase)) return;
+
+            var result = await ExecuteAsync(["root"], TimeSpan.FromSeconds(20), cancellationToken);
+            var rootRequested = result.Succeeded || result.StandardOutput.Contains("already running as root", StringComparison.OrdinalIgnoreCase);
+            if (rootRequested)
+            {
+                var ready = await WaitForStateAsync("device", TimeSpan.FromSeconds(30), cancellationToken);
+                var rootIdentityResult = await ExecuteAsync(["shell", "id"], TimeSpan.FromSeconds(10), cancellationToken, logOutput: false);
+                var rootIdentity = rootIdentityResult.StandardOutput.Trim();
+                if (ready && rootIdentity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase)) return;
+                lastDetail = $"tentativa={attempt}; adb root solicitado; ready={ready}; identity={rootIdentity}; exit={rootIdentityResult.ExitCode}; stderr={rootIdentityResult.StandardError}";
+            }
+            else
+            {
+                lastDetail = $"tentativa={attempt}; adb root falhou; exit={result.ExitCode}; stdout={result.StandardOutput}; stderr={result.StandardError}; identity={identity}";
+            }
+
+            if (attempt < 3)
+            {
+                _logs.Warning("adb", $"ADB root ainda não foi confirmado ({attempt}/3); aguardando reconexão do guest.");
+                SetState(AdbRuntimeState.Offline);
+                await ConnectAsync(cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
         }
 
-        var ready = await WaitForStateAsync("device", TimeSpan.FromSeconds(30), cancellationToken);
-        var rootIdentity = await ShellAsync(["id"], TimeSpan.FromSeconds(10), cancellationToken);
-        if (!ready || !rootIdentity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new RuntimeOperationException(
-                "O guest Android não confirmou ADB root.",
-                "A configuração persistente do guest exige uid=0 para alterar /system e a política local do Superuser.");
-        }
+        throw new RuntimeOperationException(
+            "O guest Android não confirmou ADB root.",
+            $"A configuração persistente do guest exige uid=0 para alterar /system e a política local do Superuser. {lastDetail}");
     }
 
     private async Task ExecuteCheckedAsync(IEnumerable<string> arguments, TimeSpan timeout, CancellationToken cancellationToken, string operation)
