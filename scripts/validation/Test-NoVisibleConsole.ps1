@@ -107,51 +107,189 @@ function Get-ProcessTreeIds([int]$RootProcessId) {
     return @($ids)
 }
 
-if (-not ('NeoNews.NoVisibleConsoleProbe' -as [type])) {
+if (-not ('NoVisibleConsoleProbe' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public static class NoVisibleConsoleProbe
 {
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    private delegate void WinEventDelegate(IntPtr hook, uint eventType, IntPtr hWnd, int objectId, int childId, uint eventThread, uint eventTime);
+    private const uint EventObjectCreate = 0x8000;
+    private const uint EventObjectShow = 0x8002;
+    private const uint WineventOutOfContext = 0;
+    private const uint ObjidWindow = 0;
+    private const uint Th32csSnapprocess = 0x00000002;
+    private const uint WmQuit = 0x0012;
 
-    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint minEvent, uint maxEvent, IntPtr module, WinEventDelegate callback, uint processId, uint threadId, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hook);
+    [DllImport("user32.dll")] private static extern bool PostThreadMessage(uint threadId, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern int GetMessage(out NativeMessage message, IntPtr window, uint minFilter, uint maxFilter);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hWnd, StringBuilder className, int maxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder title, int maxCount);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry entry);
+    [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct NativeMessage
+    {
+        public IntPtr Window;
+        public uint Message;
+        public IntPtr WParam;
+        public IntPtr LParam;
+        public uint Time;
+        public NativePoint Point;
+    }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] private struct ProcessEntry
+    {
+        public uint Size;
+        public uint Usage;
+        public uint ProcessId;
+        public IntPtr DefaultHeap;
+        public uint ModuleId;
+        public uint Threads;
+        public uint ParentProcessId;
+        public int Priority;
+        public uint Flags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string ExeFile;
+    }
 
     public sealed class WindowRecord
     {
+        public string TimestampUtc { get; set; }
+        public string Event { get; set; }
         public int ProcessId { get; set; }
+        public int ParentProcessId { get; set; }
+        public string ProcessPath { get; set; }
         public long Handle { get; set; }
         public string ClassName { get; set; }
+        public string Title { get; set; }
+        public bool Visible { get; set; }
     }
 
-    public static List<WindowRecord> GetVisibleConsoleWindows(int[] processIds)
+    private static readonly object Sync = new object();
+    private static readonly List<WindowRecord> Events = new List<WindowRecord>();
+    private static readonly WinEventDelegate Callback = OnWinEvent;
+    private static readonly ManualResetEvent HookReady = new ManualResetEvent(false);
+    private static Thread HookThread;
+    private static uint HookThreadId;
+    private static bool StopRequested;
+    private static IntPtr CreateHook;
+    private static IntPtr ShowHook;
+
+    private static string ReadProcessPath(int processId)
     {
-        var allowed = new HashSet<int>(processIds ?? new int[0]);
-        var result = new List<WindowRecord>();
-        EnumWindows((hWnd, _) =>
+        try
         {
-            if (!IsWindowVisible(hWnd)) return true;
-            uint processId;
-            GetWindowThreadProcessId(hWnd, out processId);
-            if (!allowed.Contains((int)processId)) return true;
-            var className = new StringBuilder(256);
-            GetClassName(hWnd, className, className.Capacity);
-            var normalized = className.ToString();
-            if (normalized.IndexOf("console", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalized.IndexOf("cascadia", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                normalized.IndexOf("pseudoconsole", StringComparison.OrdinalIgnoreCase) >= 0)
+            using (var process = Process.GetProcessById(processId))
             {
-                result.Add(new WindowRecord { ProcessId = (int)processId, Handle = hWnd.ToInt64(), ClassName = normalized });
+                return process.MainModule == null ? string.Empty : process.MainModule.FileName;
             }
-            return true;
-        }, IntPtr.Zero);
-        return result;
+        }
+        catch { return string.Empty; }
+    }
+
+    private static int ReadParentProcessId(int processId)
+    {
+        var snapshot = CreateToolhelp32Snapshot(Th32csSnapprocess, 0);
+        if (snapshot == IntPtr.Zero || snapshot.ToInt64() == -1) return 0;
+        try
+        {
+            var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf(typeof(ProcessEntry)) };
+            if (!Process32First(snapshot, ref entry)) return 0;
+            do
+            {
+                if (entry.ProcessId == (uint)processId) return (int)entry.ParentProcessId;
+            } while (Process32Next(snapshot, ref entry));
+            return 0;
+        }
+        finally { CloseHandle(snapshot); }
+    }
+
+    private static bool IsTechnicalClass(string className)
+    {
+        return className.IndexOf("console", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            className.IndexOf("cascadia", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            className.IndexOf("pseudoconsole", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static void OnWinEvent(IntPtr hook, uint eventType, IntPtr hWnd, int objectId, int childId, uint eventThread, uint eventTime)
+    {
+        if (hWnd == IntPtr.Zero || objectId != (int)ObjidWindow || childId != 0) return;
+        var className = new StringBuilder(256);
+        GetClassName(hWnd, className, className.Capacity);
+        var normalizedClass = className.ToString();
+        if (!IsTechnicalClass(normalizedClass)) return;
+        uint processId;
+        GetWindowThreadProcessId(hWnd, out processId);
+        var title = new StringBuilder(512);
+        GetWindowText(hWnd, title, title.Capacity);
+        lock (Sync)
+        {
+            Events.Add(new WindowRecord
+            {
+                TimestampUtc = DateTime.UtcNow.ToString("o"),
+                Event = eventType == EventObjectCreate ? "EVENT_OBJECT_CREATE" : "EVENT_OBJECT_SHOW",
+                ProcessId = (int)processId,
+                ParentProcessId = ReadParentProcessId((int)processId),
+                ProcessPath = ReadProcessPath((int)processId),
+                Handle = hWnd.ToInt64(),
+                ClassName = normalizedClass,
+                Title = title.ToString(),
+                Visible = IsWindowVisible(hWnd)
+            });
+        }
+    }
+
+    private static void HookThreadProc()
+    {
+        HookThreadId = GetCurrentThreadId();
+        CreateHook = SetWinEventHook(EventObjectCreate, EventObjectCreate, IntPtr.Zero, Callback, 0, 0, WineventOutOfContext);
+        ShowHook = SetWinEventHook(EventObjectShow, EventObjectShow, IntPtr.Zero, Callback, 0, 0, WineventOutOfContext);
+        HookReady.Set();
+        NativeMessage message;
+        while (!StopRequested && GetMessage(out message, IntPtr.Zero, 0, 0) > 0) { }
+        if (CreateHook != IntPtr.Zero) UnhookWinEvent(CreateHook);
+        if (ShowHook != IntPtr.Zero) UnhookWinEvent(ShowHook);
+        CreateHook = IntPtr.Zero;
+        ShowHook = IntPtr.Zero;
+    }
+
+    public static bool StartWinEventMonitor()
+    {
+        lock (Sync)
+        {
+            Events.Clear();
+            StopRequested = false;
+            HookReady.Reset();
+            HookThread = new Thread(HookThreadProc);
+            HookThread.IsBackground = true;
+            HookThread.Start();
+        }
+        if (!HookReady.WaitOne(3000)) return false;
+        return CreateHook != IntPtr.Zero && ShowHook != IntPtr.Zero;
+    }
+
+    public static List<WindowRecord> StopWinEventMonitor()
+    {
+        lock (Sync) { StopRequested = true; }
+        if (HookThread != null)
+        {
+            PostThreadMessage(HookThreadId, WmQuit, IntPtr.Zero, IntPtr.Zero);
+            HookThread.Join(3000);
+            HookThread = null;
+        }
+        lock (Sync) { return new List<WindowRecord>(Events); }
     }
 }
 '@
@@ -163,7 +301,9 @@ $runtimeObservation = [ordered]@{
     executable = $null
     exitCode = $null
     processFinished = $false
-    visibleConsoleWindows = @()
+    eventMonitor = 'SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_SHOW)'
+    eventMonitorStarted = $false
+    observedTechnicalWindows = @()
     detail = 'Observação real não executada; forneça -ObserveLauncher e as evidências manuais após observar o produto publicado.'
 }
 
@@ -189,34 +329,81 @@ if ($ObserveLauncher) {
         $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
         $process = [System.Diagnostics.Process]::new()
         $process.StartInfo = $startInfo
+        $eventMonitorAttempted = $false
+        $eventMonitorStarted = $false
+        $eventMonitorStopped = $false
+        $eventRecords = @()
+        $observedProcessIds = New-Object 'System.Collections.Generic.HashSet[int]'
+        $scenarioStart = [DateTimeOffset]::UtcNow
         try {
+            $eventMonitorAttempted = $true
+            $eventMonitorStarted = [NoVisibleConsoleProbe]::StartWinEventMonitor()
+            $runtimeObservation.eventMonitorStarted = $eventMonitorStarted
             $null = $process.Start()
             $deadline = (Get-Date).AddSeconds(45)
-            $windows = @()
+            [void]$observedProcessIds.Add($process.Id)
             while (-not $process.HasExited -and (Get-Date) -lt $deadline) {
                 $ids = @(Get-ProcessTreeIds $process.Id)
-                $windows = @([NoVisibleConsoleProbe]::GetVisibleConsoleWindows([int[]]$ids))
-                if ($windows.Count -gt 0) { break }
-                Start-Sleep -Milliseconds 250
+                foreach ($id in $ids) { [void]$observedProcessIds.Add([int]$id) }
+                Start-Sleep -Milliseconds 50
             }
-            if (-not $process.HasExited -and $windows.Count -eq 0) {
+            if (-not $process.HasExited) {
                 try { $process.Kill() } catch { }
             }
+            if ($eventMonitorStarted) {
+                $eventRecords = @([NoVisibleConsoleProbe]::StopWinEventMonitor())
+                $eventMonitorStopped = $true
+            }
+            $operationRoot = Split-Path -Parent $ExecutablePath
+            $ownedEvents = @($eventRecords | Where-Object {
+                $path = [string]$_.ProcessPath
+                $observedProcessIds.Contains([int]$_.ProcessId) -or
+                    $observedProcessIds.Contains([int]$_.ParentProcessId) -or
+                    (-not [string]::IsNullOrWhiteSpace($path) -and $path.StartsWith($operationRoot, [StringComparison]::OrdinalIgnoreCase))
+            })
+            $scenarioEnd = [DateTimeOffset]::UtcNow
             if ($process.HasExited) { $runtimeObservation.exitCode = $process.ExitCode }
             $runtimeObservation.processFinished = $process.HasExited
-            $runtimeObservation.visibleConsoleWindows = $windows
-            $runtimeObservation.status = if ($process.HasExited -and $process.ExitCode -eq 0 -and $windows.Count -eq 0) { 'passed' } else { 'failed' }
-            $runtimeObservation.detail = if ($runtimeObservation.status -eq 'passed') { 'Diagnóstico do launcher publicado encerrou sem janela de console visível.' } else { 'A observação encontrou timeout, código de saída diferente de zero ou janela de console.' }
+            $runtimeObservation.observedTechnicalWindows = $ownedEvents
+            $runtimeObservation.allTechnicalWindowEvents = $eventRecords
+            $runtimeObservation.startTime = $scenarioStart.ToString('o')
+            $runtimeObservation.endTime = $scenarioEnd.ToString('o')
+            $runtimeObservation.status = if ($eventMonitorStarted -and $process.HasExited -and $process.ExitCode -eq 0 -and $ownedEvents.Count -eq 0) { 'passed' } else { 'failed' }
+            $runtimeObservation.detail = if ($runtimeObservation.status -eq 'passed') { 'Diagnóstico do launcher publicado encerrou sem janela de console visível; a detecção usou eventos Win32.' } else { 'A observação encontrou falha do hook, timeout, código de saída diferente de zero ou janela técnica.' }
         } finally {
+            if ($eventMonitorAttempted -and -not $eventMonitorStopped) {
+                try { $eventRecords = @([NoVisibleConsoleProbe]::StopWinEventMonitor()) } catch { }
+            }
             $process.Dispose()
         }
     }
 }
 
 $staticPassed = @($staticChecks.Values | Where-Object { -not [bool]$_ }).Count -eq 0
-$manualPassed = $manualMissing.Count -eq 0
 $observationPassed = $runtimeObservation.status -eq 'passed'
-$status = if ($staticPassed -and $manualPassed -and $observationPassed) { 'validated' } elseif (-not $manualPassed -or $runtimeObservation.status -eq 'not-run') { 'pending-evidence' } else { 'not-validated' }
+$manualScenarioNames = @('installation','firstBoot','startup','runtime','qemu','adb','guardianRecovery','neoNewsRestart','update','f11','f12','uninstallOrUpgrade')
+$scenarios = @([ordered]@{
+    Scenario = 'launcher-diagnostics'
+    StartTime = $runtimeObservation.startTime
+    EndTime = $runtimeObservation.endTime
+    ObservedTechnicalWindows = @($runtimeObservation.observedTechnicalWindows)
+    Status = if ($observationPassed) { 'PASS' } else { [string]$runtimeObservation.status }
+    Evidence = 'event-monitor'
+})
+foreach ($scenarioName in $manualScenarioNames) {
+    $declared = [bool]$manualEvidence[$scenarioName]
+    $notApplicable = $scenarioName -eq 'uninstallOrUpgrade' -and [bool]$UninstallUpgradeNotApplicable
+    $scenarios += [ordered]@{
+        Scenario = $scenarioName
+        StartTime = $null
+        EndTime = $null
+        ObservedTechnicalWindows = @()
+        Status = if ($notApplicable) { 'NOT_APPLICABLE' } elseif ($declared) { 'MANUAL_ONLY_NOT_VALIDATED' } else { 'NOT_RUN' }
+        Evidence = if ($declared) { 'MANUAL_VISUAL_EVIDENCE — requires scenario event capture before PASS' } else { 'event-monitor-observation-required' }
+    }
+}
+$allScenariosPassed = @($scenarios | Where-Object { $_.Status -ne 'PASS' -and $_.Status -ne 'NOT_APPLICABLE' }).Count -eq 0
+$status = if ($staticPassed -and $allScenariosPassed) { 'validated' } elseif ($manualMissing.Count -gt 0 -or $runtimeObservation.status -eq 'not-run' -or @($scenarios | Where-Object { $_.Status -eq 'MANUAL_ONLY_NOT_VALIDATED' }).Count -gt 0) { 'pending-evidence' } else { 'not-validated' }
 $result = [ordered]@{
     timestamp = [DateTimeOffset]::UtcNow.ToString('o')
     gate = 'NO_VISIBLE_CONSOLE_PASS'
@@ -224,6 +411,7 @@ $result = [ordered]@{
     staticChecks = $staticChecks
     startProcessViolations = $startProcessViolations
     runtimeObservation = $runtimeObservation
+    scenarios = $scenarios
     manualEvidence = $manualEvidence
     missingManualEvidence = $manualMissing
     criteria = 'Nenhum console técnico visível em instalação, boot, startup, runtime, QEMU, ADB, Guardian/recovery, restart, update, F11, F12 e uninstall/upgrade quando aplicável.'
