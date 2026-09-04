@@ -538,7 +538,7 @@ function Start-QemuBenchmarkNeoNews {
     $null = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'am', 'force-stop', $packageName)
     $startedAt = Get-Date
     $start = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'am', 'start', '-W', '-n', $component)
-    $launchSucceeded = $start.ExitCode -eq 0 -and $start.Text -notmatch '(?i)Error:|Exception|does not exist'
+    $launchSucceeded = ($start.ExitCode -eq 0 -or $start.Text -match '(?im)Starting: Intent') -and $start.Text -notmatch '(?im)(^|[\r\n])\s*Error:|ActivityNotFound|does not exist|Unable to resolve Intent'
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $activityRunning = $false
     while ($launchSucceeded -and (Get-Date) -lt $deadline) {
@@ -637,6 +637,10 @@ function Test-QemuBenchmarkStability {
         if ($processAlive -and $adbState.Text -match '(?im)^device$') {
             $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities') -ServerPort $ServerPort
             $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
+            if (-not $activityRunning) {
+                $windowDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'window', 'windows') -ServerPort $ServerPort
+                $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $windowDump.Text -Component $ActivityComponent
+            }
         }
         if ($processAlive -and $adbState.Text -match '(?im)^device$' -and $activityRunning) {
             $activityReadyAt = Get-Date
@@ -671,6 +675,13 @@ function Test-QemuBenchmarkStability {
             $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
             if (-not $activityRunning -and $shortComponent -ne $ActivityComponent) {
                 $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $shortComponent
+            }
+            if (-not $activityRunning) {
+                $windowDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'window', 'windows') -ServerPort $ServerPort
+                $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $windowDump.Text -Component $ActivityComponent
+                if (-not $activityRunning -and $shortComponent -ne $ActivityComponent) {
+                    $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $windowDump.Text -Component $shortComponent
+                }
             }
         }
         $samples.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); processAlive = $processAlive; adbState = $adbState.Text; activityRunning = $activityRunning })

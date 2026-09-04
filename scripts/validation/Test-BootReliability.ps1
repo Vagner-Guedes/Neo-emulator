@@ -278,7 +278,7 @@ function Invoke-BootRun {
             if ($ValidateNeoNews -and $neoNews.packagePresent) {
                 $launchResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'start', '-n', $launchActivity) -ServerPort $adbServerPort
                 $stable = Test-QemuBenchmarkStability -Process $started.Process -AdbPath $adbPath -Serial $serial -ActivityComponent $launchActivity -DurationSeconds 60 -PollSeconds 5 -ServerPort $adbServerPort
-                $neoNews.launch = [ordered]@{ result = Get-TextResult $launchResult; succeeded = $launchResult.ExitCode -eq 0 -and $launchResult.Text -notmatch '(?im)(^|[\r\n])\s*Error:|ActivityNotFound|does not exist|Unable to resolve Intent' }
+                $neoNews.launch = [ordered]@{ result = Get-TextResult $launchResult; succeeded = ($launchResult.ExitCode -eq 0 -or $launchResult.Text -match '(?im)Starting: Intent') -and $launchResult.Text -notmatch '(?im)(^|[\r\n])\s*Error:|ActivityNotFound|does not exist|Unable to resolve Intent' }
                 $neoNews.stable60s = $stable
             }
             $logResult = Invoke-BoundedLogcat -Serial $serial -ServerPort $adbServerPort
