@@ -76,7 +76,7 @@ public sealed class EmulatorService : IAndroidRuntimeBackend
             if (!emulator.ShowWindow) arguments.Add("-no-window");
 
             progress?.Report(new RuntimeProgress("Iniciando Android", $"AVD {_context.Config.Android.PreferredAvd}", 20));
-            _process = _runner.StartLongRunning(emulatorPath, arguments, _context.RootDirectory, "emulator");
+            _process = _runner.StartLongRunning(emulatorPath, arguments, _context.RootDirectory, "emulator", showWindow: emulator.ShowWindow);
             await Task.Delay(500, cancellationToken);
         }
         finally

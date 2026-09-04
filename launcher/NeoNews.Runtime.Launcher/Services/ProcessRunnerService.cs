@@ -109,9 +109,10 @@ public sealed class ProcessRunnerService
         string workingDirectory,
         string category,
         IReadOnlyDictionary<string, string?>? environment = null,
-        bool isolateEnvironment = true)
+        bool isolateEnvironment = true,
+        bool showWindow = false)
     {
-        var process = CreateProcess(executable, arguments, workingDirectory, environment, isolateEnvironment);
+        var process = CreateProcess(executable, arguments, workingDirectory, environment, isolateEnvironment, showWindow);
         var outputTask = ConsumeAsync(process.StandardOutput, category, false);
         var errorTask = ConsumeAsync(process.StandardError, category, true);
         _logs.Info("launcher", $"Processo iniciado: {executable} (PID {process.Id})");
@@ -177,15 +178,16 @@ public sealed class ProcessRunnerService
         IEnumerable<string> arguments,
         string workingDirectory,
         IReadOnlyDictionary<string, string?>? environment,
-        bool isolateEnvironment)
+        bool isolateEnvironment,
+        bool showWindow = false)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = executable,
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
+            CreateNoWindow = !showWindow,
+            WindowStyle = showWindow ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden,
             RedirectStandardOutput = true,
             RedirectStandardError = true
         };

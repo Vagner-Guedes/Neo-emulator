@@ -138,7 +138,11 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 "-serial", "none",
                 "-no-reboot",
                 "-vga", string.IsNullOrWhiteSpace(qemu.Gpu) ? "std" : qemu.Gpu,
-                "-display", qemu.ShowWindow ? "default" : "none"
+                // The bundled Windows QEMU build exposes its native window
+                // through GTK. `default` boots the guest but does not publish
+                // a discoverable top-level window, which prevents the kiosk
+                // service from applying its scoped fullscreen policy.
+                "-display", qemu.ShowWindow ? "gtk" : "none"
             };
 
             if (_context.Config.Android.Optimization.AudioOutput)
@@ -155,7 +159,8 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 arguments,
                 _context.RootDirectory,
                 "qemu",
-                isolateEnvironment: _context.Config.HostIsolation.ClearHostToolEnvironment);
+                isolateEnvironment: _context.Config.HostIsolation.ClearHostToolEnvironment,
+                showWindow: qemu.ShowWindow);
             await HostProcessOwnership.WriteAsync(
                 _context.HostProcessStatePath,
                 new HostProcessRecord(

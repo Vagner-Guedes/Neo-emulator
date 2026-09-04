@@ -179,7 +179,10 @@ function New-QemuBenchmarkArguments {
 
     $qemu = $Config.android.qemu
     $adb = $Config.android.adb
-    $display = if ([bool]$qemu.showWindow) { 'default' } else { 'none' }
+    # The bundled Windows QEMU build exposes the host window through GTK;
+    # keep benchmark launches equivalent to the production backend so kiosk
+    # and window-ownership measurements exercise the same display path.
+    $display = if ([bool]$qemu.showWindow) { 'gtk' } else { 'none' }
     $requestedMemoryMb = [math]::Max(512, [int]$qemu.memoryMb)
     $availableMemoryMb = 0
     $gcMemoryInfoMethod = [System.GC].GetMethod('GetGCMemoryInfo', [type[]]@())
