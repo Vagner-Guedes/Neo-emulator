@@ -312,7 +312,11 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
             _controller.Logs.Info("launcher", $"Coleta de diagnóstico concluída: {report}.");
             await RefreshAsync();
         }
-        catch (Exception exception) { ReportError(exception); }
+        catch (Exception exception)
+        {
+            _controller.Logs.Error("launcher", "Falha ao coletar diagnóstico.", exception);
+            ReportError(exception);
+        }
         finally
         {
             if (ownsBusyState) IsBusy = false;
