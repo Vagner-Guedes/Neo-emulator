@@ -83,6 +83,43 @@ function New-BootOverlay {
     if ($exitCode -ne 0) { throw "Não foi possível criar overlay descartável: exit=$exitCode; output=$(($raw | Out-String).Trim())" }
 }
 
+function Sync-BootGuestClock {
+    param(
+        [string]$Serial,
+        [int]$ServerPort,
+        [string]$Timezone
+    )
+
+    $hostBefore = [DateTimeOffset]::Now
+    $dateValue = $hostBefore.LocalDateTime.ToString('MMddHHmmyyyy.ss', [Globalization.CultureInfo]::InvariantCulture)
+    $timezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'setprop', 'persist.sys.timezone', $Timezone) -ServerPort $ServerPort
+    $autoTimeResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time', '0') -ServerPort $ServerPort
+    $autoZoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time_zone', '0') -ServerPort $ServerPort
+    $dateResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', $dateValue) -ServerPort $ServerPort
+    $guestEpochResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', '+%s') -ServerPort $ServerPort
+    $guestTimezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'getprop', 'persist.sys.timezone') -ServerPort $ServerPort
+    $hostAfter = [DateTimeOffset]::Now
+    $guestEpoch = $null
+    $parsedGuestEpoch = 0L
+    if ([long]::TryParse($guestEpochResult.Text.Trim(), [Globalization.NumberStyles]::Integer, [Globalization.CultureInfo]::InvariantCulture, [ref]$parsedGuestEpoch)) { $guestEpoch = $parsedGuestEpoch }
+    $skew = if ($null -ne $guestEpoch) { $guestEpoch - $hostAfter.ToUnixTimeSeconds() } else { $null }
+    [ordered]@{
+        timezone = $guestTimezoneResult.Text.Trim()
+        expectedTimezone = $Timezone
+        hostEpoch = $hostAfter.ToUnixTimeSeconds()
+        guestEpoch = $guestEpoch
+        skewSeconds = $skew
+        dateValue = $dateValue
+        commands = [ordered]@{
+            timezone = Get-TextResult $timezoneResult
+            autoTime = Get-TextResult $autoTimeResult
+            autoTimeZone = Get-TextResult $autoZoneResult
+            date = Get-TextResult $dateResult
+        }
+        validated = $timezoneResult.ExitCode -eq 0 -and $autoTimeResult.ExitCode -eq 0 -and $autoZoneResult.ExitCode -eq 0 -and $dateResult.ExitCode -eq 0 -and $guestTimezoneResult.Text.Trim().Equals($Timezone, [StringComparison]::OrdinalIgnoreCase) -and $null -ne $guestEpoch -and [math]::Abs([double]$skew) -le [int]$config.runtime.maxClockSkewSeconds
+    }
+}
+
 function Start-BootQemu {
     param([string[]]$Arguments, [string]$StdoutPath, [string]$StderrPath)
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -204,6 +241,7 @@ function Invoke-BootRun {
     $lastDeviceAt = $null
     $deviceProbes = 0
     $setupFlags = $null
+    $clockEvidence = $null
     $bootProperty = $null
     $pmResult = $null
     $settingsGlobal = $null
@@ -254,6 +292,8 @@ function Invoke-BootRun {
         }
 
         if ($bootCompleted) {
+            $clockEvidence = Sync-BootGuestClock -Serial $serial -ServerPort $adbServerPort -Timezone ([string]$config.runtime.timezone)
+            if (-not $clockEvidence.validated) { throw "Relógio do guest não foi homologado: $($clockEvidence | ConvertTo-Json -Compress -Depth 8)" }
             $pmPackages = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'list', 'packages') -ServerPort $adbServerPort
             $pmAndroid = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'path', 'android') -ServerPort $adbServerPort
             $pmResult = [ordered]@{ packages = Get-TextResult $pmPackages; androidPath = Get-TextResult $pmAndroid; ready = $pmPackages.ExitCode -eq 0 -and $pmPackages.Text -match '(?i)package:' -and $pmAndroid.ExitCode -eq 0 -and $pmAndroid.Text -match '(?i)package:' }
@@ -326,7 +366,7 @@ function Invoke-BootRun {
         qemu = [ordered]@{ executable = $qemuPath; processId = $processId; exitCode = $processExitCode; arguments = $arguments; stdoutPath = $stdoutPath; stderrPath = $stderrPath; qemuMatches = $qemuMatches; stop = $stop }
         adb = [ordered]@{ serverPort = $adbServerPort; serial = $serial; hostPort = $adbHostPort; firstAdbSeen = if ($firstAdbSeen) { $firstAdbSeen.ToString('o') } else { $null }; firstDeviceState = if ($firstDeviceState) { $firstDeviceState.ToString('o') } else { $null }; observations = $observations.ToArray() }
         boot = [ordered]@{ bootCompleted = if ($bootCompleted) { $bootCompleted.ToString('o') } else { $null }; sysBootCompleted = $bootProperty; consecutiveDeviceProbes = $deviceProbes; setupFlags = $setupFlags; packageManager = $pmResult; settingsGlobal = $settingsGlobal; settingsSecure = $settingsSecure; androidReady = [bool]($bootCompleted -and $deviceProbes -ge 3 -and $pmResult.ready -and $settingsGlobal.exitCode -eq 0 -and $settingsSecure.exitCode -eq 0) }
-        guest = [ordered]@{ nativeBridgeProperty = if ($nativeBridge) { $nativeBridge.Text.Trim() } else { $null }; locale = if ($locale) { $locale.Text.Trim() } else { $null }; packages = $packageEvidence; neoNews = $neoNews }
+        guest = [ordered]@{ clock = $clockEvidence; nativeBridgeProperty = if ($nativeBridge) { $nativeBridge.Text.Trim() } else { $null }; locale = if ($locale) { $locale.Text.Trim() } else { $null }; packages = $packageEvidence; neoNews = $neoNews }
         logcat = [ordered]@{ result = $logResult; matches = $logMatches }
         overlay = [ordered]@{ path = $overlayPath; check = $overlayCheck }
     }
@@ -353,7 +393,7 @@ else {
 $rootHashAfter = (Get-FileHash -LiteralPath $rootDisk -Algorithm SHA256).Hash
 $rootInfoAfter = Invoke-QemuImageJson -Command 'info' -ImagePath $rootDisk
 $rootCheckAfter = Invoke-QemuImageJson -Command 'check' -ImagePath $rootDisk
-$knownGood = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'runtime'), (Join-Path $RepositoryRoot 'dist') -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.qcow2', '.img', '.raw') -and $_.FullName -notmatch '(?i)neonews-runtime-v1\.qcow2$' } | Select-Object -ExpandProperty FullName)
+$knownGood = @(Get-ChildItem -LiteralPath (Join-Path $RepositoryRoot 'runtime'), (Join-Path $RepositoryRoot 'dist') -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.qcow2', '.raw') -and $_.FullName -notmatch '(?i)neonews-runtime-v1\.qcow2$' } | Select-Object -ExpandProperty FullName)
 $summary = if ($Mode -eq 'Matrix') {
     $whpxRun = $runs | Where-Object { $_.acceleration -eq 'whpx' } | Select-Object -First 1
     $tcgRun = $runs | Where-Object { $_.acceleration -eq 'tcg' } | Select-Object -First 1
