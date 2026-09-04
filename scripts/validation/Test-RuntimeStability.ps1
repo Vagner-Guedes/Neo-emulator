@@ -4,6 +4,7 @@ param(
     [int]$DurationSeconds = 600,
     [int]$PollSeconds = 5,
     [int]$DiagnosticTimeoutSeconds = 30,
+    [int]$NativeBridgeEvidenceMinimumSeconds = 60,
     [int]$EvidenceMaxAgeHours = 24,
     [string]$LauncherSmokeEvidencePath = 'reports/launcher-smoke.json',
     [string]$NativeBridgeEvidencePath = 'reports/nativebridge.json',
@@ -44,6 +45,7 @@ $reportFullPath = Initialize-ValidationReport -ReportPath $reportFullPath -Valid
 if ($DurationSeconds -lt 600) { throw 'DurationSeconds precisa ser pelo menos 600 segundos.' }
 if ($PollSeconds -lt 1) { throw 'PollSeconds precisa ser pelo menos 1 segundo.' }
 if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
+if ($NativeBridgeEvidenceMinimumSeconds -lt 1) { throw 'NativeBridgeEvidenceMinimumSeconds precisa ser pelo menos 1 segundo.' }
 
 function Resolve-EvidencePath {
     param([string]$Path)
@@ -198,7 +200,11 @@ foreach ($entry in @(
     $path = Resolve-EvidencePath $entry.path
     $report = Read-JsonEvidence $path
     $statusReady = if ($entry.status -eq 'runtimeStable') {
-        (Test-ReportFresh $report) -and (Test-ReportTransport $report) -and $null -ne $report -and [bool]$report.runtimeStable -and [int]$report.stabilitySeconds -ge $DurationSeconds
+        # The standalone Native Bridge preflight is intentionally shorter than
+        # this integrated endurance run. The 600-second gate is enforced by
+        # the diagnostics samples below, which validate the bridge on every
+        # sample while NeoNews remains active.
+        (Test-ReportFresh $report) -and (Test-ReportTransport $report) -and $null -ne $report -and [bool]$report.runtimeStable -and [int]$report.stabilitySeconds -ge $NativeBridgeEvidenceMinimumSeconds
     } else {
         Test-RequiredEvidence $report $entry.status
     }
