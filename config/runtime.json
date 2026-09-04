@@ -224,7 +224,7 @@
     "certificateSha256": "6faf3c4140407473400934d117815a21af1cfefc5c0bee61c858bc3d72ba6fe5",
     "requireNativeGuestAbi": true,
     "installedVersion": "119.0.6045.193",
-    "status": "prebuilt-integrated-stability-pending",
+    "status": "prebuilt-integrated-stability-pass",
     "validated": false,
     "report": "docs/WEBVIEW-ETAPA-4.md"
   },
