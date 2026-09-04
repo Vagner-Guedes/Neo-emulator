@@ -34,6 +34,15 @@ Um transporte TCP offline pode usar somente a recuperação privada limitada
 (`reconnect offline`, `disconnect <serial>`, `connect <serial>`). O servidor
 ADB global em `127.0.0.1:5037` não pertence ao runtime e nunca é encerrado.
 
+## Perfil WHPX aprovado
+
+O perfil persistente usa `qemu.cpuCores=1`. A matriz descartavel mostrou boot
+completo, `sys.boot_completed=1`, ADB `device`, Houdini carregado e
+`primaryCpuAbi=armeabi-v7a` com 1 vCPU; o perfil de 4 vCPUs perdeu o transporte
+ADB durante a inicializacao. A configuracao de 1 vCPU e, portanto, parte do
+contrato de boot deterministico ate que uma nova homologacao substitua essa
+evidencia.
+
 ## Hotkeys operacionais
 
 - `Ctrl+Alt+Shift+F11`: parada segura e gravação de `UserStoppedRuntime`;

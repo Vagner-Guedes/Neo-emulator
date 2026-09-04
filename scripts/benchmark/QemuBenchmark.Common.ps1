@@ -209,7 +209,8 @@ function New-QemuBenchmarkArguments {
     param(
         [object]$Config,
         [string]$DiskPath,
-        [string]$RepositoryRoot
+        [string]$RepositoryRoot,
+        [string]$Acceleration = 'whpx'
     )
 
     $qemu = $Config.android.qemu
@@ -239,7 +240,7 @@ function New-QemuBenchmarkArguments {
     $arguments.Add('-machine')
     $arguments.Add($(if ($qemu.machine) { [string]$qemu.machine } else { 'pc' }))
     $arguments.Add('-accel')
-    $arguments.Add('whpx')
+    $arguments.Add($Acceleration)
     $arguments.Add('-rtc')
     $arguments.Add('base=utc')
     $qemuExecutable = [string]$qemu.executable
@@ -567,10 +568,14 @@ function Test-QemuBenchmarkActivityRunning {
     if ($parts.Count -ne 2) { return $false }
     $packageName = $parts[0]
     $activityName = $parts[1] -replace '^\.', ''
+    if ($activityName.StartsWith("$packageName.", [System.StringComparison]::Ordinal)) {
+        $activityName = $activityName.Substring($packageName.Length + 1)
+    }
     $candidates = @(
         "$packageName/.$activityName",
         "$packageName/$activityName",
-        "$packageName/$packageName.$activityName"
+        "$packageName/$packageName.$activityName",
+        "$packageName/$($packageName).$activityName"
     )
     $foregroundMarkers = 'mResumedActivity|topResumedActivity|ResumedActivity|mFocusedActivity|mCurrentFocus'
     foreach ($line in ($Dump -split "`r?`n")) {
@@ -615,18 +620,50 @@ function Test-QemuBenchmarkStability {
         [string]$Serial,
         [string]$ActivityComponent,
         [int]$DurationSeconds = 60,
-        [int]$PollSeconds = 5
+        [int]$PollSeconds = 5,
+        [int]$ServerPort = 5038,
+        [int]$StartupTimeoutSeconds = 45
     )
 
     $samples = New-Object System.Collections.Generic.List[object]
+    $startupStartedAt = Get-Date
+    $startupDeadline = $startupStartedAt.AddSeconds([math]::Max(1, $StartupTimeoutSeconds))
+    $activityReadyAt = $null
+    do {
+        $processAlive = $false
+        try { $Process.Refresh(); $processAlive = -not $Process.HasExited } catch { }
+        $adbState = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state') -ServerPort $ServerPort
+        $activityRunning = $false
+        if ($processAlive -and $adbState.Text -match '(?im)^device$') {
+            $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities') -ServerPort $ServerPort
+            $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
+        }
+        if ($processAlive -and $adbState.Text -match '(?im)^device$' -and $activityRunning) {
+            $activityReadyAt = Get-Date
+            break
+        }
+        Start-Sleep -Seconds ([math]::Max(1, $PollSeconds))
+    } while ((Get-Date) -lt $startupDeadline)
+
+    if ($null -eq $activityReadyAt) {
+        return [ordered]@{
+            durationSeconds = [math]::Max(0, $DurationSeconds)
+            startupTimeoutSeconds = [math]::Max(1, $StartupTimeoutSeconds)
+            activityReady = $false
+            activityReadySeconds = $null
+            samples = @()
+            stable = $false
+        }
+    }
+
     $deadline = (Get-Date).AddSeconds([math]::Max(0, $DurationSeconds))
     do {
         $processAlive = $false
         try { $Process.Refresh(); $processAlive = -not $Process.HasExited } catch { }
-        $adbState = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state')
+        $adbState = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state') -ServerPort $ServerPort
         $activityRunning = $false
         if ($adbState.Text -match '(?im)^device$') {
-            $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities')
+            $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities') -ServerPort $ServerPort
             $shortComponent = if ($ActivityComponent -match '/') {
                 $parts = $ActivityComponent -split '/', 2
                 "$($parts[0])/.$(($parts[1] -replace '^\.', ''))"
@@ -646,6 +683,9 @@ function Test-QemuBenchmarkStability {
     }).Count
     [ordered]@{
         durationSeconds = [math]::Max(0, $DurationSeconds)
+        startupTimeoutSeconds = [math]::Max(1, $StartupTimeoutSeconds)
+        activityReady = $true
+        activityReadySeconds = [math]::Round(($activityReadyAt - $startupStartedAt).TotalSeconds, 2)
         samples = $samples.ToArray()
         stable = [bool]($unstableSampleCount -eq 0)
     }
