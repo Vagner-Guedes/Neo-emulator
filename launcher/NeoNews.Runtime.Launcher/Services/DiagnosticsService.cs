@@ -72,6 +72,7 @@ public sealed class DiagnosticsService
         var webViewVersion = adbOnline ? await GetWebViewVersionAsync(cancellationToken) : null;
         var packages = adbOnline ? await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken) : string.Empty;
         var ttsLocaleCheck = adbOnline ? await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken) : string.Empty;
+        var ttsVoiceData = adbOnline ? await SafeTtsVoiceDataAsync(cancellationToken) : (false, "ADB offline");
         var nativeBridge = adbOnline ? await SafeNativeBridgeAsync(cancellationToken) : null;
         var apkAbis = ReadApkAbis();
         var apkMetadata = ReadApkMetadata();
@@ -277,7 +278,9 @@ public sealed class DiagnosticsService
                 locale = _context.Config.Tts.Locale,
                 defaultEngine = adbOnline ? await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken) : null,
                 localeCheck = ttsLocaleCheck,
-                localeReady = ttsLocaleCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || ttsLocaleCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || ttsLocaleCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase),
+                voiceDataReady = ttsVoiceData.Item1,
+                voiceDataDetail = ttsVoiceData.Item2,
+                localeReady = ttsLocaleCheck.Contains("result=1", StringComparison.OrdinalIgnoreCase) || ttsLocaleCheck.Contains("CHECK_TTS_DATA_PASS", StringComparison.OrdinalIgnoreCase) || ttsLocaleCheck.Contains("CHECK_VOICE_DATA_PASS", StringComparison.OrdinalIgnoreCase) || (ttsVoiceData.Item1 && locale.IsPtBr),
                 matchingPackages = packages.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
                     .Where(line => line.Contains("rhvoice", StringComparison.OrdinalIgnoreCase) || line.Contains("tts", StringComparison.OrdinalIgnoreCase))
                     .ToArray()
@@ -321,6 +324,29 @@ public sealed class DiagnosticsService
             await SafeAsync(() => _adb.GetSettingAsync("global", "stay_on_while_plugged_in", cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.GetSettingAsync("secure", "screensaver_enabled", cancellationToken), cancellationToken),
             await SafeAsync(() => _adb.GetSettingAsync("system", "user_rotation", cancellationToken), cancellationToken));
+    }
+
+    private async Task<(bool Ready, string Detail)> SafeTtsVoiceDataAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var providerPackage = string.IsNullOrWhiteSpace(_context.Config.Tts.ProviderPackage)
+                ? "com.github.olga_yakovleva.rhvoice.android"
+                : _context.Config.Tts.ProviderPackage;
+            var dataRoot = $"/data/user/0/{providerPackage}/app_data";
+            var result = await _adb.ShellAsync(["find", dataRoot, "-maxdepth", "2", "-type", "d"], TimeSpan.FromSeconds(20), cancellationToken);
+            var languagePackage = _context.Config.Tts.LanguagePackage;
+            var voicePackage = _context.Config.Tts.VoicePackage;
+            var languageReady = !string.IsNullOrWhiteSpace(languagePackage) && result.Contains(languagePackage, StringComparison.OrdinalIgnoreCase);
+            var voiceReady = !string.IsNullOrWhiteSpace(voicePackage) && result.Contains(voicePackage, StringComparison.OrdinalIgnoreCase);
+            return (languageReady && voiceReady, $"root={dataRoot}; language={languagePackage}; languageReady={languageReady}; voice={voicePackage}; voiceReady={voiceReady}; listing={result}");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            _logs.Warning("launcher", $"Dados de voz RHVoice não puderam ser consultados: {exception.Message}");
+            return (false, exception.Message);
+        }
     }
 
     private async Task<string> GetQemuVersionAsync(CancellationToken cancellationToken)
