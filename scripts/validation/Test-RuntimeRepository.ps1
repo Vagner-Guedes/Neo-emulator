@@ -43,6 +43,7 @@ $requiredPaths = @(
     'reports/HOST-DEPENDENCY-AUDIT.md',
     'docs/HOST-COEXISTENCE-HOMOLOGATION.md',
     'scripts/validation/Test-HostIsolation.ps1',
+    'scripts/validation/Test-TextEncoding.ps1',
     'docs/AUDIT-ETAPA-1.md',
     'docs/ABI-ETAPA-3.md',
     'docs/WEBVIEW-ETAPA-4.md',
@@ -102,6 +103,8 @@ $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRun
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
 $hostIsolationScriptPath = Join-Path $RepositoryRoot 'scripts\validation\Test-HostIsolation.ps1'
 $hostIsolationSource = if (Test-Path -LiteralPath $hostIsolationScriptPath) { Get-Content -LiteralPath $hostIsolationScriptPath -Raw -Encoding utf8 } else { '' }
+$textEncodingScriptPath = Join-Path $RepositoryRoot 'scripts\validation\Test-TextEncoding.ps1'
+$textEncodingSource = if (Test-Path -LiteralPath $textEncodingScriptPath) { Get-Content -LiteralPath $textEncodingScriptPath -Raw -Encoding utf8 } else { '' }
 $componentProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Install-GuestComponents.ps1'
 $componentProvisioningSource = if (Test-Path -LiteralPath $componentProvisioningPath) { Get-Content -LiteralPath $componentProvisioningPath -Raw -Encoding utf8 } else { '' }
 $baseProvisioningPath = Join-Path $RepositoryRoot 'scripts\provision\Provision-QemuAndroidRuntime.ps1'
@@ -318,6 +321,11 @@ $contractChecks['hostIsolationQualityGate'] =
     $hostIsolationSource -match 'HostProcessOwnership' -and
     $hostIsolationSource -match 'privateAdbValid' -and
     $hostIsolationSource -match 'dynamicEvidence'
+$contractChecks['textEncodingValidator'] =
+    $textEncodingSource -match 'strictUtf8' -and
+    $textEncodingSource -match 'mojibakePattern' -and
+    $textEncodingSource -match 'invalid-utf8' -and
+    $textEncodingSource -match 'reports\\text-encoding\.json'
 $contractChecks['runtimeConfigHasPrivateAdbServer'] =
     [int]$configObject.android.adb.serverPort -eq 5038 -and
     [string]$configObject.android.adb.serverHost -eq '127.0.0.1' -and

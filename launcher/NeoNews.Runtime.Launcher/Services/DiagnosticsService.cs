@@ -393,7 +393,7 @@ public sealed class DiagnosticsService
     {
         try { return await new AndroidProvisioningService(_context, _logs).LoadAsync(cancellationToken); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception exception) { _logs.Warning("launcher", $"DiagnÃ³stico parcial do provisionamento: {exception.Message}"); return null; }
+        catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial do provisionamento: {exception.Message}"); return null; }
     }
 
     private async Task<NeoNewsStatus?> SafeNeoNewsAsync(CancellationToken cancellationToken)
@@ -416,7 +416,7 @@ public sealed class DiagnosticsService
         var path = _context.ResolveApkPath();
         if (!File.Exists(path)) return null;
         try { return ApkManifestService.Read(path); }
-        catch (Exception exception) { _logs.Warning("launcher", $"DiagnÃ³stico parcial da identidade do APK: {exception.Message}"); return null; }
+        catch (Exception exception) { _logs.Warning("launcher", $"Diagnóstico parcial da identidade do APK: {exception.Message}"); return null; }
     }
 
     private ApkSignatureValidationResult? ReadApkSignature()

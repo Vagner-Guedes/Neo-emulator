@@ -680,7 +680,7 @@ public sealed class AdbService
         if (!result.Succeeded && !result.StandardOutput.Contains("already running as root", StringComparison.OrdinalIgnoreCase))
         {
             throw new RuntimeOperationException(
-                "O guest Android nÃ£o forneceu ADB root.",
+                "O guest Android não forneceu ADB root.",
                 $"adb root falhou: exit={result.ExitCode}; stdout={result.StandardOutput}; stderr={result.StandardError}");
         }
 
@@ -689,8 +689,8 @@ public sealed class AdbService
         if (!ready || !rootIdentity.Contains("uid=0(root)", StringComparison.OrdinalIgnoreCase))
         {
             throw new RuntimeOperationException(
-                "O guest Android nÃ£o confirmou ADB root.",
-                "A configuraÃ§Ã£o persistente do guest exige uid=0 para alterar /system e a polÃ­tica local do Superuser.");
+                "O guest Android não confirmou ADB root.",
+                "A configuração persistente do guest exige uid=0 para alterar /system e a política local do Superuser.");
         }
     }
 

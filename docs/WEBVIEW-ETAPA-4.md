@@ -16,7 +16,44 @@
 | Versão exigida | `119.0.6045.193` |
 | ABI do guest | `x86_64` (`ro.zygote=zygote64_32`) |
 | ABI do WebView atual | `x86_64` + `x86` |
-| Status | `BUILD_HOST_RESOURCE_REQUIRED` / NOT HOMOLOGATED |
+| Status | `SOURCE_BUILD_REQUIRED` / `BUILD_HOST_IO_BOTTLENECK` / NOT HOMOLOGATED |
+
+## Reavaliação do caminho preferencial — APK pré-compilado
+
+| Item | Resultado |
+|---|---|
+| Arquivo esperado | `packages/webview/webview.apk` |
+| Presença no repositório/distribuição | AUSENTE |
+| Presença em `Downloads`/`Desktop` pesquisados | AUSENTE |
+| Package/version/ABI/certificado/hash do pré-compilado | NÃO APLICÁVEL; nenhum APK foi encontrado |
+| URL oficial direta pinável para o APK Google exato | NÃO ENCONTRADA |
+| Instalação ou alteração do guest | NÃO EXECUTADA |
+
+O caminho A foi encerrado sem usar mirror, APK de terceiro ou pacote ARM via
+Houdini. Não há arquivo válido para executar a inspeção de `packageName`,
+`versionName`, `versionCode`, `minSdk`, `targetSdk`, ABIs, assinatura, tamanho
+e SHA-256.
+
+O inventário live read-only foi tentado por um servidor ADB foreground privado
+em `127.0.0.1:5038`. O endpoint `127.0.0.1:5556` recusou a conexão
+(`10061`), e o servidor privado foi encerrado por PID exato; 5038 ficou livre.
+O inventário histórico deste documento continua sendo a única evidência do
+provider legado e não foi atualizado com inferência.
+
+## Decisão do fallback
+
+Decisão: `SOURCE_BUILD_REQUIRED`. O build não foi iniciado: a distro
+`Debian-NeoNews` está em `D:\WSL\Debian-NeoNews`, mas não respondeu nem a
+`echo WSL_OK` após `wsl --shutdown`. O host tem aproximadamente 7,87 GiB de
+RAM, D: tem aproximadamente 99,53 GiB livres e E: aproximadamente 242,09 GiB;
+o VHDX da distro permanece em D: e não foi movido/desregistrado
+automaticamente. Resultado operacional: `BUILD_HOST_IO_BOTTLENECK`.
+
+Nenhum GN/Ninja/Chromium foi iniciado nesta tentativa, nenhum APK foi
+produzido e nenhum componente do guest foi alterado. O próximo passo é usar
+um host Linux/WSL responsivo com armazenamento suficiente, mantendo o build
+no ext4, ou disponibilizar um APK WebView 119 oficial e verificável em
+`packages/webview/webview.apk`.
 
 O guest confirmou Android 7.1.2/API25, `com.android.webview` em
 `/system/app/webview/webview.apk`, marcado como pacote de sistema. O provider

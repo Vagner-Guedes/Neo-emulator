@@ -23,10 +23,12 @@ O Android agora é configurado como `pt-BR`, com fuso
 inicialização e o watchdog repete a correção periodicamente, porque o serviço
 de hora desta imagem API 25 pode sobrescrever o RTC durante o boot.
 
-O V1 ainda está bloqueado: o WebView exato `119.0.6045.193` não está
-disponível no guest, o conteúdo Power BI ainda tem erro Chromium observado, e
-as provas integradas de 600 s, três ciclos e publicação zero-touch ainda não
-foram concluídas.
+O V1 ainda está bloqueado: o APK WebView pré-compilado esperado não existe em
+`packages/webview/webview.apk`, não foi localizada uma URL oficial direta
+pinável para o APK exato, e o fallback de build está bloqueado pela distro WSL
+sem resposta (`SOURCE_BUILD_REQUIRED` / `BUILD_HOST_IO_BOTTLENECK`). O
+conteúdo Power BI ainda tem erro Chromium observado, e as provas integradas
+de 600 s, três ciclos e publicação zero-touch ainda não foram concluídas.
 
 ## Matriz de gates
 
@@ -43,7 +45,7 @@ foram concluídas.
 | RHVoice pt-BR | PASS observado / protegido | Engine padrão RHVoice; idioma e voz persistiram após reboot; síntese real aprovada. |
 | Idioma Android | PASS observado | `persist.sys.locale=pt-BR` e `system_locales=pt-BR`, confirmados após reboot. |
 | Horário Android = Windows | PASS por política | `America/Sao_Paulo`; sincronização host→guest implementada e validada com desvio de 0–3 s. |
-| WebView 119 | BLOCKED | O guest aceita `com.android.webview`, mas só possui 52.0.2743.100; o build oficial 119 foi bloqueado por recursos do host. |
+| WebView 119 | SOURCE_BUILD_REQUIRED / BUILD_HOST_IO_BOTTLENECK | APK pré-compilado ausente; provider legado `com.android.webview` permanece em 52.0.2743.100; nenhum build ou instalação foi iniciado nesta tentativa. |
 | Conteúdo Power BI | BLOCKED | Erro Chromium legado observado: `Unexpected token .` na página Power BI. |
 | Debloat | NOT EXECUTED | Nenhum uninstall, `pm clear`, remoção de arquivo ou alteração de engine. |
 | Superuser silencioso | Configuração PASS / toast não reprovado | Política NeoNews allow permanente, `notification=false`; recomenda-se repetir prova visual em ciclo limpo. |
@@ -51,7 +53,26 @@ foram concluídas.
 | Estabilidade 600 s | NOT TESTED | A prova de 60 s não substitui a exigência de 600 s. |
 | Três ciclos | NOT TESTED | Ainda não executados como matriz final. |
 | Build Release | PASS | .NET SDK 8.0.424: 0 erros, 0 avisos. |
-| Regressão do repositório | PASS | `Test-RuntimeRepository.ps1`: 33 scripts, 0 parse errors, 0 contract errors. |
+| Regressão do repositório | PASS | `Test-RuntimeRepository.ps1`: 35 scripts, 0 parse errors, 0 contract errors. |
+
+## Estratégia WebView pré-compilado
+
+| Campo | Resultado |
+|---|---|
+| WebView source type | `PREBUILT_UNAVAILABLE` → `SOURCE_BUILD_REQUIRED` |
+| Pacote esperado | `packages/webview/webview.apk` — ausente |
+| Package/version/versionCode/ABI/certificate/SHA-256/size | Não aplicável; nenhum APK foi encontrado ou instalado |
+| Provider legado | `com.android.webview`, versão histórica `52.0.2743.100`, ABI `x86_64` + `x86` |
+| Provider 119 efetivo | Não validado |
+| JavaScript moderno / HTTPS / Power BI / NeoNews | Pendente; erro Chromium legado continua observado |
+| Build Chromium | Não iniciado nesta tentativa; fallback bloqueado por `BUILD_HOST_IO_BOTTLENECK` |
+
+O caminho preferencial foi tentado por inventário local e busca em locais de
+download do host. A busca oficial não forneceu uma URL direta verificável para
+o APK Google assinado exato. Não foi usado mirror aleatório, APK ARM, APK
+corrompido, split incompleto ou instalação especulativa. O guest, Native
+Bridge, Houdini, RHVoice, NeoNews, Superuser e qcow2 baseline permaneceram
+sem alteração.
 
 ## Native Bridge e artefatos oficiais
 
