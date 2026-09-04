@@ -177,8 +177,12 @@ function Invoke-ExternalWithTimeout {
             try { $process.Kill() } catch { }
             try { $null = $process.WaitForExit(2000) } catch { }
         }
-        $stdout = if ($stdoutTask) { $stdoutTask.GetAwaiter().GetResult() } else { '' }
-        $stderr = if ($stderrTask) { $stderrTask.GetAwaiter().GetResult() } else { '' }
+        $stdout = if ($stdoutTask -and ($stdoutTask.IsCompleted -or -not $timedOut)) {
+            if ($stdoutTask.IsCompleted) { $stdoutTask.GetAwaiter().GetResult() } else { '' }
+        } else { '' }
+        $stderr = if ($stderrTask -and ($stderrTask.IsCompleted -or -not $timedOut)) {
+            if ($stderrTask.IsCompleted) { $stderrTask.GetAwaiter().GetResult() } else { '' }
+        } else { '' }
         $text = (($stdout, $stderr | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join "`n").Trim()
         return [pscustomobject]@{
             exitCode = if ($timedOut) { $null } else { $process.ExitCode }
