@@ -289,7 +289,11 @@ public sealed class DiagnosticsService
             {
                 active = _supervisor.IsActive,
                 lastHeartbeat = _supervisor.LastHeartbeat,
-                nativeBridgeStructuralError = _supervisor.HasNativeBridgeStructuralError
+                nativeBridgeStructuralError = _supervisor.HasNativeBridgeStructuralError,
+                recoverySuppressed = _supervisor.RecoverySuppressed,
+                intent = _supervisor.Intent.Intent.ToString(),
+                intentReason = _supervisor.Intent.Reason,
+                intentUpdatedAtUtc = _supervisor.Intent.UpdatedAtUtc
             },
             startup = new { registered = startupRegistered, valid = startupValid, executable = Environment.ProcessPath },
             memory,

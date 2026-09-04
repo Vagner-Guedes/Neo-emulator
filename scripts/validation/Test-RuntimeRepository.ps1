@@ -89,6 +89,10 @@ $requiredPaths = @(
     'launcher/NeoNews.Runtime.Launcher/Services/AndroidRuntimeParsing.cs',
     'launcher/NeoNews.Runtime.Launcher/Services/GuestConfigurationService.cs',
     'launcher/NeoNews.Runtime.Launcher/Services/ApkManifestService.cs',
+    'launcher/NeoNews.Runtime.Launcher/Models/RuntimeIntent.cs',
+    'launcher/NeoNews.Runtime.Launcher/Services/RuntimeIntentService.cs',
+    'launcher/NeoNews.Runtime.Launcher/Services/RuntimePaths.cs',
+    'launcher/NeoNews.Runtime.Launcher/Services/RuntimeSupervisorService.cs',
     'launcher/NeoNews.Runtime.Launcher/NeoNews.Runtime.Launcher.csproj'
 )
 $missingPaths = @($requiredPaths | Where-Object { -not (Test-Path -LiteralPath (Join-Path $RepositoryRoot $_)) })
@@ -99,6 +103,10 @@ $runtimeControllerPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Lau
 $runtimeControllerSource = if (Test-Path -LiteralPath $runtimeControllerPath) { Get-Content -LiteralPath $runtimeControllerPath -Raw -Encoding utf8 } else { '' }
 $runtimeSupervisorPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\RuntimeSupervisorService.cs'
 $runtimeSupervisorSource = if (Test-Path -LiteralPath $runtimeSupervisorPath) { Get-Content -LiteralPath $runtimeSupervisorPath -Raw -Encoding utf8 } else { '' }
+$runtimeIntentPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\Services\RuntimeIntentService.cs'
+$runtimeIntentSource = if (Test-Path -LiteralPath $runtimeIntentPath) { Get-Content -LiteralPath $runtimeIntentPath -Raw -Encoding utf8 } else { '' }
+$mainWindowPath = Join-Path $RepositoryRoot 'launcher\NeoNews.Runtime.Launcher\MainWindow.xaml.cs'
+$mainWindowSource = if (Test-Path -LiteralPath $mainWindowPath) { Get-Content -LiteralPath $mainWindowPath -Raw -Encoding utf8 } else { '' }
 $runtimeConfigSource = if (Test-Path -LiteralPath $configPath) { Get-Content -LiteralPath $configPath -Raw -Encoding utf8 } else { '' }
 $publishScriptPath = Join-Path $RepositoryRoot 'scripts\build\Publish-NeoNewsRuntime.ps1'
 $publishSource = if (Test-Path -LiteralPath $publishScriptPath) { Get-Content -LiteralPath $publishScriptPath -Raw -Encoding utf8 } else { '' }
@@ -199,6 +207,11 @@ $contractChecks = [ordered]@{
     firstRunRebootsAndRevalidatesLocale = $launcherSourceText -match 'RebootGuestAsync' -and $launcherSourceText -match 'MarkRebootPerformedAsync' -and $launcherSourceText -match 'ReadLocaleAsync'
     firstRunSynchronizesHostClock = [string]$configObject.runtime.timezone -eq 'America/Sao_Paulo' -and [bool]$configObject.runtime.syncClockWithHost -and [int]$configObject.runtime.maxClockSkewSeconds -gt 0 -and $launcherSourceText -match 'EnsureHostClockAsync' -and $runtimeControllerSource -match 'EnsureGuestClockAsync'
     watchdogResynchronizesHostClock = $runtimeSupervisorSource -match 'SynchronizeClockIfDueAsync' -and $runtimeSupervisorSource -match 'TimeSpan.FromSeconds\(30\)' -and $runtimeSupervisorSource -match 'EnsureHostClockAsync'
+    runtimeIntentIsAtomicAndPersistent = $runtimeIntentSource -match 'RuntimeIntentStatePath' -and $runtimeIntentSource -match 'File\.Move\(temporaryPath' -and $runtimeIntentSource -match 'UserStoppedRuntime'
+    watchdogHonorsUserStopIntent = $runtimeSupervisorSource -match 'IsRecoverySuppressed' -and $runtimeSupervisorSource -match 'Do not reconnect ADB' -and $runtimeSupervisorSource -match 'continue'
+    autostartHonorsUserStopIntent = $runtimeControllerSource -match 'Autostart ignorado' -and $runtimeControllerSource -match 'USER_STOPPED_RUNTIME' -and $runtimeControllerSource -match 'ClearUserStop'
+    operationalHotkeysAreConfigured = $runtimeConfigSource -match 'stopRuntimeHotkey' -and $runtimeConfigSource -match 'toggleFullscreenHotkey' -and $mainWindowSource -match 'StopRuntimeHotkey' -and $mainWindowSource -match 'ToggleFullscreenHotkey' -and $mainWindowSource -match '_stopRuntimeHotkey' -and $mainWindowSource -match '_toggleFullscreenHotkey'
+    diagnosticsIncludesRuntimeIntent = $launcherSourceText -match 'recoverySuppressed' -and $launcherSourceText -match 'intentUpdatedAtUtc'
     firstRunPersistsStateMachine = $launcherSourceText -match 'SetStageAsync' -and $launcherSourceText -match 'SetErrorAsync' -and $launcherSourceText -match 'SetReadinessAsync' -and $launcherSourceText -match 'NEONEWS_RUNTIME_VALIDATION'
     firstBootUsesSeparateTimeout = $runtimeConfigSource -match 'FirstBootSeconds' -and $runtimeControllerSource -match 'WaitForConfiguredBootAsync' -and $runtimeControllerSource -match 'PackageManagerReady'
     diagnosticsIncludesFirstRunState = $launcherSourceText -match 'packageManagerReady = provisioningState\.PackageManagerReady' -and $launcherSourceText -match 'localeValidated = provisioningState\.LocaleValidated' -and $launcherSourceText -match 'lastError = provisioningState\.LastError'

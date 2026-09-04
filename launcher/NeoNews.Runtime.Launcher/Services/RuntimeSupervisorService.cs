@@ -1,3 +1,5 @@
+using NeoNews.Runtime.Launcher.Models;
+
 namespace NeoNews.Runtime.Launcher.Services;
 
 public sealed class RuntimeSupervisorService : IAsyncDisposable
@@ -8,6 +10,7 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
     private readonly IAndroidRuntimeBackend _backend;
     private readonly NativeBridgeValidationService _nativeBridge;
     private readonly KioskService _kiosk;
+    private readonly RuntimeIntentService _intent;
     private readonly LogService _logs;
     private CancellationTokenSource? _shutdown;
     private Task? _loop;
@@ -29,6 +32,7 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
         IAndroidRuntimeBackend backend,
         NativeBridgeValidationService nativeBridge,
         KioskService kiosk,
+        RuntimeIntentService intent,
         LogService logs)
     {
         _context = context;
@@ -37,11 +41,14 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
         _backend = backend;
         _nativeBridge = nativeBridge;
         _kiosk = kiosk;
+        _intent = intent;
         _logs = logs;
     }
 
     public bool IsActive => Volatile.Read(ref _started) == 1;
     public bool HasNativeBridgeStructuralError => _nativeBridgeStructuralError;
+    public bool RecoverySuppressed => _intent.IsRecoverySuppressed;
+    public RuntimeIntentRecord Intent => _intent.Current;
     public DateTimeOffset? LastHeartbeat => _lastHeartbeat == DateTimeOffset.MinValue ? null : _lastHeartbeat;
 
     public Task StartAsync()
@@ -78,6 +85,12 @@ public sealed class RuntimeSupervisorService : IAsyncDisposable
         {
             _lastHeartbeat = DateTimeOffset.UtcNow;
             _logs.Info("watchdog", $"WATCHDOG_HEARTBEAT {_lastHeartbeat:O}");
+            if (_intent.IsRecoverySuppressed)
+            {
+                // A human stop is durable. Do not reconnect ADB, restart QEMU,
+                // relaunch the activity, or reapply kiosk while it is active.
+                continue;
+            }
             try
             {
                 if (!await _backend.IsRunningAsync(cancellationToken).ConfigureAwait(false))

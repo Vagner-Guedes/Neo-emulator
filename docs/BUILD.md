@@ -148,6 +148,14 @@ Argumentos: `--show`, `--start`, `--stop`, `--restart`, `--kiosk`, `--exit-kiosk
 
 O menu do tray oferece abrir painel, iniciar/parar/reiniciar o sistema, kiosk, diagnóstico e encerramento. Fechar a janela apenas a oculta no tray. O startup do Windows, quando ativado na configuração, cria a tarefa `NeoNews Runtime Supervisor` com a ação `NeoNewsRuntime.exe --autostart`; nenhum PowerShell é usado pelo caminho de operação normal.
 
+## Atalhos operacionais persistentes
+
+Os atalhos sao `F11` para parada consciente do runtime e `F12` para alternar o
+fullscreen/window do Android. A parada grava `runtime/state/runtime-intent.json`
+com `UserStoppedRuntime`; o autostart e o Guardian respeitam esse marcador e
+nao reconectam ADB, reiniciam QEMU ou relancam a activity ate que uma acao
+explicita de iniciar/reiniciar limpe a intencao.
+
 ## Checklist manual de zero-console
 
 1. Publique em `dist/NeoNewsRuntime`.
@@ -164,6 +172,10 @@ O gate formal combina contratos estáticos com observação real. A infraestrutu
 deve permanecer invisível; somente a janela gráfica do Android, quando
 configurada, pode aparecer. O relatório não aprova automaticamente nenhuma
 etapa que não tenha sido observada.
+
+Na observacao do launcher, a deteccao usa os eventos Win32
+`EVENT_OBJECT_CREATE` e `EVENT_OBJECT_SHOW` por `SetWinEventHook`, com registro
+de PID, processo-pai, caminho, handle, classe, titulo e visibilidade.
 
 Execute no runtime publicado:
 

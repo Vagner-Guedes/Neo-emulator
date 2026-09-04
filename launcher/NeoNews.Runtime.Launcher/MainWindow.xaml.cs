@@ -21,6 +21,8 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _refreshTimer;
     private readonly DispatcherTimer _clockTimer;
     private readonly HotkeyService _hotkeyService = new(HotKeyId);
+    private readonly HotkeyService _stopRuntimeHotkey = new(HotKeyId + 1);
+    private readonly HotkeyService _toggleFullscreenHotkey = new(HotKeyId + 2);
     private readonly Dictionary<string, WpfUserControl> _pages = new(StringComparer.OrdinalIgnoreCase);
     private HwndSource? _source;
     private bool _allowClose;
@@ -59,6 +61,8 @@ public partial class MainWindow : Window
         _controller.Logs.Info("launcher", "Janela principal carregada.");
         _source = (HwndSource)PresentationSource.FromVisual(this)!;
         _source.AddHook(WindowHook);
+        RegisterOperationalHotkey(_stopRuntimeHotkey, _controller.Context.Config.Runtime.StopRuntimeHotkey, "parar runtime");
+        RegisterOperationalHotkey(_toggleFullscreenHotkey, _controller.Context.Config.Runtime.ToggleFullscreenHotkey, "alternar fullscreen");
         if (!_hotkeyService.Register(_source.Handle, _controller.Context.Config.Runtime.Hotkey))
             _controller.Logs.Warning("launcher", $"Hotkey inválida ou indisponível: {_controller.Context.Config.Runtime.Hotkey}");
         _refreshTimer.Start();
@@ -124,13 +128,31 @@ public partial class MainWindow : Window
 
     private IntPtr WindowHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (_hotkeyService.IsHotKeyMessage(message, wParam))
+        if (_stopRuntimeHotkey.IsHotKeyMessage(message, wParam))
+        {
+            handled = true;
+            _ = _viewModel.ExecuteCommandAsync(RuntimeCommand.Stop);
+        }
+        else if (_toggleFullscreenHotkey.IsHotKeyMessage(message, wParam))
+        {
+            handled = true;
+            _ = _controller.ToggleKioskAsync(null);
+        }
+        else if (_hotkeyService.IsHotKeyMessage(message, wParam))
         {
             handled = true;
             _ = _viewModel.ExecuteCommandAsync(RuntimeCommand.ExitKiosk);
             ShowPanel();
         }
         return IntPtr.Zero;
+    }
+
+    private void RegisterOperationalHotkey(HotkeyService service, string specification, string purpose)
+    {
+        if (!service.Register(_source!.Handle, specification))
+            _controller.Logs.Warning("launcher", $"Hotkey de {purpose} indisponivel: {specification}");
+        else
+            _controller.Logs.Info("launcher", $"Hotkey de {purpose} registrada: {specification}.");
     }
 
     public void ShowPanel()
@@ -190,6 +212,8 @@ public partial class MainWindow : Window
             _refreshTimer.Stop();
             _clockTimer.Stop();
             _hotkeyService.Dispose();
+            _stopRuntimeHotkey.Dispose();
+            _toggleFullscreenHotkey.Dispose();
         }
     }
 

@@ -16,6 +16,7 @@ public sealed class RuntimeController : IAsyncDisposable
     private readonly NeoNewsService _neoNews;
     private readonly KioskService _kiosk;
     private readonly StartupService _startup;
+    private readonly RuntimeIntentService _intent;
     private readonly WatchdogService _supervisor;
     private readonly DiagnosticsService _diagnostics;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
@@ -43,7 +44,8 @@ public sealed class RuntimeController : IAsyncDisposable
         _neoNews = new NeoNewsService(context, _adb);
         _kiosk = new KioskService(context, _adb, _backend);
         _startup = new StartupService(context, _runner);
-        _supervisor = new WatchdogService(context, _neoNews, _adb, _backend, _nativeBridge, _kiosk, _logs);
+        _intent = new RuntimeIntentService(context);
+        _supervisor = new WatchdogService(context, _neoNews, _adb, _backend, _nativeBridge, _kiosk, _intent, _logs);
         _diagnostics = new DiagnosticsService(context, _adb, _backend, _runner, _neoNews, _supervisor, _startup, _logs, () => _lastAbiCompatibility);
         _state.Changed += (_, state) => StateChanged?.Invoke(this, state);
         Snapshot = new RuntimeSnapshot(RuntimeState.Stopped, "Offline", "Não verificado", "Pendente", "Não instalado", "Inativo", "Não verificado", "Offline", false, false, false);
@@ -57,6 +59,7 @@ public sealed class RuntimeController : IAsyncDisposable
     public RuntimeState State => _state.Current;
     public bool IsKioskActive => _kiosk.IsActive;
     public bool IsSupervisorActive => _supervisor.IsActive;
+    public RuntimeIntentRecord Intent => _intent.Current;
     public RuntimeSnapshot Snapshot { get; private set; }
     public event EventHandler<RuntimeState>? StateChanged;
     public event EventHandler<RuntimeSnapshot>? SnapshotChanged;
@@ -162,11 +165,16 @@ public sealed class RuntimeController : IAsyncDisposable
         return Snapshot;
     }
 
-    public Task StartSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.Starting, () => StartSystemCoreAsync(progress, cancellationToken));
+    public Task StartSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.Starting, () => StartSystemCoreAsync(progress, cancellationToken));
+    }
 
-    public Task StartAndroidAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.Starting, async () =>
+    public Task StartAndroidAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.Starting, async () =>
         {
             try
             {
@@ -197,11 +205,20 @@ public sealed class RuntimeController : IAsyncDisposable
                 throw;
             }
         });
+    }
 
     public Task StartNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) => StartSystemAsync(progress, cancellationToken);
 
     public async Task StartAutostartAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
     {
+        if (_intent.IsRecoverySuppressed)
+        {
+            _logs.Info("intent", "Autostart ignorado: USER_STOPPED_RUNTIME permanece ativo; Guardian em silêncio.");
+            _state.Set(RuntimeState.Stopped);
+            await RefreshSnapshotAsync(cancellationToken);
+            return;
+        }
+
         if (_context.Config.Startup.StartNeoNews)
         {
             await StartSystemAsync(progress, cancellationToken);
@@ -225,22 +242,30 @@ public sealed class RuntimeController : IAsyncDisposable
         }
     }
 
-    public Task StopSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.Stopping, () => StopSystemCoreAsync(progress, cancellationToken));
+    public Task StopSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.MarkUserStopped();
+        return WithOperationAsync(RuntimeState.Stopping, () => StopSystemCoreAsync(progress, cancellationToken));
+    }
 
     public Task StopAndroidAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) => StopSystemAsync(progress, cancellationToken);
 
-    public Task RestartSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.Recovering, async () =>
+    public Task RestartSystemAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.Recovering, async () =>
         {
             await StopSystemCoreAsync(progress, cancellationToken, setStopped: false);
             await StartSystemCoreAsync(progress, cancellationToken);
         });
+    }
 
     public Task RestartAndroidAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) => RestartSystemAsync(progress, cancellationToken);
 
-    public Task OpenNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
+    public Task OpenNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
             await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
@@ -251,9 +276,12 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
         });
+    }
 
-    public Task RestartNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
+    public Task RestartNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.StartingNeoNews, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
             await _neoNews.StopAsync(cancellationToken);
@@ -265,9 +293,12 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
         });
+    }
 
-    public Task InstallNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.Preparing, async () =>
+    public Task InstallNeoNewsAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.Preparing, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
             _lastAbiCompatibility = null;
@@ -287,15 +318,22 @@ public sealed class RuntimeController : IAsyncDisposable
             await RefreshSnapshotAsync(cancellationToken);
             progress?.Report(new RuntimeProgress("NeoNews atualizado", "Instalação concluída.", 100));
         });
+    }
 
-    public Task EnterKioskAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken) =>
-        WithOperationAsync(RuntimeState.EnteringKiosk, async () =>
+    public Task ToggleKioskAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken = default) =>
+        _kiosk.IsActive ? ExitKioskAsync(cancellationToken) : EnterKioskAsync(progress, cancellationToken);
+
+    public Task EnterKioskAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        _intent.ClearUserStop();
+        return WithOperationAsync(RuntimeState.EnteringKiosk, async () =>
         {
             await EnsureAndroidAsync(progress, cancellationToken);
             await _kiosk.EnterAsync(progress, cancellationToken);
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
         });
+    }
 
     public Task ExitKioskAsync(CancellationToken cancellationToken = default) =>
         WithOperationAsync(RuntimeState.Preparing, async () =>

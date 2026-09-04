@@ -20,6 +20,7 @@ public sealed class RuntimePaths
     public string StateDirectory => Path.Combine(RootDirectory, "runtime", "state");
     public string HostProcessStatePath => Path.Combine(StateDirectory, "host-process.json");
     public string AdbServerStatePath => Path.Combine(StateDirectory, "adb-server.json");
+    public string RuntimeIntentStatePath => Path.Combine(StateDirectory, "runtime-intent.json");
 
     public string Resolve(string configuredPath)
     {

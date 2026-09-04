@@ -3,6 +3,15 @@
 Data: **2026-09-01**
 Script: [`scripts/runtime/Watch-NeoNews.ps1`](../scripts/runtime/Watch-NeoNews.ps1)
 
+## Intencao explicita do operador
+
+Uma parada feita pelo painel, tray ou `F11` grava `UserStoppedRuntime` em
+`runtime/state/runtime-intent.json`. Enquanto o marcador estiver ativo, o
+watchdog permanece em modo silencioso: nao reconecta ADB, nao reinicia QEMU,
+nao relanca `TerminalActivity` e nao reaplica kiosk. `--autostart` tambem e
+ignorado nesse estado. Uma acao explicita de iniciar, reiniciar, abrir o
+NeoNews ou ativar kiosk limpa o marcador antes da operacao.
+
 ## Comportamento
 
 Em cada ciclo, o supervisor verifica:

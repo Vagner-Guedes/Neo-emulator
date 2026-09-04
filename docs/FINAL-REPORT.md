@@ -136,6 +136,13 @@ iniciado com `WindowStyle Hidden`. O gate `NO_VISIBLE_CONSOLE_PASS` registrou
 `dist/NeoNewsRuntime-current` sem janela de console. O gate permanece
 `pending-evidence` até a observação visual de todas as operações exigidas.
 
+A instrumentacao real usa `SetWinEventHook` para capturar criacao e exibicao de
+janelas tecnicas, incluindo PID, processo-pai, caminho, handle, classe e titulo.
+Tambem foi implementada a intencao persistente `UserStoppedRuntime`: `F11`
+encerra QEMU/ADB/runtime e silencia o Guardian; `F12` alterna fullscreen/window.
+Esses comportamentos ainda precisam de observacao manual no produto publicado
+antes de mudar o status do gate.
+
 ## Próximos passos obrigatórios
 
 1. Repetir o endurance em um único workspace temporário e investigar a origem das quedas ADB/backend antes de aceitar 600 s.

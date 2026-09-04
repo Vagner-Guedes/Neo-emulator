@@ -37,6 +37,8 @@ public sealed class RuntimeSettings
     public bool SyncClockWithHost { get; set; } = true;
     public int MaxClockSkewSeconds { get; set; } = 5;
     public string Hotkey { get; set; } = "Ctrl+Alt+Shift+F12";
+    public string StopRuntimeHotkey { get; set; } = "F11";
+    public string ToggleFullscreenHotkey { get; set; } = "F12";
 }
 
 public sealed class HostIsolationConfig
