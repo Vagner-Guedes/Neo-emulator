@@ -127,20 +127,19 @@ persistente configurado como `runtime/android/neonews-runtime-v1.qcow2`.
 
 ## Próximos passos obrigatórios
 
-1. Liberar espaço no host ou usar uma máquina de validação com armazenamento suficiente.
-2. Repetir o endurance em uma cópia limpa e investigar a origem das quedas ADB/backend antes de aceitar 600 s.
-3. Executar o fluxo real do NeoNews autenticado, confirmar conteúdo Power BI e reprodução.
-4. Repetir a prova visual de que o toast de superusuário não aparece.
-5. Validar kiosk, tray, watchdog, startup e coexistência em um PC Windows limpo, com Android Studio/ADB 5037 preservado.
-6. Repetir a validação em PC Windows limpo e executar o fluxo real autenticado;
-   a limpeza local das cópias temporárias já foi concluída.
+1. Repetir o endurance em um único workspace temporário e investigar a origem das quedas ADB/backend antes de aceitar 600 s.
+2. Executar o fluxo real do NeoNews autenticado, confirmar conteúdo Power BI e reprodução.
+3. Repetir a prova visual de que o toast de superusuário não aparece.
+4. Validar kiosk, tray, watchdog, startup e coexistência em um PC Windows limpo, com Android Studio/ADB 5037 preservado.
+5. Repetir a validação em PC Windows limpo e executar o fluxo real autenticado; a limpeza local das cópias temporárias já foi concluída.
 
 ## Limpeza de armazenamento
 
 Em 2026-09-04 foram removidos os conteúdos das cópias descartáveis já
-testadas em `tmp`, das publicações antigas em `dist` e das duas cópias de
-homologação em E:. O espaço livre passou de aproximadamente 185 MB para
-74,98 GB em C: e de 140,48 GB para 152,49 GB em E:. O diretório
+testadas em `tmp`, das publicações antigas em `dist`, das imagens QCOW2
+experimentais em `runtime/android` e das duas cópias de homologação em E:.
+O espaço livre medido após a limpeza é 69,48 GB em C: e 142,02 GB em E:.
+O diretório
 `dist/NeoNewsRuntime-current`, o projeto canônico, o qcow2 raiz e
 `E:\NeoNewsRuntime-Archived-20260904` foram preservados. O executável ADB
 global 5037 permaneceu ativo; por isso ficaram somente seus arquivos em uso

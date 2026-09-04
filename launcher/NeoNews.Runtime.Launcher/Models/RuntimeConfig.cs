@@ -121,7 +121,7 @@ public sealed class EmulatorConfig
 public sealed class QemuConfig
 {
     public string Executable { get; set; } = "runtime/qemu/qemu-system-x86_64.exe";
-    public string Disk { get; set; } = "runtime/android/neonews-api25.qcow2";
+    public string Disk { get; set; } = "runtime/android/neonews-runtime-v1.qcow2";
     public string AndroidImage { get; set; } = "runtime/android/android-x86-7.1-r5.iso";
     public string Acceleration { get; set; } = "whpx";
     public string Gpu { get; set; } = "std";

@@ -16,12 +16,12 @@ runtime/
   qemu/qemu-system-x86_64.exe
   qemu/share/              # firmware/ROMs do mesmo pacote QEMU
   android/android-x86-7.1-r5.iso
-  android/neonews-api25.qcow2
+  android/neonews-runtime-v1.qcow2
   adb/adb.exe
   state/provisioning.json
 ```
 
-O disco não é recriado durante o boot nem durante a atualização do launcher. O diretório `share` é obrigatório: o backend passa `-L runtime/qemu/share` e valida `bios-256k.bin` antes de iniciar. Native Bridge, WebView, RHVoice e o APK oficial são pacotes externos; ficam fora da publicação e devem ser fornecidos separadamente pelo operador, com origem, licença e hash registrados.
+O disco final `neonews-runtime-v1.qcow2` não é recriado durante o boot nem durante a atualização do launcher. O diretório `share` é obrigatório: o backend passa `-L runtime/qemu/share` e valida `bios-256k.bin` antes de iniciar. Native Bridge, WebView, RHVoice e o APK oficial são pacotes externos; ficam fora da publicação e devem ser fornecidos separadamente pelo operador, com origem, licença e hash registrados.
 
 ## Provisionamento
 
