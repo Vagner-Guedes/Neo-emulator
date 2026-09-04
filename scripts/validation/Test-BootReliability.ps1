@@ -112,11 +112,11 @@ function Sync-BootGuestClock {
         [string]$Timezone
     )
 
-    $hostBefore = [DateTimeOffset]::Now
-    $dateValue = $hostBefore.LocalDateTime.ToString('MMddHHmmyyyy.ss', [Globalization.CultureInfo]::InvariantCulture)
     $timezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'setprop', 'persist.sys.timezone', $Timezone) -ServerPort $ServerPort
     $autoTimeResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time', '0') -ServerPort $ServerPort
     $autoZoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time_zone', '0') -ServerPort $ServerPort
+    $hostBefore = [DateTimeOffset]::Now
+    $dateValue = $hostBefore.LocalDateTime.ToString('MMddHHmmyyyy.ss', [Globalization.CultureInfo]::InvariantCulture)
     $dateResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', $dateValue) -ServerPort $ServerPort
     $guestEpochResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', '+%s') -ServerPort $ServerPort
     $guestTimezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'getprop', 'persist.sys.timezone') -ServerPort $ServerPort
@@ -361,7 +361,7 @@ function Invoke-BootRun {
         }
     }
     catch {
-        $classification = if ($Acceleration -eq 'whpx') { 'WHPX_HOST_PATH_FAILURE' } else { 'GUEST_OR_IMAGE_BOOT_FAILURE' }
+        $classification = if ($Acceleration -eq 'whpx' -and $_.Exception.Message -match '(?i)WHPX|Unexpected VP|guest memory|host doesn') { 'WHPX_HOST_PATH_FAILURE' } else { 'GUEST_OR_IMAGE_BOOT_FAILURE' }
         $observations.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); exception = $_.Exception.ToString() })
     }
     finally {
