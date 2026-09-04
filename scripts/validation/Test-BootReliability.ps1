@@ -135,14 +135,14 @@ function Sync-BootGuestClock {
         [string]$Timezone
     )
 
-    $timezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'setprop', 'persist.sys.timezone', $Timezone) -ServerPort $ServerPort
-    $autoTimeResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time', '0') -ServerPort $ServerPort
-    $autoZoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time_zone', '0') -ServerPort $ServerPort
+    $timezoneResult = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'setprop', 'persist.sys.timezone', $Timezone) -TimeoutSeconds 30
+    $autoTimeResult = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'settings', 'put', 'global', 'auto_time', '0') -TimeoutSeconds 30
+    $autoZoneResult = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'settings', 'put', 'global', 'auto_time_zone', '0') -TimeoutSeconds 30
     $hostBefore = [DateTimeOffset]::Now
     $dateValue = $hostBefore.LocalDateTime.ToString('MMddHHmmyyyy.ss', [Globalization.CultureInfo]::InvariantCulture)
-    $dateResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', $dateValue) -ServerPort $ServerPort
-    $guestEpochResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', '+%s') -ServerPort $ServerPort
-    $guestTimezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'getprop', 'persist.sys.timezone') -ServerPort $ServerPort
+    $dateResult = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'date', $dateValue) -TimeoutSeconds 30
+    $guestEpochResult = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'date', '+%s') -TimeoutSeconds 30
+    $guestTimezoneResult = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'getprop', 'persist.sys.timezone') -TimeoutSeconds 30
     $hostAfter = [DateTimeOffset]::Now
     $guestEpoch = $null
     $parsedGuestEpoch = 0L
