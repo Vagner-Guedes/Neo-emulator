@@ -16,6 +16,26 @@ Power BI dentro do NeoNews continua sem prova de reprodução, e as execuções
 integradas de 600 s tiveram amostras offline. A publicação em um PC Windows
 novo e o zero-touch externo também não foram homologados.
 
+### Resultado da rodada evidence-only de 04/09/2026
+
+Nenhuma funcionalidade foi implementada nesta rodada. A validacao do qcow2
+retornou `check-errors=0`, mas o boot real falhou: ADB ficou alternando entre
+`offline` e desconectado, `sys.boot_completed=1` nao foi confirmado em 180 s,
+e o log do runtime registrou `WHPX: Unexpected VP exit code 4`. O estado de
+provisionamento publicado terminou em `Error` ao tentar reiniciar o Android.
+
+O qcow2 atual ficou com SHA-256
+`30AE25CF326C0D80823ACCE136C8638368F754FC427F90F4038D301B15701BDF`, diferente
+do SHA-256 ainda registrado no manifesto (`EA183B11BD9C996BC362D99AA40EAE25995D62516179599D82A1BEAE1E62DD77`),
+portanto a identidade da imagem nao foi aprovada. A publicacao atual tambem
+possui 0 arquivos nas pastas `packages/`, e o instalador continua dependente
+de payload adjacente.
+
+O gate de console permanece `pending-evidence` (1/12 cenarios observados).
+Os atalhos publicados ainda sao F11/F12 simples, divergindo da exigencia
+desta meta de Ctrl+Alt+Shift+F11/F12. A decisao permanece
+**BLOCKED / NOT PRODUCTION READY**.
+
 ## Evidências aprovadas
 
 ### WebView 119

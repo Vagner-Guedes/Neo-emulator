@@ -21,6 +21,48 @@ integradas de 600 s registraram amostras offline do backend/ADB. A regra
 vigente exige zero amostras instáveis; por isso não há aprovação de
 estabilidade contínua.
 
+## Atualizacao evidence-only - rodada de 04/09/2026
+
+Esta rodada nao implementou funcionalidades nem modificou Android, QEMU, ADB,
+WebView, RHVoice, Native Bridge ou debloat. Foram executadas somente
+validacoes e registradas as evidencias abaixo. Os resultados live desta rodada
+prevalecem sobre evidencias historicas de outras imagens/publicacoes para a
+decisao final.
+
+- `Test-TextEncoding`: PASS, 717 arquivos verificados e 0 erros.
+- `Test-LauncherSmoke` na publicacao atual: PASS para janela responsiva,
+  single-instance, `--exit`, caminho com espacos e nenhum residual.
+- `qemu-img check` do qcow2 atual: PASS estrutural, `check-errors=0`; isso
+  nao equivale a boot homologado.
+- `Test-QemuPersistence`: FAIL. O primeiro boot nao confirmou
+  `sys.boot_completed=1` em 180 s; nenhum relatorio PASS foi produzido.
+- Inicializacao integrada: FAIL. O ADB alternou entre `offline`, `device` e
+  desconectado; o log registrou `mount: '/dev/block/sda1'->'/system': Device
+  or resource busy`, `WHPX: Unexpected VP exit code 4` e o estado publicado
+  terminou em `stage=Error`, com `lastError=Não foi possível reiniciar o Android.`
+- A imagem publicada atual esta com SHA-256
+  `30AE25CF326C0D80823ACCE136C8638368F754FC427F90F4038D301B15701BDF`, mas o
+  manifesto ainda registra `EA183B11BD9C996BC362D99AA40EAE25995D62516179599D82A1BEAE1E62DD77`;
+  a identidade do qcow2, portanto, nao foi aprovada.
+- `no-visible-console.json`: `pending-evidence`; somente
+  `launcher-diagnostics` foi observado (1 de 12 cenarios). O gate nao pode
+  ser promovido a PASS sem os cenarios reais.
+- A publicacao `dist/NeoNewsRuntime-current/packages/` tem 0 arquivos. O
+  instalador publicado depende de um payload adjacente e, por isso, nao ha
+  evidencia de instalacao standalone em PC limpo.
+- A configuracao atual declara `stopRuntimeHotkey=F11` e
+  `toggleFullscreenHotkey=F12`; isso nao corresponde a exigencia desta meta
+  de `Ctrl+Alt+Shift+F11` e `Ctrl+Alt+Shift+F12`. Nenhuma correcao foi feita
+  nesta rodada evidence-only.
+- O logcat da tentativa atual nao pode ser capturado porque o guest nao
+  completou o boot. Logcats historicos de outra imagem nao foram reutilizados
+  como prova da publicacao atual.
+
+Conclusao desta rodada: **BLOCKED / NOT PRODUCTION READY**. Os gates de
+persistencia, boot integrado, Power BI real, endurance 600 s, tres ciclos,
+fullscreen, hotkeys, startup, instalador, portabilidade e console sem
+observacao integral continuam sem aprovacao.
+
 ## Matriz de gates
 
 | Gate | Estado | Evidência / observação |
