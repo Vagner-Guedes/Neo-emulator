@@ -78,8 +78,11 @@ public static class HostProcessOwnership
         if (!File.Exists(path)) return;
         try
         {
-            await using var stream = File.OpenRead(path);
-            var record = await JsonSerializer.DeserializeAsync<HostProcessRecord>(stream, RuntimeContext.JsonOptions, cancellationToken);
+            HostProcessRecord? record;
+            await using (var stream = File.OpenRead(path))
+            {
+                record = await JsonSerializer.DeserializeAsync<HostProcessRecord>(stream, RuntimeContext.JsonOptions, cancellationToken);
+            }
             if (record is null || record.ProcessId != processId) return;
             File.Delete(path);
         }
