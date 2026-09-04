@@ -104,8 +104,18 @@ function Test-NeoNewsContentEvidence {
 }
 
 function Send-LauncherCommand {
-    param([string]$Argument)
-    $process = Start-Process -FilePath $ExecutablePath -ArgumentList $Argument -WorkingDirectory $runtimeRoot -PassThru -Wait
+    param(
+        [string]$Argument,
+        [int]$TimeoutSeconds = 0
+    )
+    $process = Start-Process -FilePath $ExecutablePath -ArgumentList $Argument -WorkingDirectory $runtimeRoot -PassThru
+    if ($TimeoutSeconds -gt 0) {
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            try { $process.Kill() } catch { }
+            return $null
+        }
+    }
+    else { $process.WaitForExit() }
     return [int]$process.ExitCode
 }
 
@@ -527,7 +537,7 @@ catch {
 }
 finally {
     if ($main -and -not $main.HasExited) {
-        try { $null = Send-LauncherCommand '--exit' } catch { }
+        try { $null = Send-LauncherCommand '--exit' -TimeoutSeconds 15 } catch { }
         try { $main.WaitForExit(30000) } catch { }
     }
 }
