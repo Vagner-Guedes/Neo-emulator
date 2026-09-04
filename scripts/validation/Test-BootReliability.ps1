@@ -83,6 +83,27 @@ function New-BootOverlay {
     if ($exitCode -ne 0) { throw "Não foi possível criar overlay descartável: exit=$exitCode; output=$(($raw | Out-String).Trim())" }
 }
 
+function Ensure-BootAdbRoot {
+    param(
+        [string]$Serial,
+        [int]$ServerPort
+    )
+
+    $rootRequest = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('root') -ServerPort $ServerPort
+    $deadline = (Get-Date).AddSeconds(45)
+    $state = $null
+    do {
+        $state = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('get-state') -ServerPort $ServerPort
+        if ($state.Text -match '(?im)^device$') { break }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+    [ordered]@{
+        request = Get-TextResult $rootRequest
+        state = Get-TextResult $state
+        ready = $rootRequest.ExitCode -eq 0 -and $state.Text -match '(?im)^device$'
+    }
+}
+
 function Sync-BootGuestClock {
     param(
         [string]$Serial,
@@ -95,7 +116,7 @@ function Sync-BootGuestClock {
     $timezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'setprop', 'persist.sys.timezone', $Timezone) -ServerPort $ServerPort
     $autoTimeResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time', '0') -ServerPort $ServerPort
     $autoZoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'settings', 'put', 'global', 'auto_time_zone', '0') -ServerPort $ServerPort
-    $dateResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'su', '-c', "date $dateValue") -ServerPort $ServerPort
+    $dateResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', $dateValue) -ServerPort $ServerPort
     $guestEpochResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'date', '+%s') -ServerPort $ServerPort
     $guestTimezoneResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'getprop', 'persist.sys.timezone') -ServerPort $ServerPort
     $hostAfter = [DateTimeOffset]::Now
@@ -241,6 +262,7 @@ function Invoke-BootRun {
     $lastDeviceAt = $null
     $deviceProbes = 0
     $setupFlags = $null
+    $rootEvidence = $null
     $clockEvidence = $null
     $bootProperty = $null
     $pmResult = $null
@@ -292,6 +314,8 @@ function Invoke-BootRun {
         }
 
         if ($bootCompleted) {
+            $rootEvidence = Ensure-BootAdbRoot -Serial $serial -ServerPort $adbServerPort
+            if (-not $rootEvidence.ready) { throw "ADB root não foi confirmado: $($rootEvidence | ConvertTo-Json -Compress -Depth 8)" }
             $clockEvidence = Sync-BootGuestClock -Serial $serial -ServerPort $adbServerPort -Timezone ([string]$config.runtime.timezone)
             if (-not $clockEvidence.validated) { throw "Relógio do guest não foi homologado: $($clockEvidence | ConvertTo-Json -Compress -Depth 8)" }
             $pmPackages = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'pm', 'list', 'packages') -ServerPort $adbServerPort
@@ -366,7 +390,7 @@ function Invoke-BootRun {
         qemu = [ordered]@{ executable = $qemuPath; processId = $processId; exitCode = $processExitCode; arguments = $arguments; stdoutPath = $stdoutPath; stderrPath = $stderrPath; qemuMatches = $qemuMatches; stop = $stop }
         adb = [ordered]@{ serverPort = $adbServerPort; serial = $serial; hostPort = $adbHostPort; firstAdbSeen = if ($firstAdbSeen) { $firstAdbSeen.ToString('o') } else { $null }; firstDeviceState = if ($firstDeviceState) { $firstDeviceState.ToString('o') } else { $null }; observations = $observations.ToArray() }
         boot = [ordered]@{ bootCompleted = if ($bootCompleted) { $bootCompleted.ToString('o') } else { $null }; sysBootCompleted = $bootProperty; consecutiveDeviceProbes = $deviceProbes; setupFlags = $setupFlags; packageManager = $pmResult; settingsGlobal = $settingsGlobal; settingsSecure = $settingsSecure; androidReady = [bool]($bootCompleted -and $deviceProbes -ge 3 -and $pmResult.ready -and $settingsGlobal.exitCode -eq 0 -and $settingsSecure.exitCode -eq 0) }
-        guest = [ordered]@{ clock = $clockEvidence; nativeBridgeProperty = if ($nativeBridge) { $nativeBridge.Text.Trim() } else { $null }; locale = if ($locale) { $locale.Text.Trim() } else { $null }; packages = $packageEvidence; neoNews = $neoNews }
+        guest = [ordered]@{ root = $rootEvidence; clock = $clockEvidence; nativeBridgeProperty = if ($nativeBridge) { $nativeBridge.Text.Trim() } else { $null }; locale = if ($locale) { $locale.Text.Trim() } else { $null }; packages = $packageEvidence; neoNews = $neoNews }
         logcat = [ordered]@{ result = $logResult; matches = $logMatches }
         overlay = [ordered]@{ path = $overlayPath; check = $overlayCheck }
     }
