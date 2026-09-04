@@ -49,7 +49,7 @@ estabilidade contínua.
 | Build Release | PASS | .NET 8: 0 avisos, 0 erros. |
 | Validação do repositório | PASS | 36 scripts, 0 erros de parse/contrato. |
 | Validação de codificação | PASS | Fontes/configuração/documentação versionáveis; temporários excluídos. |
-| Limpeza de storage | NOT EXECUTED | C: sem espaço suficiente; nenhum arquivo foi apagado. |
+| Limpeza de storage | PASS executado | Cópias descartáveis já testadas removidas; `dist/NeoNewsRuntime-current`, o projeto canônico e o arquivo de recuperação foram preservados. |
 
 ## WebView pré-compilado
 
@@ -103,10 +103,10 @@ a frase de teste, engine RHVoice, locale pt-BR e áudio WAV de 110204 bytes.
 
 ## Endurance e falhas capturadas
 
-Relatórios das duas tentativas integradas:
-
-- `tmp/NeoNewsRuntime-FinalPublish-ApprovedOverlay/reports/runtime-stability-600-final2.json`: 628,19 s, 26 amostras, 1 falha;
-- `tmp/NeoNewsRuntime-FinalPublish-ApprovedOverlay/reports/runtime-stability-600-retry.json`: 625,03 s, 25 amostras, 2 falhas.
+As duas tentativas integradas concluídas antes da limpeza foram consolidadas
+neste relatório: final2 com 628,19 s, 26 amostras e 1 falha; retry com
+625,03 s, 25 amostras e 2 falhas. Os diretórios temporários e seus JSONs
+foram removidos em 2026-09-04 conforme a limpeza autorizada.
 
 As amostras reprovadas registraram `backendRunning=false` e
 `adbOnline=false`. O log do QEMU não mostra crash ou restart nesse intervalo;
@@ -118,9 +118,9 @@ falhas, o gate continua `NOT VALIDATED`.
 
 O launcher foi recompilado e publicado em
 `dist/NeoNewsRuntime-current/NeoNewsRuntime.exe` como self-contained
-win-x64, sem compilar WebView. O smoke de cópia para um caminho contendo
-espaços foi interrompido por falta de espaço no C: durante a cópia da ISO
-Android; isso deixou o teste zero-touch externo pendente.
+win-x64, sem compilar WebView. O smoke básico na cópia E: passou com janela
+responsiva, single-instance, `--exit` e nenhum processo residual. O teste de
+caminho contendo espaços e o zero-touch em PC externo continuam pendentes.
 
 A publicação não contém APKs nas pastas `packages/` e mantém o disco
 persistente configurado como `runtime/android/neonews-runtime-v1.qcow2`.
@@ -132,4 +132,16 @@ persistente configurado como `runtime/android/neonews-runtime-v1.qcow2`.
 3. Executar o fluxo real do NeoNews autenticado, confirmar conteúdo Power BI e reprodução.
 4. Repetir a prova visual de que o toast de superusuário não aparece.
 5. Validar kiosk, tray, watchdog, startup e coexistência em um PC Windows limpo, com Android Studio/ADB 5037 preservado.
-6. Só depois executar a limpeza aprovada e fechar o gate zero-touch/publicação.
+6. Repetir a validação em PC Windows limpo e executar o fluxo real autenticado;
+   a limpeza local das cópias temporárias já foi concluída.
+
+## Limpeza de armazenamento
+
+Em 2026-09-04 foram removidas as cópias descartáveis já testadas em `tmp`,
+as publicações antigas em `dist` e as duas cópias de homologação em E:. O
+espaço livre passou de aproximadamente 185 MB para 74,98 GB em C: e de
+140,48 GB para 152,49 GB em E:. O diretório
+`dist/NeoNewsRuntime-current`, o projeto canônico, o qcow2 raiz e
+`E:\NeoNewsRuntime-Archived-20260904` foram preservados. O executável ADB
+global 5037 permaneceu ativo; por isso ficaram somente seus arquivos em uso
+no diretório antigo `dist/NeoNewsRuntime-live-check`.

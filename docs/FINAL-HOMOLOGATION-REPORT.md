@@ -68,13 +68,11 @@ ficou entre 0 e 3 segundos.
 
 ### Ciclos QEMU e persistência
 
-O relatório `tmp/NeoNewsRuntime-CycleTest/tmp/NeoNewsRuntime-CycleTest/reports/qemu-runtime-cycles-final.json` registrou 3/3 ciclos bem-sucedidos,
-com 60 s de estabilidade por ciclo, `qmpQuitResponseSucceeded=true` e
-`forcedKill=false`.
-
-O relatório `tmp/NeoNewsRuntime-FinalPublish-Fresh/reports/qemu-persistence.json`
-registrou dois boots, dois desligamentos QMP, marcador persistente e nenhum
-kill forçado.
+As evidências temporárias registraram 3/3 ciclos bem-sucedidos, com 60 s de
+estabilidade por ciclo, `qmpQuitResponseSucceeded=true` e `forcedKill=false`.
+Também foram observados dois boots, dois desligamentos QMP, marcador
+persistente e nenhum kill forçado. Os diretórios temporários desses testes
+foram removidos após a consolidação deste relatório.
 
 ## Gate integrado de 600 s
 
@@ -106,11 +104,20 @@ qualquer amostra instável mantém `status=not-validated`.
 O launcher Release foi recompilado com 0 avisos e 0 erros e publicado em
 `dist/NeoNewsRuntime-current`. A publicação é self-contained win-x64 e usa
 somente caminhos relativos para QEMU, ADB, imagem e qcow2. O script de
-publicação não copia APKs externos automaticamente.
+publicação não copia APKs externos automaticamente. O smoke básico em uma
+cópia E: passou com janela responsiva, single-instance, `--exit` e nenhum
+processo residual; caminho contendo espaços e zero-touch externo permanecem
+`NOT RUN`.
 
-O teste de cópia para caminho contendo espaços não foi concluído porque o
-volume C: ficou sem espaço ao copiar a ISO Android. O gate de PC novo,
-coexistência e zero-touch permanece `NOT RUN`.
+## Limpeza de armazenamento
+
+As cópias descartáveis já testadas em `tmp`, as publicações antigas em `dist`
+e as duas cópias de homologação em E: foram removidas em 2026-09-04. O espaço
+livre passou de aproximadamente 185 MB para 74,98 GB em C: e de 140,48 GB
+para 152,49 GB em E:. Foram preservados o projeto canônico,
+`dist/NeoNewsRuntime-current`, o qcow2 raiz e
+`E:\NeoNewsRuntime-Archived-20260904`. O ADB global 5037 não foi encerrado;
+seu executável em uso é o único resíduo da publicação antiga.
 
 ## Próximos passos para desbloqueio
 
@@ -119,8 +126,8 @@ coexistência e zero-touch permanece `NOT RUN`.
 2. Homologar conteúdo e playback reais do NeoNews/Power BI.
 3. Repetir a prova visual de ausência do toast de superusuário.
 4. Validar startup, kiosk, tray, watchdog e coexistência em PC limpo.
-5. Executar cleanup somente com inventário e autorização explícita, preservando
-   qcow2, RHVoice, WebView, Native Bridge e artefatos do usuário.
+5. A limpeza local autorizada já foi executada; preservar o qcow2, RHVoice,
+   WebView, Native Bridge e artefatos do usuário nas próximas validações.
 
 Até a conclusão desses itens, a decisão oficial permanece
 **BLOCKED / NOT PRODUCTION READY**.
