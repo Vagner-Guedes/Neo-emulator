@@ -4,6 +4,7 @@ param(
     [int]$DurationSeconds = 600,
     [int]$PollSeconds = 5,
     [int]$DiagnosticTimeoutSeconds = 30,
+    [int]$ReadinessTimeoutSeconds = 300,
     [int]$NativeBridgeEvidenceMinimumSeconds = 60,
     [int]$EvidenceMaxAgeHours = 24,
     [string]$LauncherSmokeEvidencePath = 'reports/launcher-smoke.json',
@@ -45,6 +46,7 @@ $reportFullPath = Initialize-ValidationReport -ReportPath $reportFullPath -Valid
 if ($DurationSeconds -lt 600) { throw 'DurationSeconds precisa ser pelo menos 600 segundos.' }
 if ($PollSeconds -lt 1) { throw 'PollSeconds precisa ser pelo menos 1 segundo.' }
 if ($EvidenceMaxAgeHours -lt 1) { throw 'EvidenceMaxAgeHours precisa ser pelo menos 1 hora.' }
+if ($ReadinessTimeoutSeconds -lt 1) { throw 'ReadinessTimeoutSeconds precisa ser pelo menos 1 segundo.' }
 if ($NativeBridgeEvidenceMinimumSeconds -lt 1) { throw 'NativeBridgeEvidenceMinimumSeconds precisa ser pelo menos 1 segundo.' }
 
 function Resolve-EvidencePath {
@@ -224,6 +226,7 @@ $samples = New-Object System.Collections.Generic.List[object]
 $startCommandExitCode = $null
 $failure = $null
 $startedAt = $null
+$readinessAt = $null
 try {
     $existing = @(Get-Process -Name 'NeoNewsRuntime' -ErrorAction SilentlyContinue | Where-Object {
         try { $_.Path -eq $ExecutablePath } catch { $false }
@@ -241,7 +244,23 @@ try {
 
     $startCommandExitCode = Send-LauncherCommand '--start'
     if ($startCommandExitCode -ne 0) { throw "O comando --start falhou com exit code $startCommandExitCode." }
-    $startedAt = [DateTimeOffset]::UtcNow
+    $readinessDeadline = (Get-Date).ToUniversalTime().AddSeconds($ReadinessTimeoutSeconds)
+    $readinessSample = $null
+    do {
+        $probe = Get-FreshDiagnostics
+        $candidate = Convert-DiagnosticsSample $probe
+        if ($candidate.stable) {
+            $readinessSample = $candidate
+            break
+        }
+        if ((Get-Date).ToUniversalTime() -lt $readinessDeadline) { Start-Sleep -Seconds $PollSeconds }
+    } while ((Get-Date).ToUniversalTime() -lt $readinessDeadline)
+    if ($null -eq $readinessSample) {
+        throw "O runtime não atingiu Ready estável em $ReadinessTimeoutSeconds segundos antes do endurance."
+    }
+    $samples.Add($readinessSample)
+    $readinessAt = [DateTimeOffset]::UtcNow
+    $startedAt = $readinessAt
     $deadline = (Get-Date).ToUniversalTime().AddSeconds($DurationSeconds)
     do {
         $probe = Get-FreshDiagnostics
@@ -271,6 +290,8 @@ $result = [ordered]@{
     transport = $config.android.adb.transport
     serial = $expectedSerial
     requestedDurationSeconds = $DurationSeconds
+    readinessTimeoutSeconds = $ReadinessTimeoutSeconds
+    readinessReachedAt = $readinessAt
     observedDurationSeconds = $observedSeconds
     pollSeconds = $PollSeconds
     startCommandExitCode = $startCommandExitCode
