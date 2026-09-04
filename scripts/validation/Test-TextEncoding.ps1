@@ -25,6 +25,8 @@ $files = @(Get-ChildItem -LiteralPath $RepositoryRoot -Recurse -File -ErrorActio
         $relative -notlike 'dist\*' -and
         $relative -notlike 'bin\*' -and
         $relative -notlike 'obj\*' -and
+        $relative -notlike 'tmp\*' -and
+        $relative -notlike '.tmp-network\*' -and
         $relative -notlike 'tools\*\build\*'
     })
 
@@ -51,7 +53,7 @@ $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     scope = 'versionable-source-config-docs'
     scannedFiles = $files.Count
-    excluded = @('reports/**', 'dist/**', 'bin/**', 'obj/**', 'tools/**/build/**')
+    excluded = @('reports/**', 'dist/**', 'bin/**', 'obj/**', 'tmp/**', '.tmp-network/**', 'tools/**/build/**')
     errors = $errors
     status = if ($errors.Count -eq 0) { 'passed' } else { 'failed' }
 }
