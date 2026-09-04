@@ -372,7 +372,10 @@ function Invoke-BootRun {
             $neoNews = [ordered]@{ packagePresent = $neoPath.ExitCode -eq 0 -and $neoPath.Text -match '(?i)package:'; primaryCpuAbi = $primaryCpuAbi; expectedAbi = 'armeabi-v7a'; activity = $launchActivity; launch = $null; stable60s = $null }
             if ($ValidateNeoNews -and $neoNews.packagePresent) {
                 $preLaunchStop = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'force-stop', $config.neonews.packageName) -ServerPort $adbServerPort
-                Start-Sleep -Seconds 5
+                # O Guardian pode ter um restart START_STICKY pendente após o force-stop.
+                # Aguarde essa reconvergência antes do lançamento medido, para que a janela
+                # de estabilidade não coincida com a transição interna do aplicativo.
+                Start-Sleep -Seconds 12
                 $launchResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'start', '-n', $launchActivity) -ServerPort $adbServerPort
                 $stable = Test-QemuBenchmarkStability -Process $started.Process -AdbPath $adbPath -Serial $serial -ActivityComponent $launchActivity -DurationSeconds 60 -PollSeconds 5 -ServerPort $adbServerPort
                 $neoNews.launch = [ordered]@{ result = Get-TextResult $launchResult; succeeded = ($launchResult.ExitCode -eq 0 -or $launchResult.Text -match '(?im)Starting: Intent') -and $launchResult.Text -notmatch '(?im)(^|[\r\n])\s*Error:|ActivityNotFound|does not exist|Unable to resolve Intent' }
