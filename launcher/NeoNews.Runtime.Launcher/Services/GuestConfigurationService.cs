@@ -10,6 +10,7 @@ public sealed record GuestConfigurationResult(
     bool Ready,
     bool NetworkConfigured,
     bool SuperuserConfigured,
+    bool AndroidSetupComplete,
     bool RebootPerformed,
     bool InitScriptChanged,
     string SuperuserStatus,
@@ -47,6 +48,7 @@ public sealed class GuestConfigurationService
                 Ready: true,
                 NetworkConfigured: true,
                 SuperuserConfigured: true,
+                AndroidSetupComplete: true,
                 RebootPerformed: false,
                 InitScriptChanged: false,
                 SuperuserStatus: "disabled-by-configuration",
@@ -56,6 +58,7 @@ public sealed class GuestConfigurationService
 
         ValidateConfiguration(configuration);
         await _adb.EnsureRootAsync(cancellationToken);
+        var setup = await _adb.EnsureAndroidSetupCompleteAsync(cancellationToken);
 
         progress?.Report(new RuntimeProgress(
             "Configurando Android",
@@ -92,13 +95,14 @@ public sealed class GuestConfigurationService
                 superuser.Detail);
         }
 
-        var ready = network.Ready && (!requireNeoNewsSuperuser || superuser.Configured);
-        var detail = $"network={network.Detail}; superuser={superuser.Status}; initChanged={initResult.Changed}; reboot={rebootPerformed}";
+        var ready = setup.Ready && network.Ready && (!requireNeoNewsSuperuser || superuser.Configured);
+        var detail = $"setup={setup.Detail}; network={network.Detail}; superuser={superuser.Status}; initChanged={initResult.Changed}; reboot={rebootPerformed}";
         _logs.Info("provisioning", $"GUEST_CONFIGURATION_OK {detail}");
         return new GuestConfigurationResult(
             Ready: ready,
             NetworkConfigured: network.Ready,
             SuperuserConfigured: superuser.Configured,
+            AndroidSetupComplete: setup.Ready,
             RebootPerformed: rebootPerformed,
             InitScriptChanged: initResult.Changed,
             SuperuserStatus: superuser.Status,

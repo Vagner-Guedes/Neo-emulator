@@ -455,6 +455,7 @@ public sealed class AdbService
         await StartServerAsync(cancellationToken);
         var deadline = DateTimeOffset.UtcNow + timeout;
         var nextConnect = DateTimeOffset.MinValue;
+        var setupCompleteApplied = false;
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -467,6 +468,20 @@ public sealed class AdbService
             var state = await GetStateAsync(cancellationToken);
             if (state.Equals("device", StringComparison.OrdinalIgnoreCase))
             {
+                // Android-x86 may launch SetupWizard before sys.boot_completed
+                // becomes 1. Register the runtime as provisioned at the first
+                // stable ADB transport so its FRP/Welcome flow cannot show the
+                // known crash dialog. This changes settings metadata only.
+                if (!setupCompleteApplied)
+                {
+                    var earlySetup = await TryEnsureAndroidSetupCompleteAsync(cancellationToken);
+                    if (earlySetup.Ready)
+                    {
+                        setupCompleteApplied = true;
+                        _logs.Info("provisioning", $"ANDROID_SETUP_COMPLETE_EARLY {earlySetup.Detail}");
+                    }
+                }
+
                 var boot = await GetPropertyAsync("sys.boot_completed", cancellationToken);
                 if (boot == "1")
                 {
@@ -474,6 +489,13 @@ public sealed class AdbService
                     await WaitForPackageManagerAsync(TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.PackageManagerSeconds)), cancellationToken);
                     progress?.Report(new RuntimeProgress("Aguardando Settings Provider", "Validando settings antes do provisionamento...", 66));
                     await WaitForSettingsProviderAsync(TimeSpan.FromSeconds(Math.Max(15, _context.Config.Timeouts.SettingsProviderSeconds)), cancellationToken);
+                    var setup = await TryEnsureAndroidSetupCompleteAsync(cancellationToken);
+                    if (!setup.Ready)
+                    {
+                        throw new RuntimeOperationException(
+                            "O Android não confirmou o provisionamento inicial.",
+                            setup.Detail);
+                    }
                     SetState(AdbRuntimeState.Ready);
                     progress?.Report(new RuntimeProgress("Android pronto", "Android, Package Manager e Settings Provider prontos.", 70));
                     return;
@@ -493,6 +515,42 @@ public sealed class AdbService
         throw new RuntimeOperationException(
             "Não foi possível conectar ao Android.",
             $"ADB não confirmou o boot do transporte {Serial} em {timeout.TotalSeconds:0} segundos. Último estado: {State}.");
+    }
+
+    public async Task<(bool Ready, string Detail)> EnsureAndroidSetupCompleteAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await TryEnsureAndroidSetupCompleteAsync(cancellationToken);
+        if (!result.Ready)
+        {
+            throw new RuntimeOperationException(
+                "O Android não confirmou o provisionamento inicial.",
+                result.Detail);
+        }
+        return result;
+    }
+
+    private async Task<(bool Ready, string Detail)> TryEnsureAndroidSetupCompleteAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var globalWrite = await ShellResultAsync(["settings", "put", "global", "device_provisioned", "1"], TimeSpan.FromSeconds(15), cancellationToken);
+            var secureWrite = await ShellResultAsync(["settings", "put", "secure", "user_setup_complete", "1"], TimeSpan.FromSeconds(15), cancellationToken);
+            var globalRead = await ShellResultAsync(["settings", "get", "global", "device_provisioned"], TimeSpan.FromSeconds(15), cancellationToken);
+            var secureRead = await ShellResultAsync(["settings", "get", "secure", "user_setup_complete"], TimeSpan.FromSeconds(15), cancellationToken);
+            var global = globalRead.StandardOutput.Trim();
+            var secure = secureRead.StandardOutput.Trim();
+            var ready = globalWrite.Succeeded && secureWrite.Succeeded && globalRead.Succeeded && secureRead.Succeeded && global == "1" && secure == "1";
+            var detail = $"device_provisioned={global}; user_setup_complete={secure}; globalWriteExit={globalWrite.ExitCode}; secureWriteExit={secureWrite.ExitCode}; globalReadExit={globalRead.ExitCode}; secureReadExit={secureRead.ExitCode}";
+            return (ready, detail);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            return (false, $"settings indisponível durante o boot: {exception.Message}");
+        }
     }
 
     public async Task WaitForPackageManagerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)

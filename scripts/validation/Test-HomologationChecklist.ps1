@@ -227,6 +227,22 @@ Add-ChecklistItem $items 'network-online' 'DNS, HTTP e HTTPS funcionam no guest'
 Add-ChecklistItem $items 'hls-playback' 'Playlist HLS/m3u8 e reprodução MediaPlayer funcionam' 'guest-network-media.json' ((Test-ReportFresh $networkMedia) -and (Test-ReportTransport $networkMedia) -and (Has-PropertyValue $networkMedia 'online.validated' $true) -and (Has-PropertyValue $networkMedia 'online.raw' { param($v) [string]$v -match '(?i)hlsPlaylist=True.*hlsPlayable=True' })) 'O teste deve registrar playlist válida e playback efetivo no guest configurado.' ($null -ne $networkMedia)
 Add-ChecklistItem $items 'offline-cache' 'Cache permanece legível e a rede falha ao desligar a NIC' 'guest-network-media.json' ((Test-ReportFresh $networkMedia) -and (Test-ReportTransport $networkMedia) -and (Has-PropertyValue $networkMedia 'offline.validated' $true) -and (Has-PropertyValue $networkMedia 'offline.networkLinkToggled' $true)) 'A perda de rede precisa ser reversível e registrada no guest configurado.' ($null -ne $networkMedia)
 
+$androidSetupPass = (Test-ReportFresh $diagnostics) -and (Test-DiagnosticsIdentity $diagnostics) -and
+    (Has-PropertyValue $diagnostics 'androidSetup.gate' 'ANDROID_SETUP_COMPLETE_PASS') -and
+    (Has-PropertyValue $diagnostics 'androidSetup.flagsReady' $true) -and
+    (Has-PropertyValue $diagnostics 'androidSetup.deviceProvisioned' { param($v) [string]$v.Trim() -eq '1' }) -and
+    (Has-PropertyValue $diagnostics 'androidSetup.userSetupComplete' { param($v) [string]$v.Trim() -eq '1' })
+$setupWizardSuppressedPass = $androidSetupPass -and
+    (Has-PropertyValue $diagnostics 'androidSetup.setupWizardGate' 'SETUP_WIZARD_SUPPRESSED_PASS') -and
+    (Has-PropertyValue $diagnostics 'androidSetup.setupWizardActive' $false)
+$noAndroidCrashDialogPass = $setupWizardSuppressedPass -and
+    (Has-PropertyValue $diagnostics 'androidSetup.crashDialogGate' 'NO_ANDROID_CRASH_DIALOG_PASS') -and
+    (Has-PropertyValue $diagnostics 'androidSetup.crashDialogVisible' $false) -and
+    (Has-PropertyValue $diagnostics 'logcat' { param($v) @($v | Where-Object { [string]$_ -match '(?i)FATAL EXCEPTION|am_crash:|Application Error|parou|n\u00e3o est\u00e1 respondendo|fechar aplicativo|abrir app novamente' }).Count -eq 0 })
+Add-ChecklistItem $items 'android-setup-complete' 'Provisionamento inicial do Android esta concluido' 'diagnostics.json' $androidSetupPass 'ANDROID_SETUP_COMPLETE_PASS exige device_provisioned=1 e user_setup_complete=1 confirmados no guest live.' ($null -ne $diagnostics)
+Add-ChecklistItem $items 'setup-wizard-suppressed' 'Setup Wizard nao e relancado' 'diagnostics.json' $setupWizardSuppressedPass 'SETUP_WIZARD_SUPPRESSED_PASS exige que nenhuma janela ou foco do com.google.android.setupwizard seja observado.' ($null -ne $diagnostics)
+Add-ChecklistItem $items 'no-android-crash-dialog' 'Nenhum dialogo de crash do Android e visivel' 'diagnostics.json + runtime-stability.json' $noAndroidCrashDialogPass 'NO_ANDROID_CRASH_DIALOG_PASS falha para Application Error, parou, nao esta respondendo, fechar aplicativo ou abrir app novamente.' ($null -ne $diagnostics)
+
 $initialStabilityItem = $items | Where-Object { $_.id -eq 'initial-stability' } | Select-Object -First 1
 Add-ChecklistItem $items 'offline-cache-qmp-evidence' 'NIC down/up confirmed by QMP' 'guest-network-media.json' ((Test-ReportFresh $networkMedia) -and (Test-ReportTransport $networkMedia) -and (Has-PropertyValue $networkMedia 'offline.qmpLinkDownConfirmed' $true) -and (Has-PropertyValue $networkMedia 'offline.qmpLinkRestoreConfirmed' $true)) 'Each set_link needs a positive JSON response; TCP connection closure is not evidence.' ($null -ne $networkMedia)
 if ($initialStabilityItem) {

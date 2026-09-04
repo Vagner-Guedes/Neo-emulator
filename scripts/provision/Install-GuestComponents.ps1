@@ -124,6 +124,26 @@ function Wait-ForBoot {
     return $false
 }
 
+function Ensure-AndroidSetupComplete {
+    $globalWrite = Invoke-Adb @('-s', $script:Serial, 'shell', 'settings', 'put', 'global', 'device_provisioned', '1')
+    $secureWrite = Invoke-Adb @('-s', $script:Serial, 'shell', 'settings', 'put', 'secure', 'user_setup_complete', '1')
+    $globalRead = Invoke-Adb @('-s', $script:Serial, 'shell', 'settings', 'get', 'global', 'device_provisioned')
+    $secureRead = Invoke-Adb @('-s', $script:Serial, 'shell', 'settings', 'get', 'secure', 'user_setup_complete')
+    $global = $globalRead.Text.Trim()
+    $secure = $secureRead.Text.Trim()
+    if ($globalWrite.ExitCode -ne 0 -or $secureWrite.ExitCode -ne 0 -or $globalRead.ExitCode -ne 0 -or $secureRead.ExitCode -ne 0 -or $global -ne '1' -or $secure -ne '1') {
+        throw "O Android não confirmou o provisionamento inicial: device_provisioned=$global; user_setup_complete=$secure; globalWrite=$($globalWrite.Text); secureWrite=$($secureWrite.Text); globalRead=$($globalRead.Text); secureRead=$($secureRead.Text)"
+    }
+    return [ordered]@{
+        deviceProvisioned = $global
+        userSetupComplete = $secure
+        globalWriteExitCode = $globalWrite.ExitCode
+        secureWriteExitCode = $secureWrite.ExitCode
+        globalReadExitCode = $globalRead.ExitCode
+        secureReadExitCode = $secureRead.ExitCode
+    }
+}
+
 function Assert-ExpectedSha256 {
     param([string]$Name, [string]$Path, [string]$ExpectedSha256)
     if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw "SHA-256 esperado ausente ou inválido para ${Name}." }
@@ -229,6 +249,7 @@ $server = Invoke-Adb @('start-server')
 if ($server.ExitCode -ne 0) { throw "Não foi possível iniciar o ADB: $($server.Text)" }
 if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $Serial) }
 if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw "ADB não ficou pronto no serial $Serial em $BootTimeoutSeconds segundos." }
+$androidSetup = Ensure-AndroidSetupComplete
 $guestReleaseResult = Invoke-Adb @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
 $guestApiResult = Invoke-Adb @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.sdk')
 $guestRelease = $guestReleaseResult.Text
@@ -353,6 +374,7 @@ $state = [ordered]@{
     ttsEngineBefore = $baselineDefaultEngine
     ttsEngineAfter = $defaultEngine
     ttsEnginePreserved = $defaultEnginePreserved
+    androidSetup = $androidSetup
     neoNewsVersion = "$($config.neonews.versionName) ($($config.neonews.versionCode))"
     lastValidation = (Get-Date).ToUniversalTime().ToString('o')
     imageHash = $imageHash

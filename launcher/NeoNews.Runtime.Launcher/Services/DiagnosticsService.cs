@@ -95,6 +95,13 @@ public sealed class DiagnosticsService
         var graphics = adbOnline ? LimitLines(await SafeAsync(() => _adb.GetGraphicsDumpAsync(cancellationToken), cancellationToken), 80) : [];
         var rawLogcat = adbOnline ? await SafeAsync(() => _adb.GetLogcatAsync(240, cancellationToken), cancellationToken) : string.Empty;
         var relevantLogcat = FilterRelevantLogcat(rawLogcat);
+        var setupDeviceProvisioned = adbOnline ? await SafeAsync(() => _adb.GetSettingAsync("global", "device_provisioned", cancellationToken), cancellationToken) : string.Empty;
+        var setupUserComplete = adbOnline ? await SafeAsync(() => _adb.GetSettingAsync("secure", "user_setup_complete", cancellationToken), cancellationToken) : string.Empty;
+        var activityDump = adbOnline ? await SafeAsync(() => _adb.ShellAsync(["dumpsys", "activity", "activities"], TimeSpan.FromSeconds(20), cancellationToken), cancellationToken) : string.Empty;
+        var windowDump = adbOnline ? await SafeAsync(() => _adb.ShellAsync(["dumpsys", "window", "windows"], TimeSpan.FromSeconds(20), cancellationToken), cancellationToken) : string.Empty;
+        var setupFlagsReady = setupDeviceProvisioned.Trim() == "1" && setupUserComplete.Trim() == "1";
+        var setupWizardActive = Regex.IsMatch(windowDump, @"(?im)^\s*Window #\d+.*com\.google\.android\.setupwizard/|mCurrentFocus=.*com\.google\.android\.setupwizard/", RegexOptions.CultureInvariant);
+        var crashDialogVisible = Regex.IsMatch(windowDump, @"(?i)Application Error|parou|n\u00e3o est\u00e1 respondendo|fechar aplicativo|abrir app novamente", RegexOptions.CultureInvariant);
         var startupRegistered = await SafeBoolAsync(() => _startup.IsRegisteredAsync(cancellationToken), cancellationToken);
         var startupValid = startupRegistered && await SafeBoolAsync(() => _startup.ValidateAsync(Environment.ProcessPath ?? string.Empty, cancellationToken), cancellationToken);
 
@@ -168,6 +175,7 @@ public sealed class DiagnosticsService
                     androidImageVersion = provisioningState.AndroidImageVersion,
                     nativeBridgeStatus = provisioningState.NativeBridgeStatus,
                     guestConfigurationStatus = provisioningState.GuestConfigurationStatus,
+                    androidSetupStatus = provisioningState.AndroidSetupStatus,
                     guestNetworkStatus = provisioningState.GuestNetworkStatus,
                     neoNewsSuperuserStatus = provisioningState.NeoNewsSuperuserStatus,
                     guestInitScriptSha256 = provisioningState.GuestInitScriptSha256,
@@ -284,6 +292,18 @@ public sealed class DiagnosticsService
                 matchingPackages = packages.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
                     .Where(line => line.Contains("rhvoice", StringComparison.OrdinalIgnoreCase) || line.Contains("tts", StringComparison.OrdinalIgnoreCase))
                     .ToArray()
+            },
+            androidSetup = new
+            {
+                gate = "ANDROID_SETUP_COMPLETE_PASS",
+                deviceProvisioned = setupDeviceProvisioned,
+                userSetupComplete = setupUserComplete,
+                flagsReady = setupFlagsReady,
+                setupWizardActive,
+                crashDialogVisible,
+                setupWizardGate = !setupWizardActive ? "SETUP_WIZARD_SUPPRESSED_PASS" : "SETUP_WIZARD_VISIBLE_FAIL",
+                crashDialogGate = !crashDialogVisible ? "NO_ANDROID_CRASH_DIALOG_PASS" : "NO_ANDROID_CRASH_DIALOG_FAIL",
+                activityObserved = activityDump.Contains(_neoNews.ActivityName, StringComparison.OrdinalIgnoreCase)
             },
             watchdog = new
             {
@@ -476,7 +496,7 @@ public sealed class DiagnosticsService
     private static string[] FilterRelevantLogcat(string text) => text
         .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
         .Where(line => line.Contains("com.in9midia.neonews.player", StringComparison.OrdinalIgnoreCase) ||
-                       Regex.IsMatch(line, "AndroidRuntime|linker|native bridge|SIGSEGV|FATAL EXCEPTION|dex2oat|chromium|WebView", RegexOptions.IgnoreCase))
+                       Regex.IsMatch(line, "AndroidRuntime|linker|native bridge|SIGSEGV|FATAL EXCEPTION|am_crash|Application Error|SetupWizard|setupwizard|provision|dex2oat|chromium|WebView", RegexOptions.IgnoreCase))
         .Take(160)
         .ToArray();
 
