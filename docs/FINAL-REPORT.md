@@ -141,6 +141,9 @@ A instrumentacao real usa `SetWinEventHook` para capturar criacao e exibicao de
 janelas tecnicas, incluindo PID, processo-pai, caminho, handle, classe e titulo.
 Tambem foi implementada a intencao persistente `UserStoppedRuntime`: `F11`
 encerra QEMU/ADB/runtime e silencia o Guardian; `F12` alterna fullscreen/window.
+O registro direto dessas teclas foi recusado pelo Windows nesta maquina, entao
+o launcher passou a usar fallback `WH_KEYBOARD_LL`/`SetWindowsHookEx` sem
+bloquear a entrada.
 Esses comportamentos ainda precisam de observacao manual no produto publicado
 antes de mudar o status do gate.
 
