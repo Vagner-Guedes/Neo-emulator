@@ -296,8 +296,12 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task CollectDiagnosticsAsync()
     {
-        while (IsBusy) await Task.Delay(100);
-        IsBusy = true;
+        // Diagnostics can be requested while a long-running start operation
+        // is finishing its UI refresh. The controller serializes guest access
+        // with its operation gate; waiting on the view-model busy flag here
+        // could otherwise starve a remote --diagnostics request indefinitely.
+        var ownsBusyState = !IsBusy;
+        if (ownsBusyState) IsBusy = true;
         ProgressText = "Coletando diagnóstico...";
         ProgressIndeterminate = true;
         try
@@ -307,7 +311,12 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
             await RefreshAsync();
         }
         catch (Exception exception) { ReportError(exception); }
-        finally { IsBusy = false; ProgressIndeterminate = false; ProgressText = "Pronto"; }
+        finally
+        {
+            if (ownsBusyState) IsBusy = false;
+            ProgressIndeterminate = false;
+            ProgressText = "Pronto";
+        }
     }
 
     private async Task RunAsync(string operation, Func<IProgress<RuntimeProgress>?, CancellationToken, Task> action)

@@ -60,6 +60,10 @@ public sealed class SingleInstanceService : IDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
             catch (IOException) when (!cancellationToken.IsCancellationRequested) { }
+            // A falha de uma conexão ou do comando recebido não pode matar o
+            // servidor da instância. O launcher continua atendendo comandos
+            // remotos mesmo quando uma operação individual falhar.
+            catch (Exception) when (!cancellationToken.IsCancellationRequested) { }
         }
     }
 

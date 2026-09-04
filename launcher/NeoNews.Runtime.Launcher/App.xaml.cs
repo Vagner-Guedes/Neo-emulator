@@ -91,10 +91,17 @@ public partial class App : System.Windows.Application
 
     private async Task HandlePipeCommandAsync(string text)
     {
-        var command = RuntimeCommandParser.Parse([text]);
-        if (_mainWindow is null) return;
-        var operation = await Dispatcher.InvokeAsync(() => _mainWindow.ViewModel.ExecuteCommandAsync(command));
-        await operation.ConfigureAwait(false);
+        try
+        {
+            var command = RuntimeCommandParser.Parse([text]);
+            if (_mainWindow is null) return;
+            var operation = await Dispatcher.InvokeAsync(() => _mainWindow.ViewModel.ExecuteCommandAsync(command));
+            await operation.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            try { _controller?.Logs.Error("launcher", $"Falha ao processar comando remoto '{text}'.", exception); } catch { }
+        }
     }
 
     private Task RunTrayCommandAsync(RuntimeCommand command)
