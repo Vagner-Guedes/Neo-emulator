@@ -60,6 +60,19 @@ public static class HostProcessOwnership
         File.Move(temporaryPath, path, true);
     }
 
+    public static async Task<HostProcessRecord?> ReadAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(path)) return null;
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            return await JsonSerializer.DeserializeAsync<HostProcessRecord>(stream, RuntimeContext.JsonOptions, cancellationToken);
+        }
+        catch (FileNotFoundException) { return null; }
+        catch (DirectoryNotFoundException) { return null; }
+        catch (JsonException) { return null; }
+    }
+
     public static async Task ClearAsync(string path, int processId, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(path)) return;

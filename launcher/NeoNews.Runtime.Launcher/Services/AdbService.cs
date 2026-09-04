@@ -151,6 +151,23 @@ public sealed class AdbService
         if (!_context.Config.Android.Adb.ServerHost.Equals("127.0.0.1", StringComparison.Ordinal))
             throw new RuntimeOperationException("O servidor ADB privado deve usar loopback.", $"Host configurado: {_context.Config.Android.Adb.ServerHost}; esperado: 127.0.0.1.");
 
+        var previousOwner = await HostProcessOwnership.ReadAsync(_context.AdbServerStatePath, cancellationToken);
+        if (previousOwner is not null &&
+            previousOwner.AdbHostPort == ServerPort &&
+            string.Equals(previousOwner.ExecutablePath, executable, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(previousOwner.WorkingDirectory, _context.RootDirectory, StringComparison.OrdinalIgnoreCase) &&
+            await IsPrivateServerListeningAsync(cancellationToken))
+        {
+            // Windows ADB forks the daemon outside the launcher process. If a
+            // previous instance ended after QEMU shutdown, recover only the
+            // exact endpoint recorded for this same runtime bundle; unrelated
+            // listeners remain protected by HostPortGuard below.
+            _serverOwned = true;
+            _serverProcessId = previousOwner.ProcessId;
+            _logs.Info("adb", $"Servidor ADB privado recuperado por posse registrada: PID {previousOwner.ProcessId}; endpoint={ServerEndpoint}.");
+            return new ProcessResult(0, "servidor ADB privado recuperado", string.Empty, false, TimeSpan.Zero);
+        }
+
         HostPortGuard.EnsureAvailable(
             _context.Config.Android.Adb.ServerHost,
             ServerPort,
