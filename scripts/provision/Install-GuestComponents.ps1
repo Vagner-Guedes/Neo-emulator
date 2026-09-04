@@ -101,6 +101,7 @@ function Wait-ForBoot {
     param([int]$TimeoutSeconds)
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
+        if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $script:Serial) }
         $state = (Invoke-Adb @('-s', $script:Serial, 'get-state')).Text
         if ($state -eq 'device') {
             $boot = (Invoke-Adb @('-s', $script:Serial, 'shell', 'getprop', 'sys.boot_completed')).Text
@@ -109,6 +110,57 @@ function Wait-ForBoot {
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
     return $false
+}
+
+function Assert-ExpectedSha256 {
+    param([string]$Name, [string]$Path, [string]$ExpectedSha256)
+    if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw "SHA-256 esperado ausente ou inválido para ${Name}." }
+    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash
+    if (-not $actual.Equals($ExpectedSha256, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "SHA-256 divergente para ${Name}: atual=$actual; esperado=$ExpectedSha256. Nenhuma instalação será executada."
+    }
+    return $actual.ToLowerInvariant()
+}
+
+function Install-WebViewProviderOverlay {
+    param([string]$Path, [string]$ExpectedSha256)
+    if (-not (Test-NonEmptyFile $Path)) { throw "Overlay do provider WebView ausente ou vazio: $Path" }
+    $hash = Assert-ExpectedSha256 'overlay do provider WebView' $Path $ExpectedSha256
+    if (-not $PSCmdlet.ShouldProcess($Path, "instalar overlay do provider WebView no serial $script:Serial e reiniciar o guest")) {
+        return [ordered]@{ name = 'WebView provider overlay'; path = $Path; sha256 = $hash; attempted = $false; succeeded = $false; output = 'WHATIF' }
+    }
+
+    $root = Invoke-Adb @('-s', $script:Serial, 'root')
+    if ($root.ExitCode -ne 0) { throw "ADB root falhou antes do overlay WebView: $($root.Text)" }
+    Start-Sleep -Seconds 2
+    if ($config.android.adb.transport -eq 'tcp') { $null = Invoke-Adb @('connect', $script:Serial) }
+    if (-not (Wait-ForBoot -TimeoutSeconds 30)) { throw 'ADB não retornou após reiniciar adbd como root.' }
+    $identity = Invoke-Adb @('-s', $script:Serial, 'shell', 'id')
+    if ($identity.ExitCode -ne 0 -or $identity.Text -notmatch 'uid=0\(root\)') { throw "O guest não concedeu ADB root para instalar o overlay WebView: $($identity.Text)" }
+
+    $mkdir = Invoke-Adb @('-s', $script:Serial, 'shell', 'mkdir', '-p', '/system/vendor/overlay')
+    if ($mkdir.ExitCode -ne 0) { throw "Falha ao criar /system/vendor/overlay: $($mkdir.Text)" }
+    $push = Invoke-Adb @('-s', $script:Serial, 'push', $Path, '/system/vendor/overlay/NeoNewsWebViewProviderOverlay.apk')
+    if ($push.ExitCode -ne 0) { throw "Falha ao copiar o overlay WebView: $($push.Text)" }
+    $permissions = Invoke-Adb @('-s', $script:Serial, 'shell', 'chmod', '0644', '/system/vendor/overlay/NeoNewsWebViewProviderOverlay.apk')
+    if ($permissions.ExitCode -ne 0) { throw "Falha ao definir permissões do overlay WebView: $($permissions.Text)" }
+    $sync = Invoke-Adb @('-s', $script:Serial, 'shell', 'sync')
+    if ($sync.ExitCode -ne 0) { throw "Falha ao sincronizar o overlay WebView: $($sync.Text)" }
+    $selected = Invoke-Adb @('-s', $script:Serial, 'shell', 'settings', 'put', 'global', 'webview_provider', [string]$config.webView.provider)
+    if ($selected.ExitCode -ne 0) { throw "Falha ao selecionar o provider WebView: $($selected.Text)" }
+    $reboot = Invoke-Adb @('-s', $script:Serial, 'reboot')
+    if ($reboot.ExitCode -ne 0) { throw "Falha ao reiniciar o guest após instalar o overlay WebView: $($reboot.Text)" }
+    if (-not (Wait-ForBoot -TimeoutSeconds $BootTimeoutSeconds)) { throw 'O guest não reiniciou após instalar o overlay WebView.' }
+
+    $activate = Invoke-Adb @('-s', $script:Serial, 'shell', 'cmd', 'webviewupdate', 'set-webview-implementation', [string]$config.webView.provider)
+    if ($activate.ExitCode -ne 0 -or $activate.Text -notmatch '(?im)^Success$') {
+        throw "O framework não aceitou o provider WebView homologado após o reboot: $($activate.Text)"
+    }
+    $overlayPackage = Invoke-Adb @('-s', $script:Serial, 'shell', 'pm', 'path', 'com.neonews.runtime.webviewprovider.overlay')
+    if ($overlayPackage.ExitCode -ne 0 -or $overlayPackage.Text -notmatch 'NeoNewsWebViewProviderOverlay\.apk') {
+        throw "O Package Manager não confirmou o overlay WebView: $($overlayPackage.Text)"
+    }
+    return [ordered]@{ name = 'WebView provider overlay'; path = $Path; sha256 = $hash; attempted = $true; succeeded = $true; output = $activate.Text }
 }
 
 function Install-Component {
@@ -184,7 +236,10 @@ if ($InstallNativeBridge) { $components.Add((Install-Component 'Native Bridge' (
 if ($InstallWebView) {
     $webViewPath = Resolve-ConfiguredPath $config.android.provisioning.webViewPackagePath
     Assert-NativeWebViewAbi $webViewPath
+    $null = Assert-ExpectedSha256 'WebView' $webViewPath ([string]$config.android.provisioning.webViewPackageSha256)
     $components.Add((Install-Component 'WebView' $webViewPath $WebViewOrigin))
+    $overlayPath = Resolve-ConfiguredPath $config.android.provisioning.webViewProviderOverlayPath
+    $components.Add((Install-WebViewProviderOverlay $overlayPath ([string]$config.android.provisioning.webViewProviderOverlaySha256)))
 }
 if ($InstallTts) { $components.Add((Install-Component 'RHVoice' (Resolve-ConfiguredPath $config.android.provisioning.ttsPackagePath) $TtsOrigin)) }
 
@@ -194,9 +249,13 @@ $webViewPackageDumpResult = Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'pac
 $packages = $packagesResult.Text
 $webViewDump = $webViewPackageDumpResult.Text
 $webViewUpdateDump = $webViewDumpResult.Text
+$webViewActivationResult = if ($InstallWebView) {
+    Invoke-Adb @('-s', $Serial, 'shell', 'cmd', 'webviewupdate', 'set-webview-implementation', [string]$config.webView.provider)
+} else { $null }
 $webViewVersionMatch = [regex]::Match($webViewDump, 'versionName=([^\s]+)')
 $webViewPackagePresent = $packagesResult.ExitCode -eq 0 -and $packages -match [regex]::Escape("package:$([string]$config.webView.provider)")
-$webViewProviderActive = $webViewDumpResult.ExitCode -eq 0 -and @($webViewUpdateDump -split "`r?`n" | Where-Object { $_ -match '(?i)Current WebView package' -and $_ -match [regex]::Escape([string]$config.webView.provider) }).Count -gt 0
+$webViewProviderActive = ($webViewDumpResult.ExitCode -eq 0 -and @($webViewUpdateDump -split "`r?`n" | Where-Object { $_ -match '(?i)Current WebView package' -and $_ -match [regex]::Escape([string]$config.webView.provider) }).Count -gt 0) -or
+    ($null -ne $webViewActivationResult -and $webViewActivationResult.ExitCode -eq 0 -and $webViewActivationResult.Text -match '(?im)^Success$')
 $webViewVersionMatches = $webViewPackageDumpResult.ExitCode -eq 0 -and $webViewVersionMatch.Success -and $webViewVersionMatch.Groups[1].Value -eq [string]$config.webView.homologatedVersion
 if ($InstallWebView -and (-not $webViewPackagePresent -or -not $webViewProviderActive -or -not $webViewVersionMatches)) {
     throw "O WebView instalado não corresponde ao provider/versão homologados: packagePresent=$webViewPackagePresent; providerActive=$webViewProviderActive; version=$($webViewVersionMatch.Groups[1].Value); expected=$($config.webView.homologatedVersion)."

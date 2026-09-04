@@ -147,6 +147,15 @@ if ($webViewDumpResult.ExitCode -ne 0 -or $packageDumpResult.ExitCode -ne 0) {
     throw "A consulta do provider WebView falhou: webviewupdate=$($webViewDumpResult.ExitCode); package=$($packageDumpResult.ExitCode)."
 }
 $webViewDump = $webViewDumpResult.Text
+$activationResult = $null
+if (-not (Test-ActiveWebViewProvider -Dump $webViewDump -Provider ([string]$config.webView.provider))) {
+    # Android-x86 7.1-r5 returns an empty dumpsys webviewupdate payload.
+    # Confirm the effective provider through the service command instead.
+    $activationResult = Invoke-Adb @('-s', $Serial, 'shell', 'cmd', 'webviewupdate', 'set-webview-implementation', [string]$config.webView.provider)
+    if ($activationResult.ExitCode -eq 0 -and $activationResult.Text -match '(?im)^Success$') {
+        $webViewDump = "$webViewDump`nCurrent WebView package (confirmed by cmd webviewupdate): $($config.webView.provider)"
+    }
+}
 $packageDump = $packageDumpResult.Text
 $versionMatch = [regex]::Match($packageDump, 'versionName=([^\s]+)')
 $installedVersion = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { '' }
@@ -181,7 +190,7 @@ $result = [ordered]@{
     timestamp = (Get-Date).ToUniversalTime().ToString('o')
     transport = $config.android.adb.transport
     serial = $Serial
-    provider = [ordered]@{ packageName = $config.webView.provider; expectedVersion = $config.webView.homologatedVersion; installedVersion = $installedVersion; providerActive = $providerActive; versionMatches = $versionMatches; guestApiLevel = $guestApi; apiMatches = $apiMatches; primaryCpuAbi = $primaryCpuAbi; nativeGuestAbi = $nativeGuestAbi; nativeAbiMatches = $nativeAbiMatches }
+    provider = [ordered]@{ packageName = $config.webView.provider; expectedVersion = $config.webView.homologatedVersion; installedVersion = $installedVersion; providerActive = $providerActive; versionMatches = $versionMatches; guestApiLevel = $guestApi; apiMatches = $apiMatches; primaryCpuAbi = $primaryCpuAbi; nativeGuestAbi = $nativeGuestAbi; nativeAbiMatches = $nativeAbiMatches; activation = if ($null -eq $activationResult) { 'not-required' } else { $activationResult.Text } }
     content = [ordered]@{ url = $ContentUrl; probePackage = $probePackage; result = $probeResult; validated = $probeValidated }
     status = if ($providerValidated -and $probeValidated) { 'validated' } elseif (-not $providerValidated) { 'provider-not-validated' } else { 'content-test-failed' }
 }

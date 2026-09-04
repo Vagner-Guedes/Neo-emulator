@@ -152,6 +152,9 @@
     "provisioning": {
       "statePath": "runtime/state/provisioning.json",
       "webViewPackagePath": "packages/webview/webview.apk",
+      "webViewPackageSha256": "5e49148fc2b369edc6b1bcc311d7b4ae6f4d5fc20f3a5971ae12792c77b6d167",
+      "webViewProviderOverlayPath": "tools/webview-provider-overlay/prebuilt/NeoNewsWebViewProviderOverlay.apk",
+      "webViewProviderOverlaySha256": "5b82badef21603e232361f16602fdc1a4ea87d9a2377640228ab416d20be7b98",
       "ttsPackagePath": "packages/tts/rhvoice.apk",
       "nativeBridgePackagePath": "packages/nativebridge/nativebridge.apk",
       "requireWebView": true,
@@ -217,9 +220,11 @@
   "webView": {
     "provider": "com.google.android.webview",
     "homologatedVersion": "119.0.6045.193",
+    "versionCode": 604519307,
+    "certificateSha256": "6faf3c4140407473400934d117815a21af1cfefc5c0bee61c858bc3d72ba6fe5",
     "requireNativeGuestAbi": true,
-    "installedVersion": "55.0.2883.91",
-    "status": "version-mismatch",
+    "installedVersion": "119.0.6045.193",
+    "status": "prebuilt-integrated-stability-pending",
     "validated": false,
     "report": "docs/WEBVIEW-ETAPA-4.md"
   },

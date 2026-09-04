@@ -94,6 +94,15 @@ if ($webViewDumpResult.ExitCode -ne 0 -or $packageListResult.ExitCode -ne 0 -or 
     throw "A consulta do provider WebView falhou: webviewupdate=$($webViewDumpResult.ExitCode); packages=$($packageListResult.ExitCode); package=$($packageDumpResult.ExitCode)."
 }
 $webViewDump = $webViewDumpResult.Text
+$activationResult = $null
+if (-not (Test-ActiveWebViewProvider -Dump $webViewDump -Provider $packageName)) {
+    # Android-x86 7.1-r5 has a functional WebViewUpdateService, but its
+    # dumpsys endpoint returns no payload. The cmd result is authoritative.
+    $activationResult = Invoke-AdbResult @('-s', $Serial, 'shell', 'cmd', 'webviewupdate', 'set-webview-implementation', $packageName)
+    if ($activationResult.ExitCode -eq 0 -and $activationResult.Text -match '(?im)^Success$') {
+        $webViewDump = "$webViewDump`nCurrent WebView package (confirmed by cmd webviewupdate): $packageName"
+    }
+}
 $packageList = $packageListResult.Text
 $packageDump = $packageDumpResult.Text
 $release = Invoke-AdbCommand @('-s', $Serial, 'shell', 'getprop', 'ro.build.version.release')
@@ -154,6 +163,7 @@ $result = [ordered]@{
     }
     contentTest = $contentTest
     rawWebViewUpdate = $webViewDump
+    providerActivation = if ($null -eq $activationResult) { 'not-required' } else { $activationResult.Text }
     status = $status
 }
 

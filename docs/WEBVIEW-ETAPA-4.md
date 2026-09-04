@@ -6,7 +6,7 @@
 **Tag Chromium alvo:** `119.0.6045.193`
 **Commit da tag:** `baf84c2d246a45577b7ddd2b8d8d2e2cf36e12e2`
 
-## Resultado atual
+## Resultado anterior (baseline do guest)
 
 | Campo | Resultado |
 |---|---|
@@ -16,7 +16,91 @@
 | Versão exigida | `119.0.6045.193` |
 | ABI do guest | `x86_64` (`ro.zygote=zygote64_32`) |
 | ABI do WebView atual | `x86_64` + `x86` |
-| Status | `SOURCE_BUILD_REQUIRED` / `BUILD_HOST_IO_BOTTLENECK` / NOT HOMOLOGATED |
+| Status | `PREBUILT_DOWNLOAD_CHANNEL_BLOCKED` / `NOT HOMOLOGATED` |
+
+## Recuperação do prebuilt e integração parcial — 2026-09-04
+
+O WebView pré-compilado foi obtido sem compilar Chromium e validado antes de
+qualquer promoção:
+
+| Campo | Resultado |
+|---|---|
+| Pacote | `com.google.android.webview` |
+| Versão / código | `119.0.6045.193` / `604519307` |
+| Tamanho | `264477175` bytes |
+| SHA-256 do arquivo | `5e49148fc2b369edc6b1bcc311d7b4ae6f4d5fc20f3a5971ae12792c77b6d167` |
+| Certificado SHA-256 | `6faf3c4140407473400934d117815a21af1cfefc5c0bee61c858bc3d72ba6fe5` |
+| ABIs | `x86_64` e `x86` |
+| API | min `24`, max `28`, target `34` |
+| Validação APK | v2, v3 e SourceStamp: PASS |
+| Arquivo local | `packages/webview/webview.apk` |
+
+No overlay descartável `runtime/android/webview-integration-119.qcow2`, o
+provider foi ativado por `cmd webviewupdate` com retorno `Success` após a
+whitelist do framework. O probe real passou HTML, CSS, JavaScript, HTTPS e
+conteúdo remoto. O NeoNews iniciou com `primaryCpuAbi=armeabi-v7a`, Native
+Bridge `libnb.so` e permaneceu 60 segundos em `TerminalActivity`. RHVoice e
+pt-BR permaneceram selecionados; a síntese gerou WAV não vazio.
+
+O estado ainda não é produção: o teste de 600 segundos e três ciclos completos
+de restart não foram concluídos. O log registra fallback sem RELRO e avisos
+de compatibilidade Chromium (`PacProcessor`, seed/cache); eles foram
+registrados nas evidências e não foram ocultados.
+
+Evidência consolidada: `reports/webview-prebuilt-119.json`.
+
+## Atualização da tentativa automatizada de prebuilt
+
+**Data/hora:** `2026-09-03 23:30:06 -03:00`
+
+Estado desta tentativa: `PREBUILT_WEBVIEW_PROVIDER_BLOCKED`. Nenhum APK
+WebView foi baixado, promovido para `packages/webview/webview.apk` ou
+instalado. O guest não foi iniciado nem alterado nesta tentativa.
+
+Artefato exato esperado:
+
+- nome: `com.google.android.webview_119.0.6045.193-604519307_minAPI24_maxAPI28(x86,x86_64)(nodpi)_apkmirror.com.apk`;
+- package: `com.google.android.webview`;
+- versão: `119.0.6045.193`;
+- versionCode: `604519307`;
+- variante: `x86 + x86_64`, `nodpi`, Android 7.0+/API 24+;
+- tamanho esperado: `264477175` bytes;
+- SHA-256 esperado do arquivo: `5e49148fc2b369edc6b1bcc311d7b4ae6f4d5fc20f3a5971ae12792c77b6d167`;
+- SHA-256 esperado do certificado: `6faf3c4140407473400934d117815a21af1cfefc5c0bee61c858bc3d72ba6fe5`.
+
+URL de origem esperada pelo artefato: [página exata do APKMirror](https://www.apkmirror.com/apk/google-inc/android-system-webview/android-system-webview-119-0-6045-193-release/android-system-webview-119-0-6045-193-7-android-apk-download/).
+
+Motivo exato da falha: uma tentativa anterior retornou um nonce de download
+expirado (`redirected=thank_you_invalid_nonce`). Nesta nova tentativa, o
+navegador normal gerou o redirect `download.php` com chave temporária, mas a
+requisição do download retornou HTTP `403`, `Server: cloudflare` e
+`Cf-Mitigated: challenge`, exigindo a barreira normal de JavaScript/cookies.
+O Chrome instalado também foi executado com um perfil temporário isolado e
+com comportamento normal; recebeu a página `Attention Required! | Cloudflare`
+com a mensagem de bloqueio. O perfil temporário foi removido ao final.
+O host `download.apkmirror.com` também não resolveu por DNS durante a
+tentativa.
+O Google Play fornece a listagem atual, mas não um APK histórico pinável
+desta versão; o prebuilt AOSP localizado era `119.0.6045.141`, portanto foi
+rejeitado por não corresponder ao alvo. Nenhum mirror aleatório foi usado e
+nenhuma barreira foi contornada.
+
+Na auditoria corretiva adicional, foram pesquisados os APKs do repositório,
+Desktop, Downloads, Documents, outro checkout em `E:\Neo-emulator`, Temp,
+cache do Chrome, cache do Edge e Packages do usuário. Foram encontrados 16
+APKs, mas nenhum com o nome, tamanho ou hash do alvo. O cache continha apenas
+arquivos de diagnóstico, o APK de teste e o WebView legado de
+`123009916` bytes com hash `fb5cec22e4cdd8282a7474bbfdade7cfc65aef824795d22731df4d4c38548ebe`.
+As consultas públicas por nome completo e SHA-256 não localizaram uma cópia
+adicional verificável; variantes `604519306`, `604519301`, `604519338` e
+outras versões foram rejeitadas por ABI, API, bundle ou versionCode.
+
+A busca oficial e conhecida foi esgotada para este caminho. Por isso não foi
+possível validar package, versionName, versionCode, minSdk, targetSdk, ABIs,
+assinatura, tamanho e SHA-256 localmente, e o fallback de compilação não foi
+iniciado enquanto o host WSL/armazenamento continua sem capacidade operacional
+validada. O APK de teste `tools/webview-probe/build/webview-probe.apk` não é
+um WebView e não foi considerado.
 
 ## Reavaliação do caminho preferencial — APK pré-compilado
 
@@ -40,9 +124,12 @@ em `127.0.0.1:5038`. O endpoint `127.0.0.1:5556` recusou a conexão
 O inventário histórico deste documento continua sendo a única evidência do
 provider legado e não foi atualizado com inferência.
 
-## Decisão do fallback
+## Histórico do fallback de build
 
-Decisão: `SOURCE_BUILD_REQUIRED`. O build não foi iniciado: a distro
+O registro histórico anterior havia usado `SOURCE_BUILD_REQUIRED`. A meta
+corretiva vigente não classifica essa etapa como `SOURCE_BUILD_REQUIRED`; o
+estado atual é `PREBUILT_DOWNLOAD_CHANNEL_BLOCKED`. O build não foi iniciado:
+a distro
 `Debian-NeoNews` está em `D:\WSL\Debian-NeoNews`, mas não respondeu nem a
 `echo WSL_OK` após `wsl --shutdown`. O host tem aproximadamente 7,87 GiB de
 RAM, D: tem aproximadamente 99,53 GiB livres e E: aproximadamente 242,09 GiB;

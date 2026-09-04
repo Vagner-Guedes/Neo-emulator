@@ -662,7 +662,19 @@ public sealed class AdbService
 
     public Task<string> GetDisplaySizeAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "size"], TimeSpan.FromSeconds(20), cancellationToken);
     public Task<string> GetDisplayDensityAsync(CancellationToken cancellationToken = default) => ShellAsync(["wm", "density"], TimeSpan.FromSeconds(20), cancellationToken);
-    public Task<string> GetWebViewDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "webviewupdate"], TimeSpan.FromSeconds(20), cancellationToken);
+    public async Task<string> GetWebViewDumpAsync(CancellationToken cancellationToken = default)
+    {
+        var dump = await ShellAsync(["dumpsys", "webviewupdate"], TimeSpan.FromSeconds(20), cancellationToken);
+        if (dump.Contains("Current WebView package", StringComparison.OrdinalIgnoreCase)) return dump;
+
+        // Android-x86 7.1-r5 exposes a working WebViewUpdateService but its
+        // dumpsys handler returns an empty payload. Preserve the same parser
+        // contract with the persisted framework selection in that case.
+        var selected = await ShellAsync(["settings", "get", "global", "webview_provider"], TimeSpan.FromSeconds(15), cancellationToken);
+        return string.IsNullOrWhiteSpace(selected)
+            ? dump
+            : $"{dump}\nCurrent WebView package (Android-x86 setting): {selected.Trim()}";
+    }
     public Task<string> GetTtsDefaultAsync(CancellationToken cancellationToken = default) => ShellAsync(["settings", "get", "secure", "tts_default_synth"], TimeSpan.FromSeconds(15), cancellationToken);
     public Task<string> CheckTtsDataAsync(string language, string country, CancellationToken cancellationToken = default) =>
         ShellAsync(["am", "broadcast", "-a", "android.speech.tts.engine.CHECK_TTS_DATA", "--es", "language", language, "--es", "country", country, "--es", "variant", ""], TimeSpan.FromSeconds(20), cancellationToken);
