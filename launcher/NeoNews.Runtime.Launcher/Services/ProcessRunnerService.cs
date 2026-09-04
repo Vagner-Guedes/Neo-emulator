@@ -186,7 +186,10 @@ public sealed class ProcessRunnerService
             FileName = executable,
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
-            CreateNoWindow = !showWindow,
+            // `showWindow` controls only the intended graphical window (for
+            // example QEMU/GTK). It must never opt the child into a console
+            // window; stdout/stderr are redirected to the structured log.
+            CreateNoWindow = true,
             WindowStyle = showWindow ? ProcessWindowStyle.Normal : ProcessWindowStyle.Hidden,
             RedirectStandardOutput = true,
             RedirectStandardError = true

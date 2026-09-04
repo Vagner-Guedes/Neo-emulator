@@ -50,6 +50,7 @@ estabilidade contínua.
 | Validação do repositório | PASS | 36 scripts, 0 erros de parse/contrato. |
 | Validação de codificação | PASS | Fontes/configuração/documentação versionáveis; temporários excluídos. |
 | Limpeza de storage | PASS executado | Cópias descartáveis já testadas removidas; `dist/NeoNewsRuntime-current`, o projeto canônico e o arquivo de recuperação foram preservados. |
+| Console técnico visível | PENDING EVIDENCE | Contratos estáticos passaram e o diagnóstico do launcher publicado não exibiu console; faltam observações reais de todas as operações do produto. |
 
 ## WebView pré-compilado
 

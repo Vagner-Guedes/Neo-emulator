@@ -158,6 +158,30 @@ O menu do tray oferece abrir painel, iniciar/parar/reiniciar o sistema, kiosk, d
 6. Copie a pasta para `C:\NeoNews Runtime Test\NeoNewsRuntime\` e repita os passos 2–5. Caminhos com espaços devem funcionar.
 7. Se todos os componentes estiverem provisionados, use `--start`, `--install`, `--kiosk` e `--stop`; sem QEMU/disco/ADB ou sem o APK, o painel deve mostrar um erro gráfico explicando a dependência ausente.
 
+## Gate `NO_VISIBLE_CONSOLE_PASS`
+
+O gate formal combina contratos estáticos com observação real. A infraestrutura
+deve permanecer invisível; somente a janela gráfica do Android, quando
+configurada, pode aparecer. O relatório não aprova automaticamente nenhuma
+etapa que não tenha sido observada.
+
+Execute no runtime publicado:
+
+```powershell
+.\scripts\validation\Test-NoVisibleConsole.ps1 `
+  -ObserveLauncher `
+  -ExecutablePath .\dist\NeoNewsRuntime-current\NeoNewsRuntime.exe
+```
+
+Depois da observação real, informe as chaves correspondentes ao cenário:
+`-InstallationObserved`, `-FirstBootObserved`, `-StartupObserved`,
+`-RuntimeObserved`, `-QemuObserved`, `-AdbObserved`,
+`-GuardianRecoveryObserved`, `-NeoNewsRestartObserved`, `-UpdateObserved`,
+`-F11Observed`, `-F12Observed` e `-UninstallUpgradeObserved`. Use
+`-UninstallUpgradeNotApplicable` somente quando essa operação não fizer parte
+da versão testada. Qualquer janela PowerShell, CMD, Terminal, QEMU console ou
+ADB console torna o gate inválido.
+
 O registro da tarefa do Agendador depende da permissão do Windows. O launcher tenta primeiro sem elevação e solicita UAC somente para `schtasks.exe` quando recebe `Acesso negado`; confirme que a ação contém somente `NeoNewsRuntime.exe --autostart`.
 
 Os logs são gravados ao lado da distribuição em `logs/`; diagnósticos ficam em `reports/`. Não versionar APK, SDK Android, `bin/`, `obj/`, `dist/`, logs ou relatórios gerados.

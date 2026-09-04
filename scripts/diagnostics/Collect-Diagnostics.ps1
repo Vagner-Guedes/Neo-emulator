@@ -61,7 +61,7 @@ $before = if (Test-Path -LiteralPath $canonicalReportPath) {
 } else {
     [datetime]::MinValue
 }
-$process = Start-Process -FilePath $launcherPath -ArgumentList '--diagnostics' -WorkingDirectory (Split-Path -Parent $launcherPath) -PassThru -Wait
+$process = Start-Process -FilePath $launcherPath -ArgumentList '--diagnostics' -WorkingDirectory (Split-Path -Parent $launcherPath) -WindowStyle Hidden -PassThru -Wait
 if ($process.ExitCode -ne 0) { throw "A coleta de diagnóstico falhou com código $($process.ExitCode)." }
 
 $fresh = $false

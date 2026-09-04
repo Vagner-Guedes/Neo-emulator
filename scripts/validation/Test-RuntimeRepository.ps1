@@ -76,6 +76,7 @@ $requiredPaths = @(
     'scripts/validation/Test-GuestNetworkMedia.ps1',
     'scripts/validation/Test-QemuPersistence.ps1',
     'scripts/validation/Test-LauncherSmoke.ps1',
+    'scripts/validation/Test-NoVisibleConsole.ps1',
     'scripts/validation/Test-HomologationChecklist.ps1',
     'scripts/startup/Register-NeoNewsStartup.ps1',
     'scripts/runtime/Start-NeoNews.ps1',
@@ -141,6 +142,8 @@ $validationEvidenceCommonPath = Join-Path $RepositoryRoot 'scripts\validation\Va
 $validationEvidenceCommonSource = if (Test-Path -LiteralPath $validationEvidenceCommonPath) { Get-Content -LiteralPath $validationEvidenceCommonPath -Raw -Encoding utf8 } else { '' }
 $launcherSmokePath = Join-Path $RepositoryRoot 'scripts\validation\Test-LauncherSmoke.ps1'
 $launcherSmokeSource = if (Test-Path -LiteralPath $launcherSmokePath) { Get-Content -LiteralPath $launcherSmokePath -Raw -Encoding utf8 } else { '' }
+$noVisibleConsolePath = Join-Path $RepositoryRoot 'scripts\validation\Test-NoVisibleConsole.ps1'
+$noVisibleConsoleSource = if (Test-Path -LiteralPath $noVisibleConsolePath) { Get-Content -LiteralPath $noVisibleConsolePath -Raw -Encoding utf8 } else { '' }
 $startupScriptPath = Join-Path $RepositoryRoot 'scripts\startup\Register-NeoNewsStartup.ps1'
 $startupScriptSource = if (Test-Path -LiteralPath $startupScriptPath) { Get-Content -LiteralPath $startupScriptPath -Raw -Encoding utf8 } else { '' }
 $startNeoNewsPath = Join-Path $RepositoryRoot 'scripts\runtime\Start-NeoNews.ps1'
@@ -300,6 +303,7 @@ $contractChecks['checklistReportInvalidatesAtStart'] = $checklistSource -match '
 $contractChecks['checklistBindsPublishedEvidence'] = $checklistSource -match 'function Get-ReportPublicationDirectory' -and $checklistSource -match 'function Test-ReportPublicationIdentity' -and $checklistSource -match 'publicationIdentityMatches'
 $contractChecks['autostartHonorsKioskWhenNeoNewsDisabled'] = $launcherSourceText -match 'StartAutostartAsync' -and $launcherSourceText -match 'Startup\.StartNeoNews' -and $launcherSourceText -match 'Startup\.AutoKiosk' -and $launcherSourceText -match 'StartSupervisorIfEnabledAsync'
 $contractChecks['launcherSmokeDefaultsToItsPublishedRuntime'] = $launcherSmokeSource -match '\[string\]\$ReportPath' -and $launcherSmokeSource.Contains("Join-Path `$workingDirectory 'reports\launcher-smoke.json'")
+$contractChecks['noVisibleConsoleGate'] = $noVisibleConsoleSource -match 'NO_VISIBLE_CONSOLE_PASS' -and $noVisibleConsoleSource -match 'CreateNoWindow' -and $noVisibleConsoleSource -match 'manualEvidence' -and $checklistSource -match "'no-visible-console'"
 $contractChecks['launcherSmokeAllowsSingleFileColdStart'] = $launcherSmokeSource -match '\[int\]\$StartupTimeoutSeconds = 90' -and $launcherSmokeSource -match 'self-contained single-file'
 $contractChecks['webViewProviderHasChecklistReportDefault'] = $webViewProviderSource.Contains("[string]`$ReportPath = 'reports/webview-provider.json'") -and $checklistSource.Contains("Read-Report 'webview-provider.json'")
 $contractChecks['ttsProviderHasChecklistReportDefault'] = $ttsProviderSource.Contains("[string]`$ReportPath = 'reports/tts-provider.json'") -and $checklistSource.Contains("Read-Report 'tts-provider.json'")
