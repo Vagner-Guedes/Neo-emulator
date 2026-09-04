@@ -338,7 +338,11 @@ public sealed class RuntimeViewModel : INotifyPropertyChanged, IAsyncDisposable
             ProgressValue = 100;
             ProgressIndeterminate = false;
             ProgressText = "Concluído";
-            await RefreshAsync();
+            // Controller operations already refresh the guest snapshot before
+            // completing. Reading the local log here keeps the panel current
+            // without starting a second burst of ADB queries that could
+            // contend with a remote diagnostics collection.
+            await TailLogsAsync(_operationCancellation.Token);
         }
         catch (OperationCanceledException) { ProgressText = "Cancelado"; }
         catch (Exception exception) { ReportError(exception); }
