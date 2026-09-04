@@ -563,26 +563,21 @@ public sealed class AdbService
             throw new RuntimeOperationException("O fuso horário do Android não está configurado.", "runtime.timezone está vazio.");
 
         var configuredTimezone = timezone.Trim();
-        var timezoneResult = await ShellResultAsync(
+        await ExecuteClockCommandAsync(
             ["setprop", "persist.sys.timezone", configuredTimezone],
             TimeSpan.FromSeconds(20),
-            cancellationToken);
-        if (!timezoneResult.Succeeded)
-        {
-            throw new RuntimeOperationException(
-                "Não foi possível configurar o fuso horário do Android.",
-                $"setprop persist.sys.timezone {configuredTimezone}: exit={timezoneResult.ExitCode}; stderr={timezoneResult.StandardError}; stdout={timezoneResult.StandardOutput}");
-        }
+            cancellationToken,
+            $"setprop persist.sys.timezone {configuredTimezone}");
 
         // The portable guest has no reason to let network time overwrite the
         // host-controlled clock. The launcher synchronizes it on every start.
-        await ExecuteCheckedAsync(
-            ["shell", "settings", "put", "global", "auto_time", "0"],
+        await ExecuteClockCommandAsync(
+            ["settings", "put", "global", "auto_time", "0"],
             TimeSpan.FromSeconds(20),
             cancellationToken,
             "desabilitar ajuste automático do relógio");
-        await ExecuteCheckedAsync(
-            ["shell", "settings", "put", "global", "auto_time_zone", "0"],
+        await ExecuteClockCommandAsync(
+            ["settings", "put", "global", "auto_time_zone", "0"],
             TimeSpan.FromSeconds(20),
             cancellationToken,
             "desabilitar ajuste automático do fuso horário");
@@ -592,15 +587,18 @@ public sealed class AdbService
         // local time in the configured guest timezone. Send the Windows local
         // wall-clock value so that the resulting epoch matches the host.
         var dateValue = hostBeforeSet.LocalDateTime.ToString("MMddHHmmyyyy.ss", CultureInfo.InvariantCulture);
-        var dateResult = await ShellResultAsync(["date", dateValue], TimeSpan.FromSeconds(20), cancellationToken);
-        if (!dateResult.Succeeded)
-        {
-            throw new RuntimeOperationException(
-                "Não foi possível sincronizar o relógio do Android.",
-                $"date {dateValue}: exit={dateResult.ExitCode}; stderr={dateResult.StandardError}; stdout={dateResult.StandardOutput}");
-        }
+        await ExecuteClockCommandAsync(
+            ["date", dateValue],
+            TimeSpan.FromSeconds(20),
+            cancellationToken,
+            $"date {dateValue}");
 
-        var guestEpochText = await ShellAsync(["date", "+%s"], TimeSpan.FromSeconds(10), cancellationToken);
+        var guestEpochResult = await ExecuteClockCommandAsync(
+            ["date", "+%s"],
+            TimeSpan.FromSeconds(10),
+            cancellationToken,
+            "date +%s");
+        var guestEpochText = guestEpochResult.StandardOutput;
         if (!long.TryParse(guestEpochText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var guestEpoch))
         {
             throw new RuntimeOperationException(
@@ -626,6 +624,55 @@ public sealed class AdbService
             skewSeconds,
             validated,
             detail);
+    }
+
+    private async Task<ProcessResult> ExecuteClockCommandAsync(
+        IEnumerable<string> shellArguments,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        string operation)
+    {
+        ProcessResult? lastResult = null;
+        var lastDetail = "ADB não confirmou o estado device.";
+
+        for (var attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                var ready = await WaitForStateAsync("device", TimeSpan.FromSeconds(30), cancellationToken);
+                if (ready)
+                {
+                    lastResult = await ShellResultAsync(shellArguments, timeout, cancellationToken);
+                    if (lastResult.Succeeded) return lastResult;
+
+                    lastDetail = $"exit={lastResult.ExitCode}; stderr={lastResult.StandardError}; stdout={lastResult.StandardOutput}";
+                }
+                else
+                {
+                    lastDetail = "ADB permaneceu offline ou desconectado durante a espera.";
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                lastDetail = exception.Message;
+            }
+
+            SetState(AdbRuntimeState.Offline);
+            if (attempt < 3)
+            {
+                _logs.Warning("adb", $"Comando de relógio aguardará reconexão ({attempt}/3): {operation}; {lastDetail}");
+                try { await ReconnectOfflineAsync(cancellationToken); } catch { }
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+        }
+
+        throw new RuntimeOperationException(
+            "Não foi possível aplicar a configuração do Android.",
+            $"Operação: {operation}; {lastDetail}; último resultado={lastResult?.ExitCode}");
     }
 
     public async Task RebootGuestAsync(CancellationToken cancellationToken = default)
