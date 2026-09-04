@@ -10,6 +10,7 @@ public sealed class AdbService
     private readonly RuntimeContext _context;
     private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
+    private readonly SemaphoreSlim _serverGate = new(1, 1);
     private ManagedProcess? _serverProcess;
     private AdbRuntimeState _state = AdbRuntimeState.Disconnected;
     private AdbRuntimeState _lastLoggedState = AdbRuntimeState.Disconnected;
@@ -48,14 +49,15 @@ public sealed class AdbService
     public string LastTransportDetail => _lastTransportDetail;
     public int? LastTransportExitCode => _lastTransportExitCode;
 
-    public Task<ProcessResult> ExecuteAsync(
+    public async Task<ProcessResult> ExecuteAsync(
         IEnumerable<string> arguments,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default,
         bool logOutput = true)
     {
+        await EnsureOwnedServerAsync(cancellationToken);
         var fullArguments = BuildArguments(new[] { "-s", Serial }.Concat(arguments));
-        return _runner.RunAsync(
+        return await _runner.RunAsync(
             AdbPath,
             fullArguments,
             _context.RootDirectory,
@@ -67,12 +69,14 @@ public sealed class AdbService
             _context.Config.HostIsolation.ClearHostToolEnvironment);
     }
 
-    public Task<ProcessResult> ExecuteHostAsync(
+    public async Task<ProcessResult> ExecuteHostAsync(
         IEnumerable<string> arguments,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default,
-        bool logOutput = false) =>
-        _runner.RunAsync(
+        bool logOutput = false)
+    {
+        await EnsureOwnedServerAsync(cancellationToken);
+        return await _runner.RunAsync(
             AdbPath,
             BuildArguments(arguments),
             _context.RootDirectory,
@@ -82,6 +86,13 @@ public sealed class AdbService
             logOutput,
             BuildEnvironment(),
             _context.Config.HostIsolation.ClearHostToolEnvironment);
+    }
+
+    private async Task EnsureOwnedServerAsync(CancellationToken cancellationToken)
+    {
+        if (_serverProcess is { HasExited: false }) return;
+        await StartServerAsync(cancellationToken);
+    }
 
     public Task<ProcessResult> PushFileAsync(
         string localPath,
@@ -95,12 +106,20 @@ public sealed class AdbService
 
     public async Task StartServerAsync(CancellationToken cancellationToken = default)
     {
+        await _serverGate.WaitAsync(cancellationToken);
+        try
+        {
         var result = await StartOwnedServerAsync(cancellationToken);
         RecordTransportResult($"nodaemon server {ServerEndpoint}", result);
         if (!result.Succeeded)
         {
             SetState(AdbRuntimeState.Disconnected);
             throw new RuntimeOperationException("Não foi possível iniciar o ADB.", $"ADB: {AdbPath}\n{result.StandardError}\n{result.StandardOutput}");
+        }
+        }
+        finally
+        {
+            _serverGate.Release();
         }
     }
 
@@ -474,6 +493,9 @@ public sealed class AdbService
             "desabilitar ajuste automático do fuso horário");
 
         var hostBeforeSet = DateTimeOffset.Now;
+        // Android-x86's toolbox date parser treats the legacy numeric value as
+        // local time in the configured guest timezone. Send the Windows local
+        // wall-clock value so that the resulting epoch matches the host.
         var dateValue = hostBeforeSet.LocalDateTime.ToString("MMddHHmmyyyy.ss", CultureInfo.InvariantCulture);
         var dateResult = await ShellResultAsync(["date", dateValue], TimeSpan.FromSeconds(20), cancellationToken);
         if (!dateResult.Succeeded)
@@ -514,7 +536,16 @@ public sealed class AdbService
     public async Task RebootGuestAsync(CancellationToken cancellationToken = default)
     {
         var result = await ShellResultAsync(["reboot"], TimeSpan.FromSeconds(20), cancellationToken);
-        if (!result.Succeeded && !result.StandardError.Contains("closed", StringComparison.OrdinalIgnoreCase) && !result.StandardError.Contains("offline", StringComparison.OrdinalIgnoreCase))
+        var rebootOutput = $"{result.StandardError}\n{result.StandardOutput}";
+        // ADB may report the transport as closed/offline immediately after
+        // Android accepted the reboot request. Let WaitForBootAsync validate
+        // the next boot instead of rejecting that expected hand-off.
+        var expectedDisconnect = rebootOutput.Contains("closed", StringComparison.OrdinalIgnoreCase) ||
+                                 rebootOutput.Contains("offline", StringComparison.OrdinalIgnoreCase) ||
+                                 rebootOutput.Contains("read failed", StringComparison.OrdinalIgnoreCase) ||
+                                 rebootOutput.Contains("connection terminated", StringComparison.OrdinalIgnoreCase) ||
+                                 rebootOutput.Contains("no such device", StringComparison.OrdinalIgnoreCase);
+        if (!result.Succeeded && !expectedDisconnect)
         {
             throw new RuntimeOperationException("Não foi possível reiniciar o Android.", $"adb shell reboot: exit={result.ExitCode}; {result.StandardError}; {result.StandardOutput}");
         }
@@ -677,7 +708,7 @@ public sealed class AdbService
     }
     public Task<string> GetTtsDefaultAsync(CancellationToken cancellationToken = default) => ShellAsync(["settings", "get", "secure", "tts_default_synth"], TimeSpan.FromSeconds(15), cancellationToken);
     public Task<string> CheckTtsDataAsync(string language, string country, CancellationToken cancellationToken = default) =>
-        ShellAsync(["am", "broadcast", "-a", "android.speech.tts.engine.CHECK_TTS_DATA", "--es", "language", language, "--es", "country", country, "--es", "variant", ""], TimeSpan.FromSeconds(20), cancellationToken);
+        ShellAsync(["am", "broadcast", "-a", "android.speech.tts.engine.CHECK_TTS_DATA", "--es", "language", language, "--es", "country", country], TimeSpan.FromSeconds(20), cancellationToken);
     public Task<string> GetPackagesAsync(CancellationToken cancellationToken = default) => ShellAsync(["pm", "list", "packages"], TimeSpan.FromSeconds(30), cancellationToken);
     public Task<string> GetMemoryDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "meminfo"], TimeSpan.FromSeconds(30), cancellationToken);
     public Task<string> GetGraphicsDumpAsync(CancellationToken cancellationToken = default) => ShellAsync(["dumpsys", "gfxinfo"], TimeSpan.FromSeconds(30), cancellationToken);

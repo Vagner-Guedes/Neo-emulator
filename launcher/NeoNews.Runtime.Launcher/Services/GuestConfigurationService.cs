@@ -119,6 +119,12 @@ public sealed class GuestConfigurationService
                 $"Arquivo esperado: {path}. Nenhuma configuração de voz, WebView ou pacote será alterada.");
         }
 
+        // A persistent image may already carry the exact project patch. In
+        // that case avoid a needless remount/push/reboot on every launcher
+        // start; the live network and clock checks below still run.
+        if (HasExpectedNetworkPatch(original, configuration))
+            return (false, ComputeSha256(NormalizeScript(original)));
+
         var expected = ApplyNetworkPatch(original, configuration);
         var changed = !string.Equals(NormalizeScript(original), NormalizeScript(expected), StringComparison.Ordinal);
         if (changed)

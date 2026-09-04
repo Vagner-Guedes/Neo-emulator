@@ -64,7 +64,10 @@ public sealed class RuntimeController : IAsyncDisposable
     public async Task<RuntimeSnapshot> RefreshSnapshotAsync(CancellationToken cancellationToken = default)
     {
         var backendRunning = await SafeBoolAsync(() => _backend.IsRunningAsync(cancellationToken), cancellationToken);
-        var adbOnline = await SafeBoolAsync(() => _adb.IsDeviceOnlineAsync(cancellationToken), cancellationToken);
+        // Do not let a passive panel refresh auto-start an unowned ADB daemon
+        // while the backend is offline. The normal start path owns the
+        // configured private server before launching QEMU.
+        var adbOnline = backendRunning && await SafeBoolAsync(() => _adb.IsDeviceOnlineAsync(cancellationToken), cancellationToken);
         var booted = adbOnline && await SafeAsync(() => _adb.GetPropertyAsync("sys.boot_completed", cancellationToken), cancellationToken) == "1";
         var packageInstalled = false;
         var neoRunning = false;
@@ -170,6 +173,7 @@ public sealed class RuntimeController : IAsyncDisposable
                 progress?.Report(new RuntimeProgress("Preparando ambiente", "Validando componentes locais...", 5));
                 await _provisioning.ValidateLocalRuntimeAsync(cancellationToken);
                 await _provisioning.SetStageAsync("HOST_VALIDATION", cancellationToken);
+                await _adb.StartServerAsync(cancellationToken);
                 await _backend.StartAsync(progress, cancellationToken);
                 await _provisioning.SetStageAsync("ANDROID_START", cancellationToken);
                 _state.Set(RuntimeState.WaitingForAdb);
@@ -358,6 +362,7 @@ public sealed class RuntimeController : IAsyncDisposable
             progress?.Report(new RuntimeProgress("Preparando ambiente", "Validando componentes locais...", 5));
             await _provisioning.ValidateLocalRuntimeAsync(cancellationToken);
             await _provisioning.SetStageAsync("HOST_VALIDATION", cancellationToken);
+            await _adb.StartServerAsync(cancellationToken);
             await _backend.StartAsync(progress, cancellationToken);
             await _provisioning.SetStageAsync("ANDROID_START", cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
@@ -447,9 +452,18 @@ public sealed class RuntimeController : IAsyncDisposable
         {
             await _provisioning.ValidateLocalRuntimeAsync(cancellationToken);
             await _provisioning.SetStageAsync("HOST_VALIDATION", cancellationToken);
+            await _adb.StartServerAsync(cancellationToken);
             await _backend.StartAsync(progress, cancellationToken);
             await _provisioning.SetStageAsync("ANDROID_START", cancellationToken);
             _state.Set(RuntimeState.WaitingForAdb);
+        }
+        else
+        {
+            // A backend may have been started by a prior operation while this
+            // controller instance has not yet retained its ADB process handle.
+            // StartServerAsync remains idempotent for the owned process and
+            // still rejects an unrelated listener on the configured port.
+            await _adb.StartServerAsync(cancellationToken);
         }
         await WaitForConfiguredBootAsync(progress, cancellationToken);
         await _provisioning.SetStageAsync("BOOT_COMPLETED", cancellationToken);
@@ -603,6 +617,10 @@ public sealed class RuntimeController : IAsyncDisposable
 
     private async Task<(bool Ready, string Detail, string DefaultEngine)> ValidateTtsAsync(CancellationToken cancellationToken)
     {
+        // RHVoice data lives below the provider's private app directory. The
+        // runtime validates it with the same root boundary used by the
+        // project-approved synthesis probe; no package or engine is changed.
+        await _adb.EnsureRootAsync(cancellationToken);
         var packages = await SafeAsync(() => _adb.GetPackagesAsync(cancellationToken), cancellationToken);
         var defaultEngine = await SafeAsync(() => _adb.GetTtsDefaultAsync(cancellationToken), cancellationToken);
         var localeCheck = await SafeAsync(() => _adb.CheckTtsDataAsync("por", "BRA", cancellationToken), cancellationToken);
