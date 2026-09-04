@@ -536,12 +536,16 @@ finally {
 }
 
 $observedSeconds = if ($startedAt -and $enduranceEndedAt) { [math]::Round(($enduranceEndedAt - $startedAt).TotalSeconds, 2) } else { 0 }
-$sampleFailures = @($samples | Where-Object { -not $_.effectiveStable })
-$transientProbeFailures = @($samples + $readinessAttempts.ToArray() | Where-Object { $_.failureClassification -eq 'TRANSIENT_PROBE_FAILURE' })
-$realRuntimeFailures = @($samples + $readinessAttempts.ToArray() | Where-Object { $_.failureClassification -eq 'REAL_RUNTIME_FAILURE' })
+$sampleArray = @($samples.ToArray())
+$readinessArray = @($readinessAttempts.ToArray())
+$allAttempts = @($sampleArray) + @($readinessArray)
+$sampleFailures = @($sampleArray | Where-Object { -not $_.effectiveStable })
+$transientProbeFailures = @($allAttempts | Where-Object { $_.failureClassification -eq 'TRANSIENT_PROBE_FAILURE' })
+$realRuntimeFailures = @($allAttempts | Where-Object { $_.failureClassification -eq 'REAL_RUNTIME_FAILURE' })
 $runtimeEvidenceReady = @($evidence.GetEnumerator() | Where-Object { $_.Key -ne 'neoNewsContent' -and -not $_.Value.ready }).Count -eq 0
-$stableForDuration = $samples.Count -gt 0 -and $observedSeconds -ge $DurationSeconds -and $sampleFailures.Count -eq 0
+$stableForDuration = $sampleArray.Count -gt 0 -and $observedSeconds -ge $DurationSeconds -and $sampleFailures.Count -eq 0
 $status = if ([string]::IsNullOrWhiteSpace($failure) -and $startCommandExitCode -eq 0 -and $runtimeEvidenceReady -and $stableForDuration) { 'validated' } else { 'not-validated' }
+$firstFailure = @($allAttempts | Where-Object { $_.failureClassification -ne 'NONE' } | Select-Object -First 1)
 $result = [ordered]@{
     timestamp = [DateTimeOffset]::UtcNow
     executable = $ExecutablePath
@@ -555,24 +559,50 @@ $result = [ordered]@{
     pollSeconds = $PollSeconds
     startCommandExitCode = $startCommandExitCode
     evidence = $evidence
-    sampleCount = $samples.Count
+    sampleCount = $sampleArray.Count
     failedSampleCount = $sampleFailures.Count
     transientProbeFailureCount = $transientProbeFailures.Count
     realRuntimeFailureCount = $realRuntimeFailures.Count
-    readinessAttemptCount = $readinessAttempts.Count
-    readinessFailedAttemptCount = @($readinessAttempts.ToArray() | Where-Object { -not $_.effectiveStable }).Count
+    readinessAttemptCount = $readinessArray.Count
+    readinessFailedAttemptCount = @($readinessArray | Where-Object { -not $_.effectiveStable }).Count
+    firstFailure = if ($firstFailure.Count -gt 0) { $firstFailure[0] } else { $null }
     logcatCapture = $logcatCapture
     # Convert the generic List explicitly. PowerShell's ConvertTo-Json throws
     # "Os tipos de argumento não correspondem" when a List[object] is wrapped
     # directly in @(...), which used to discard the completed endurance report.
-    readinessAttempts = $readinessAttempts.ToArray()
-    samples = $samples.ToArray()
+    readinessAttempts = $readinessArray
+    samples = $sampleArray
     error = $failure
     status = $status
 }
-$json = $result | ConvertTo-Json -Depth 12
 $reportDirectory = Split-Path -Parent $reportFullPath
 if ($reportDirectory -and -not (Test-Path -LiteralPath $reportDirectory)) { New-Item -ItemType Directory -Path $reportDirectory -Force | Out-Null }
-Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
+$json = $null
+try {
+    $json = $result | ConvertTo-Json -Depth 12
+    Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
+}
+catch {
+    $fallback = [ordered]@{
+        timestamp = [DateTimeOffset]::UtcNow
+        executable = $ExecutablePath
+        runtimeDirectory = $runtimeRoot
+        requestedDurationSeconds = $DurationSeconds
+        observedDurationSeconds = $observedSeconds
+        sampleCount = $sampleArray.Count
+        failedSampleCount = $sampleFailures.Count
+        transientProbeFailureCount = $transientProbeFailures.Count
+        realRuntimeFailureCount = $realRuntimeFailures.Count
+        readinessAttemptCount = $readinessArray.Count
+        readinessFailedAttemptCount = @($readinessArray | Where-Object { -not $_.effectiveStable }).Count
+        firstFailureClassification = if ($firstFailure.Count -gt 0) { [string]$firstFailure[0].failureClassification } else { 'NONE' }
+        firstFailureReasons = if ($firstFailure.Count -gt 0) { @($firstFailure[0].failureReasons) } else { @() }
+        logcatCapture = $logcatCapture
+        error = if ($failure) { [string]$failure } else { "Falha ao consolidar o relatório: $($_.Exception.Message)" }
+        status = 'not-validated'
+    }
+    $json = $fallback | ConvertTo-Json -Depth 8
+    Set-Content -LiteralPath $reportFullPath -Value $json -Encoding utf8
+}
 $json
 if ($status -ne 'validated') { throw "Estabilidade integrada não foi homologada: status=$status. Consulte $reportFullPath." }
