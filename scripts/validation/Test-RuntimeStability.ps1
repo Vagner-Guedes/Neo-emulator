@@ -520,6 +520,11 @@ try {
 
     $startCommandExitCode = Send-LauncherCommand '--start'
     if ($startCommandExitCode -ne 0) { throw "O comando --start falhou com exit code $startCommandExitCode." }
+    # The launcher owns and publishes its private ADB server asynchronously.
+    # Give that owner a short head start before the first probe; otherwise an
+    # adb client probe can auto-start an unowned server on the same port and
+    # create a false port-collision failure in the launcher.
+    Start-Sleep -Seconds 5
     $readinessDeadline = (Get-Date).ToUniversalTime().AddSeconds($ReadinessTimeoutSeconds)
     $readinessSample = $null
     do {
