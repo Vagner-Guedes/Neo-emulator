@@ -599,10 +599,14 @@ public sealed class AdbService
             var secureWrite = await ShellResultAsync(["settings", "put", "secure", "user_setup_complete", "1"], TimeSpan.FromSeconds(15), cancellationToken);
             var globalRead = await ShellResultAsync(["settings", "get", "global", "device_provisioned"], TimeSpan.FromSeconds(15), cancellationToken);
             var secureRead = await ShellResultAsync(["settings", "get", "secure", "user_setup_complete"], TimeSpan.FromSeconds(15), cancellationToken);
+            // Android-x86 can have already launched SetupWizard before the
+            // idempotent flags are written. Stop only that package instance;
+            // the package remains installed and enabled for future diagnostics.
+            var setupWizardStop = await ShellResultAsync(["am", "force-stop", "com.google.android.setupwizard"], TimeSpan.FromSeconds(15), cancellationToken);
             var global = globalRead.StandardOutput.Trim();
             var secure = secureRead.StandardOutput.Trim();
-            var ready = globalWrite.Succeeded && secureWrite.Succeeded && globalRead.Succeeded && secureRead.Succeeded && global == "1" && secure == "1";
-            var detail = $"device_provisioned={global}; user_setup_complete={secure}; globalWriteExit={globalWrite.ExitCode}; secureWriteExit={secureWrite.ExitCode}; globalReadExit={globalRead.ExitCode}; secureReadExit={secureRead.ExitCode}";
+            var ready = globalWrite.Succeeded && secureWrite.Succeeded && globalRead.Succeeded && secureRead.Succeeded && setupWizardStop.Succeeded && global == "1" && secure == "1";
+            var detail = $"device_provisioned={global}; user_setup_complete={secure}; setupWizardStopExit={setupWizardStop.ExitCode}; globalWriteExit={globalWrite.ExitCode}; secureWriteExit={secureWrite.ExitCode}; globalReadExit={globalRead.ExitCode}; secureReadExit={secureRead.ExitCode}";
             return (ready, detail);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)

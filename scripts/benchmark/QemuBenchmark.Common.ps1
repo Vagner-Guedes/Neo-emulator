@@ -644,7 +644,8 @@ function Test-QemuBenchmarkStability {
         [int]$DurationSeconds = 60,
         [int]$PollSeconds = 5,
         [int]$ServerPort = 5038,
-        [int]$StartupTimeoutSeconds = 45
+        [int]$StartupTimeoutSeconds = 45,
+        [switch]$RejectSetupWizard
     )
 
     $samples = New-Object System.Collections.Generic.List[object]
@@ -656,12 +657,18 @@ function Test-QemuBenchmarkStability {
         try { $Process.Refresh(); $processAlive = -not $Process.HasExited } catch { }
         $adbState = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('get-state') -ServerPort $ServerPort
         $activityRunning = $false
+        $setupWizardActive = $false
+        $crashDialogVisible = $false
         if ($processAlive -and $adbState.Text -match '(?im)^device$') {
             $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities') -ServerPort $ServerPort
             $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
             if (-not $activityRunning) {
                 $windowDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'window', 'windows') -ServerPort $ServerPort
                 $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $windowDump.Text -Component $ActivityComponent
+            }
+            if ($RejectSetupWizard) {
+                $setupWizardActive = $windowDump.Text -match '(?i)com\.google\.android\.setupwizard/'
+                $crashDialogVisible = $windowDump.Text -match '(?i)Application Error|parou|não está respondendo|fechar aplicativo|abrir app novamente'
             }
         }
         if ($processAlive -and $adbState.Text -match '(?im)^device$' -and $activityRunning) {
@@ -675,6 +682,7 @@ function Test-QemuBenchmarkStability {
         return [ordered]@{
             durationSeconds = [math]::Max(0, $DurationSeconds)
             startupTimeoutSeconds = [math]::Max(1, $StartupTimeoutSeconds)
+            setupWizardRejected = [bool]$RejectSetupWizard
             activityReady = $false
             activityReadySeconds = $null
             samples = @()
@@ -706,17 +714,20 @@ function Test-QemuBenchmarkStability {
                 }
             }
         }
-        $samples.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); processAlive = $processAlive; adbState = $adbState.Text; activityRunning = $activityRunning })
+        $samples.Add([ordered]@{ at = (Get-Date).ToUniversalTime().ToString('o'); processAlive = $processAlive; adbState = $adbState.Text; activityRunning = $activityRunning; setupWizardActive = $setupWizardActive; crashDialogVisible = $crashDialogVisible })
         if ((Get-Date) -lt $deadline) { Start-Sleep -Seconds ([math]::Max(1, $PollSeconds)) }
     } while ((Get-Date) -lt $deadline)
     $unstableSampleCount = @($samples | Where-Object {
         -not $_.processAlive -or
         $_.adbState -notmatch '(?im)^device$' -or
-        -not $_.activityRunning
+        -not $_.activityRunning -or
+        ($RejectSetupWizard -and $_.setupWizardActive) -or
+        ($RejectSetupWizard -and $_.crashDialogVisible)
     }).Count
     [ordered]@{
         durationSeconds = [math]::Max(0, $DurationSeconds)
         startupTimeoutSeconds = [math]::Max(1, $StartupTimeoutSeconds)
+        setupWizardRejected = [bool]$RejectSetupWizard
         activityReady = $true
         activityReadySeconds = [math]::Round(($activityReadyAt - $startupStartedAt).TotalSeconds, 2)
         samples = $samples.ToArray()
