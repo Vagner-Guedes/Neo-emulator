@@ -66,6 +66,7 @@ foreach ($supportFile in @(
     "scripts\provision\Optimize-AndroidGuest.ps1",
     "scripts\provision\Provision-NativeBridgeOfficial.ps1",
     "scripts\validation\Get-NativeBridgeInventory.ps1",
+    "scripts\validation\Test-BootReliability.ps1",
     "scripts\benchmark\QemuBenchmark.Common.ps1",
     "scripts\validation\Test-TtsSynthesis.ps1",
     "scripts\validation\ValidationEvidence.Common.ps1"
