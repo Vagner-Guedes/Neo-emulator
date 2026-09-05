@@ -128,6 +128,26 @@ function Wait-BootAdbSuccess {
     return $last
 }
 
+function Invoke-BootSetupFlags {
+    param(
+        [string]$Serial,
+        [int]$ServerPort
+    )
+
+    $globalWrite = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'settings', 'put', 'global', 'device_provisioned', '1') -TimeoutSeconds 30
+    $secureWrite = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'settings', 'put', 'secure', 'user_setup_complete', '1') -TimeoutSeconds 30
+    $setupWizardStop = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'am', 'force-stop', 'com.google.android.setupwizard') -TimeoutSeconds 30
+    $globalRead = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'settings', 'get', 'global', 'device_provisioned') -TimeoutSeconds 30
+    $secureRead = Wait-BootAdbSuccess -Serial $Serial -ServerPort $ServerPort -Arguments @('shell', 'settings', 'get', 'secure', 'user_setup_complete') -TimeoutSeconds 30
+    [ordered]@{
+        globalWrite = Get-TextResult $globalWrite
+        secureWrite = Get-TextResult $secureWrite
+        setupWizardStop = Get-TextResult $setupWizardStop
+        globalRead = Get-TextResult $globalRead
+        secureRead = Get-TextResult $secureRead
+    }
+}
+
 function Sync-BootGuestClock {
     param(
         [string]$Serial,
@@ -322,10 +342,7 @@ function Invoke-BootRun {
                 if ($null -eq $lastDeviceAt -or $now - $lastDeviceAt -ge [TimeSpan]::FromSeconds(2)) { $deviceProbes++ }
                 $lastDeviceAt = $now
                 if (-not $setupFlags) {
-                    $globalWrite = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'global', 'device_provisioned', '1') -ServerPort $adbServerPort
-                    $secureWrite = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'secure', 'user_setup_complete', '1') -ServerPort $adbServerPort
-                    $setupWizardStop = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'force-stop', 'com.google.android.setupwizard') -ServerPort $adbServerPort
-                    $setupFlags = [ordered]@{ globalWrite = Get-TextResult $globalWrite; secureWrite = Get-TextResult $secureWrite; setupWizardStop = Get-TextResult $setupWizardStop }
+                    $setupFlags = Invoke-BootSetupFlags -Serial $serial -ServerPort $adbServerPort
                 }
                 if ($deviceProbes -ge 3) {
                     $bootResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'getprop', 'sys.boot_completed') -ServerPort $adbServerPort
@@ -346,15 +363,12 @@ function Invoke-BootRun {
             Start-Sleep -Seconds 5
             $pmPackages = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'pm', 'list', 'packages')
             $pmAndroid = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'pm', 'path', 'android')
-            $global = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'settings', 'list', 'global')
-            $secure = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'settings', 'list', 'secure')
-            $postRootGlobal = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'global', 'device_provisioned', '1') -ServerPort $adbServerPort
-            $postRootSecure = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'settings', 'put', 'secure', 'user_setup_complete', '1') -ServerPort $adbServerPort
-            $postRootSetupWizardStop = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('shell', 'am', 'force-stop', 'com.google.android.setupwizard') -ServerPort $adbServerPort
-            $setupFlags.postRoot = [ordered]@{ globalWrite = Get-TextResult $postRootGlobal; secureWrite = Get-TextResult $postRootSecure; setupWizardStop = Get-TextResult $postRootSetupWizardStop }
+            $setupFlags.postRoot = Invoke-BootSetupFlags -Serial $serial -ServerPort $adbServerPort
             $clockEvidence = Sync-BootGuestClock -Serial $serial -ServerPort $adbServerPort -Timezone ([string]$config.runtime.timezone)
             if (-not $clockEvidence.validated) { throw "Relógio do guest não foi homologado: $($clockEvidence | ConvertTo-Json -Compress -Depth 8)" }
             Start-Sleep -Seconds 10
+            $global = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'settings', 'list', 'global')
+            $secure = Wait-BootAdbSuccess -Serial $serial -ServerPort $adbServerPort -Arguments @('shell', 'settings', 'list', 'secure')
             $pmResult = [ordered]@{ packages = Get-TextResult $pmPackages; androidPath = Get-TextResult $pmAndroid; ready = $pmPackages.ExitCode -eq 0 -and $pmPackages.Text -match '(?i)package:' -and $pmAndroid.ExitCode -eq 0 -and $pmAndroid.Text -match '(?i)package:' }
             $settingsGlobal = Get-TextResult $global
             $settingsSecure = Get-TextResult $secure

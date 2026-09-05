@@ -595,14 +595,19 @@ public sealed class AdbService
     {
         try
         {
-            var globalWrite = await ShellResultAsync(["settings", "put", "global", "device_provisioned", "1"], TimeSpan.FromSeconds(15), cancellationToken);
-            var secureWrite = await ShellResultAsync(["settings", "put", "secure", "user_setup_complete", "1"], TimeSpan.FromSeconds(15), cancellationToken);
-            var globalRead = await ShellResultAsync(["settings", "get", "global", "device_provisioned"], TimeSpan.FromSeconds(15), cancellationToken);
-            var secureRead = await ShellResultAsync(["settings", "get", "secure", "user_setup_complete"], TimeSpan.FromSeconds(15), cancellationToken);
+            // Android-x86 can expose ADB as `device` a few seconds before the
+            // Settings Provider is usable. In that window `settings` has
+            // historically returned exit 0 while printing a provider NPE.
+            // Retry the supported provisioning commands and accept success
+            // only after their output is free of transient Android errors.
+            var globalWrite = await ExecuteProvisioningCommandWithRetryAsync(["settings", "put", "global", "device_provisioned", "1"], cancellationToken);
+            var secureWrite = await ExecuteProvisioningCommandWithRetryAsync(["settings", "put", "secure", "user_setup_complete", "1"], cancellationToken);
+            var globalRead = await ExecuteProvisioningCommandWithRetryAsync(["settings", "get", "global", "device_provisioned"], cancellationToken);
+            var secureRead = await ExecuteProvisioningCommandWithRetryAsync(["settings", "get", "secure", "user_setup_complete"], cancellationToken);
             // Android-x86 can have already launched SetupWizard before the
             // idempotent flags are written. Stop only that package instance;
             // the package remains installed and enabled for future diagnostics.
-            var setupWizardStop = await ShellResultAsync(["am", "force-stop", "com.google.android.setupwizard"], TimeSpan.FromSeconds(15), cancellationToken);
+            var setupWizardStop = await ExecuteProvisioningCommandWithRetryAsync(["am", "force-stop", "com.google.android.setupwizard"], cancellationToken);
             var global = globalRead.StandardOutput.Trim();
             var secure = secureRead.StandardOutput.Trim();
             var ready = globalWrite.Succeeded && secureWrite.Succeeded && globalRead.Succeeded && secureRead.Succeeded && setupWizardStop.Succeeded && global == "1" && secure == "1";
@@ -617,6 +622,24 @@ public sealed class AdbService
         {
             return (false, $"settings indisponível durante o boot: {exception.Message}");
         }
+    }
+
+    private async Task<ProcessResult> ExecuteProvisioningCommandWithRetryAsync(
+        IEnumerable<string> arguments,
+        CancellationToken cancellationToken)
+    {
+        ProcessResult? last = null;
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            last = await ShellResultAsync(arguments, TimeSpan.FromSeconds(15), cancellationToken);
+            var combined = $"{last.StandardOutput}\n{last.StandardError}";
+            var transientFailure = Regex.IsMatch(
+                combined,
+                "(?i)Error while|NullPointerException|device offline|Can.t connect to activity manager|is the system running");
+            if (last.Succeeded && !transientFailure) return last;
+            if (attempt < 5) await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+        }
+        return last!;
     }
 
     public async Task WaitForPackageManagerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
