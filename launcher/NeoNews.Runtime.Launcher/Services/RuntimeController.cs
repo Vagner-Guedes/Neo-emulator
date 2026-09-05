@@ -429,7 +429,7 @@ public sealed class RuntimeController : IAsyncDisposable
             await EnsureGuestLocaleAsync(progress, cancellationToken);
             await EnsureGuestClockAsync(progress, cancellationToken);
             await _provisioning.SetStageAsync("NATIVE_BRIDGE_VALIDATION", cancellationToken);
-            var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken);
+            var bridge = await EnsureNativeBridgeAsync(progress, cancellationToken);
             if (_context.Config.Android.NativeBridge.Required && !bridge.Ready) throw new RuntimeOperationException("O Native Bridge ARM não está disponível.", bridge.Detail);
             await _provisioning.SetStageAsync("WEBVIEW_VALIDATION", cancellationToken);
             var webView = await ReadWebViewAsync(cancellationToken);
@@ -463,6 +463,31 @@ public sealed class RuntimeController : IAsyncDisposable
             await CleanupFailedStartAsync();
             throw;
         }
+    }
+
+    private async Task<NativeBridgeValidationResult> EnsureNativeBridgeAsync(IProgress<RuntimeProgress>? progress, CancellationToken cancellationToken)
+    {
+        var bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken);
+        if (bridge.Ready || !_context.Config.Android.NativeBridge.Required) return bridge;
+        if (!bridge.TransportStable)
+            throw new RuntimeOperationException("A conexao ADB ficou instavel durante a validacao do Native Bridge.", bridge.Detail);
+
+        progress?.Report(new RuntimeProgress("Recuperando Native Bridge", "Reprovisionando somente artefatos oficiais quando necessario...", 48));
+        await _provisioning.SetStageAsync("NATIVE_BRIDGE_PROVISIONING", cancellationToken);
+        var reportPath = Path.Combine(_context.ReportsDirectory, "nativebridge-provisioning.json");
+        var provision = await _scripts.ExecuteAsync(
+            "scripts/provision/Provision-NativeBridgeOfficial.ps1",
+            ["-RepositoryRoot", _context.RootDirectory, "-ConfigPath", _context.ConfigPath, "-Serial", _adb.Serial, "-DownloadOfficial", "-ReportPath", reportPath],
+            "nativebridge-provision", TimeSpan.FromMinutes(12), cancellationToken);
+        if (!provision.Succeeded)
+            throw new RuntimeOperationException("Nao foi possivel recuperar o Native Bridge ARM com o mecanismo oficial.",
+                $"Relatorio: {reportPath}\n{provision.StandardError}\n{provision.StandardOutput}".Trim());
+
+        await _adb.WaitForDeviceAsync(TimeSpan.FromSeconds(_context.Config.Timeouts.BootSeconds), cancellationToken);
+        bridge = await _nativeBridge.ValidateGuestAsync(cancellationToken);
+        if (!bridge.Ready)
+            throw new RuntimeOperationException("O Native Bridge ARM nao passou na validacao apos a recuperacao oficial.", bridge.Detail);
+        return bridge;
     }
 
     private async Task CleanupFailedStartAsync()

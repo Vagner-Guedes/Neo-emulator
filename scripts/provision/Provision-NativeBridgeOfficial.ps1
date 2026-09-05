@@ -298,7 +298,7 @@ try {
             $artifact.push = [ordered]@{ skipped = $true; exitCode = 0; output = 'guest artifact already matches expected SHA-256' }
         }
         else {
-            $push = & $script:AdbPath -s $Serial push $artifact.localPath $artifact.guestPath 2>&1
+            $push = & $script:AdbPath -P $script:adbServerPort -s $Serial push $artifact.localPath $artifact.guestPath 2>&1
             $pushExitCode = $LASTEXITCODE
             $artifact.push = [ordered]@{ skipped = $false; exitCode = $pushExitCode; output = (($push | Out-String).Trim()) }
             if ($pushExitCode -ne 0) { throw "Falha ao enviar $($artifact.fileName): $($artifact.push.output)" }

@@ -128,6 +128,7 @@
       "preferredAbi": "armeabi-v7a",
       "property": "ro.dalvik.vm.native.bridge",
       "status": "validated-persistent",
+      "distributionMode": "baked-in-qcow2-with-official-repair-download",
       "officialProvisioning": {
         "enableScriptPath": "/system/bin/enable_nativebridge",
         "enableScriptSha256": "e5b59f57d1dee568e2eee0bab09d84a1480c11bc5364737b193cfd6d53a4f4aa",

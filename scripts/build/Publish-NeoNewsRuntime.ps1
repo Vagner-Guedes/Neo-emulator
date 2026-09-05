@@ -58,6 +58,7 @@ Copy-Item -Path (Join-Path $repositoryRoot "README.md") -Destination $outputPath
 # the portable publication. These are scripts/probes only; no APK is copied.
 foreach ($supportFile in @(
     "scripts\provision\Optimize-AndroidGuest.ps1",
+    "scripts\provision\Provision-NativeBridgeOfficial.ps1",
     "scripts\validation\Test-TtsSynthesis.ps1",
     "scripts\validation\ValidationEvidence.Common.ps1"
 )) {
@@ -144,6 +145,12 @@ if (Test-Path -LiteralPath $publishedStatePath) {
             Set-PublishedStateEntryPath -Section $sectionProperty.Value -EntryName $entryName -RelativePath $publishedRelativePaths[$entryName]
         }
     }
+
+    # The approved image already carries the translator and its SFS inputs.
+    # A portable copy starts pending only a guest-side validation; recovery is
+    # performed later through allowlisted official URLs and pinned hashes.
+    $nativeBridgeStatus = $publishedState.PSObject.Properties['nativeBridgeStatus']
+    if ($null -ne $nativeBridgeStatus) { $nativeBridgeStatus.Value = 'baked-in-qcow2-pending-validation' }
 
     $publishedJson = $publishedState | ConvertTo-Json -Depth 12
     [System.IO.File]::WriteAllText($publishedStatePath, $publishedJson, [System.Text.UTF8Encoding]::new($false))

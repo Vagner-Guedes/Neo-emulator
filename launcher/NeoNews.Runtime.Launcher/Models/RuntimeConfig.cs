@@ -192,6 +192,7 @@ public sealed class NativeBridgeConfig
     public string PreferredAbi { get; set; } = "armeabi-v7a";
     public string Property { get; set; } = "ro.dalvik.vm.native.bridge";
     public string Status { get; set; } = "unknown";
+    public string DistributionMode { get; set; } = "baked-in-qcow2-with-official-repair-download";
     public OfficialNativeBridgeProvisioningConfig OfficialProvisioning { get; set; } = new();
 }
 

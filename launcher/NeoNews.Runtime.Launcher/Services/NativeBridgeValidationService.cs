@@ -12,7 +12,9 @@ public sealed record NativeBridgeValidationResult(
     string Detail,
     string PersistNativeBridge,
     IReadOnlyList<NativeBridgeFileEvidence> Files,
-    NativeBridgeState State);
+    NativeBridgeState State,
+    bool TransportStable,
+    int Attempts);
 
 public sealed record NativeBridgeFileEvidence(
     string Path,
@@ -49,6 +51,23 @@ public sealed class NativeBridgeValidationService
 
     public async Task<NativeBridgeValidationResult> ValidateGuestAsync(CancellationToken cancellationToken = default)
     {
+        // Android-x86 can report boot completed just before its TCP ADB
+        // transport settles. A partial probe is not evidence that Houdini is
+        // absent from the baked-in image, so retry only transport failures.
+        const int maximumAttempts = 4;
+        NativeBridgeValidationResult? last = null;
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            last = await ValidateGuestOnceAsync(attempt, cancellationToken);
+            if (last.TransportStable || attempt == maximumAttempts) return last;
+            await _adb.RecoverTransportAsync(cancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds)), cancellationToken);
+        }
+        return last!;
+    }
+
+    private async Task<NativeBridgeValidationResult> ValidateGuestOnceAsync(int attempt, CancellationToken cancellationToken)
+    {
         var property = await _adb.GetPropertyAsync(_context.Config.Android.NativeBridge.Property, cancellationToken);
         var persistNativeBridge = await _adb.GetPropertyAsync("persist.sys.nativebridge", cancellationToken);
         var abi = await _adb.GetPropertyAsync("ro.product.cpu.abi", cancellationToken);
@@ -70,11 +89,12 @@ public sealed class NativeBridgeValidationService
         var ready = !string.IsNullOrWhiteSpace(property) &&
                     !property.Equals("0", StringComparison.OrdinalIgnoreCase) &&
                     nativeBridgeEnabled && x86Guest && abiListHasX86 && libNbReady && translatorReady;
-        var state = ready ? NativeBridgeState.Configured : NativeBridgeState.Missing;
+        var transportStable = files.All(file => !IsTransportFailure(file.Detail));
+        var state = ready ? NativeBridgeState.Configured : transportStable ? NativeBridgeState.Missing : NativeBridgeState.Error;
         var detail = ready
             ? $"Native Bridge declarado como '{property}' para guest {abi}. A execução do APK ainda precisa ser comprovada."
             : $"Native Bridge não operacional: property='{property}', abi='{abi}', abilist='{abiList}', abi2='{abi2}'.";
-        return new NativeBridgeValidationResult(property, abi, abiList, abi2, ready, detail, persistNativeBridge, files, state);
+        return new NativeBridgeValidationResult(property, abi, abiList, abi2, ready, detail, persistNativeBridge, files, state, transportStable, attempt);
     }
 
     public async Task<AbiCompatibilityResult> ValidateInstalledPackageAsync(
@@ -129,6 +149,12 @@ public sealed class NativeBridgeValidationService
         var length = match.Success && long.TryParse(match.Groups["length"].Value, out var parsed) ? parsed : 0;
         return new NativeBridgeFileEvidence(path, true, length, output);
     }
+
+    private static bool IsTransportFailure(string detail) =>
+        detail.Contains("device offline", StringComparison.OrdinalIgnoreCase) ||
+        detail.Contains("device not found", StringComparison.OrdinalIgnoreCase) ||
+        detail.Contains("no devices", StringComparison.OrdinalIgnoreCase) ||
+        detail.Contains("closed", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsTrue(string value) => value.Equals("1", StringComparison.OrdinalIgnoreCase) ||
                                                 value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
