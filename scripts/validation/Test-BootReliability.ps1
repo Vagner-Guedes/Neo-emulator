@@ -96,7 +96,13 @@ function Ensure-BootAdbRoot {
     $consecutiveDeviceProbes = 0
     do {
         $state = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('get-state') -ServerPort $ServerPort
-        if ($state.Text -match '(?im)^device$') { $consecutiveDeviceProbes++ } else { $consecutiveDeviceProbes = 0 }
+        if ($state.Text -match '(?im)^device$') { $consecutiveDeviceProbes++ }
+        else {
+            $consecutiveDeviceProbes = 0
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('reconnect', 'offline') -ServerPort $ServerPort
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('disconnect', $Serial) -ServerPort $ServerPort
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('connect', $Serial) -ServerPort $ServerPort
+        }
         if ($consecutiveDeviceProbes -ge 3) { break }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
@@ -105,6 +111,11 @@ function Ensure-BootAdbRoot {
     do {
         $identity = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'id') -ServerPort $ServerPort
         if ($identity.Text -match 'uid=0\(root\)') { break }
+        if ($identity.Text -match '(?i)device offline|device not found|error:\s*closed') {
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('reconnect', 'offline') -ServerPort $ServerPort
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('disconnect', $Serial) -ServerPort $ServerPort
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('connect', $Serial) -ServerPort $ServerPort
+        }
         if ((Get-Date) -lt $identityDeadline) { Start-Sleep -Seconds 2 }
     } while ((Get-Date) -lt $identityDeadline)
     [ordered]@{
