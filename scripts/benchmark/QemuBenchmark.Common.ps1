@@ -665,6 +665,10 @@ function Test-QemuBenchmarkStability {
             $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities') -ServerPort $ServerPort
             $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
             if (-not $activityRunning) {
+                $topDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'top') -ServerPort $ServerPort
+                $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $topDump.Text -Component $ActivityComponent
+            }
+            if (-not $activityRunning) {
                 $windowDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'window', 'windows') -ServerPort $ServerPort
                 $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $windowDump.Text -Component $ActivityComponent
             }

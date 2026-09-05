@@ -356,7 +356,7 @@ function Invoke-BootRun {
             }
             $stateResult = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $serial -Arguments @('get-state') -ServerPort $adbServerPort
             $stateText = $stateResult.Text.Trim()
-            if ($stateText -match '(?im)^offline$') {
+            if ($stateText -match '(?i)(^|\s)(error:\s*)?device\s+offline\b|^offline$|error:\s*closed') {
                 # Android-x86 may retain a stale TCP transport while the
                 # guest itself is already reachable. Recreate only that
                 # private transport; never touch the global host ADB server.
