@@ -100,7 +100,13 @@ function Ensure-BootAdbRoot {
         if ($consecutiveDeviceProbes -ge 3) { break }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
-    $identity = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'id') -ServerPort $ServerPort
+    $identity = $null
+    $identityDeadline = (Get-Date).AddSeconds(20)
+    do {
+        $identity = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments @('shell', 'id') -ServerPort $ServerPort
+        if ($identity.Text -match 'uid=0\(root\)') { break }
+        if ((Get-Date) -lt $identityDeadline) { Start-Sleep -Seconds 2 }
+    } while ((Get-Date) -lt $identityDeadline)
     [ordered]@{
         request = Get-TextResult $rootRequest
         state = Get-TextResult $state
