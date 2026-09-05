@@ -4,6 +4,36 @@
 **Branch:** `codex/neonews-runtime-homologation`
 **Resultado global:** **BLOCKED / NOT PRODUCTION READY**
 
+## Adendo da meta finalissima - rodada de 04/09/2026
+
+Este adendo prevalece sobre qualquer evidencia historica conflitante abaixo.
+O qcow2 raiz aprovado permaneceu intacto: SHA-256
+`EA183B11BD9C996BC362D99AA40EAE25995D62516179599D82A1BEAE1E62DD77`,
+`qemu-img` sem dirty flag, sem corrupcao e sem erros. O ADB global na porta
+5037 tambem permaneceu ativo.
+
+Foi publicada uma unica copia descartavel para a nova rodada:
+`dist/NeoNewsRuntime-endurance-8fdc3d1-v2`. A copia iniciou QEMU e ADB
+privado, mas o launcher nao atingiu Ready. O relatorio live registra
+`status=not-validated`, `readinessTimeoutSeconds=300`,
+`observedDurationSeconds=0`, `realRuntimeFailureCount=22` e nenhum sample de
+endurance. A falha deterministica observada foi:
+`O Native Bridge ARM nao esta disponivel.`
+
+O log da copia tambem registra transicoes ADB para `offline`/`not found` e
+falhas transitorias do provider de settings durante o boot. A copia nao foi
+promovida, e o seu qcow2, ja mutado pelo boot de teste, nao e artefato de
+release. Evidencia: `dist/NeoNewsRuntime-endurance-8fdc3d1-v2/reports/runtime-stability-620s-v2.json`.
+
+Consequentemente, esta rodada nao autoriza `POWERBI_REAL_PASS`,
+`STABILITY_600S_PASS`, `PERSISTENT_IMAGE_PASS` ou `PRODUCTION_READY`. O fluxo
+visual autenticado do NeoNews, hotkeys, Guardian, fullscreen, update,
+superuser silencioso, startup/tray, instalacao local, portabilidade e PC
+limpo continuam sem prova nesta maquina; a automacao visual CUA nao possui o
+servico RPC confiavel necessario para observar esses cenarios. Nenhuma
+alteracao foi feita em RHVoice, WebView, Native Bridge, debloat ou no qcow2
+raiz.
+
 ## Resumo
 
 O WebView pré-compilado exato `com.google.android.webview` 119 foi obtido,
