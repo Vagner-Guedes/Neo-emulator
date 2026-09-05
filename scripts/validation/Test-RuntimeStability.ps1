@@ -349,6 +349,46 @@ function Get-FastRuntimeSample {
     $deviceLine = @($deviceResult.text -split '\r?\n' | Where-Object { $_ -match ('^' + [regex]::Escape($expectedSerial) + '\s+') } | Select-Object -First 1)
     $deviceState = if ($deviceLine.Count -gt 0 -and $deviceLine[0] -match '\s+(?<state>\S+)\s*$') { $Matches.state } else { '' }
     $stateResult = Invoke-FastAdb @('-P', $adbServerPort, '-s', $expectedSerial, 'get-state')
+    $stateText = $stateResult.text.Trim()
+    if ($deviceState -ne 'device' -or $stateText -ne 'device') {
+        # Do not fan out shell probes while the TCP transport is offline. A
+        # burst of independent adb commands during Android-x86 adbd restart
+        # can prolong the outage and mask the actual runtime state.
+        $qemu = Get-ProcessObservation -ExpectedPath $qemuPath -Name 'qemu-system-x86_64.exe'
+        $adbServer = Get-AdbServerObservation
+        $qmp = Get-QmpRuntimeObservation
+        $heartbeat = Get-HeartbeatObservation
+        $launcherAlive = $false
+        try { $launcherAlive = $null -ne (Get-Process -Id $LauncherPid -ErrorAction SilentlyContinue) } catch { $launcherAlive = $false }
+        $reasons = New-Object System.Collections.Generic.List[string]
+        if (-not $launcherAlive) { $reasons.Add('LAUNCHER_NOT_RUNNING') }
+        if (-not $qemu.alive) { $reasons.Add('QEMU_PROCESS_NOT_RUNNING') }
+        if (-not $qmp.connected -or -not $qmp.capabilities -or -not $qmp.queryStatus -or $qmp.status -ne 'running') { $reasons.Add('QMP_NOT_RUNNING') }
+        if (-not $adbServer.alive -or -not $adbServer.listener) { $reasons.Add('ADB_SERVER_NOT_LISTENING') }
+        $reasons.Add('ADB_DEVICE_NOT_READY')
+        $reasons.Add('ANDROID_BOOT_INCOMPLETE')
+        $reasons.Add('TERMINAL_ACTIVITY_NOT_FOREGROUND')
+        $reasons.Add('NEONEWS_PID_NOT_FOUND')
+        $reasons.Add('ANDROID_IDENTITY_MISMATCH')
+        $reasons.Add('NEONEWS_PRIMARY_ABI_MISMATCH')
+        if (-not $heartbeat.active) { $reasons.Add('WATCHDOG_HEARTBEAT_STALE') }
+        return [ordered]@{
+            at = $at
+            launcher = [ordered]@{ pid = $LauncherPid; alive = $launcherAlive }
+            qemu = $qemu
+            adb = [ordered]@{ server = $adbServer; serial = $expectedSerial; deviceState = $deviceState; getState = $stateText; transport = [string]$config.android.adb.transport; port = [int]$config.android.adb.hostPort }
+            qmp = $qmp
+            android = [ordered]@{ release = ''; apiLevel = ''; bootCompleted = ''; identityMatches = $false; nativeBridge = '' }
+            neoNews = [ordered]@{ package = [string]$config.neonews.packageName; pid = ''; primaryCpuAbi = ''; terminalActivityForeground = $false }
+            watchdog = $heartbeat
+            logcat = [ordered]@{ criticalCount = 0; criticalLines = @() }
+            failureReasons = $reasons.ToArray()
+            stable = $false
+            effectiveStable = $false
+            failureClassification = 'NONE'
+            confirmation = $null
+        }
+    }
     $bootResult = Invoke-FastAdb @('-P', $adbServerPort, '-s', $expectedSerial, 'shell', 'getprop', 'sys.boot_completed')
     $activityResult = Invoke-FastAdb @('-P', $adbServerPort, '-s', $expectedSerial, 'shell', 'dumpsys', 'activity', 'activities')
     $pidResult = Invoke-FastAdb @('-P', $adbServerPort, '-s', $expectedSerial, 'shell', 'pidof', [string]$config.neonews.packageName)
@@ -365,7 +405,7 @@ function Get-FastRuntimeSample {
     $packagePrimaryAbi = if ($packageResult.text -match 'primaryCpuAbi=(?<abi>[^\s]+)') { $Matches.abi } else { '' }
     $terminalActivity = $activityResult.text -match '(?im)(mResumedActivity|mFocusedActivity|topResumedActivity).*com\.in9midia\.neonews\.player(?:/|\s).*TerminalActivity'
     $bootCompleted = $bootResult.text.Trim() -eq '1'
-    $adbReady = $deviceState -eq 'device' -and $stateResult.text.Trim() -eq 'device' -and -not $deviceResult.timedOut
+    $adbReady = $deviceState -eq 'device' -and $stateText -eq 'device' -and -not $deviceResult.timedOut
     $criticalLines = @($logcatResult.text -split '\r?\n' | Where-Object { $_ -match '(?i)UnsatisfiedLinkError|SIGSEGV|SIGABRT|FATAL EXCEPTION|ANR in com\.in9midia\.neonews\.player|linker.*(error|fail)|NativeBridge.*(error|fail)|Houdini.*(error|fail)' })
     $launcherAlive = $false
     try { $launcherAlive = $null -ne (Get-Process -Id $LauncherPid -ErrorAction SilentlyContinue) } catch { $launcherAlive = $false }
@@ -388,7 +428,7 @@ function Get-FastRuntimeSample {
         at = $at
         launcher = [ordered]@{ pid = $LauncherPid; alive = $launcherAlive }
         qemu = $qemu
-        adb = [ordered]@{ server = $adbServer; serial = $expectedSerial; deviceState = $deviceState; getState = $stateResult.text.Trim(); transport = [string]$config.android.adb.transport; port = [int]$config.android.adb.hostPort }
+        adb = [ordered]@{ server = $adbServer; serial = $expectedSerial; deviceState = $deviceState; getState = $stateText; transport = [string]$config.android.adb.transport; port = [int]$config.android.adb.hostPort }
         qmp = $qmp
         android = [ordered]@{ release = $releaseResult.text.Trim(); apiLevel = $apiResult.text.Trim(); bootCompleted = $bootResult.text.Trim(); identityMatches = $releaseResult.text.Trim() -eq [string]$config.android.release -and $apiResult.text.Trim() -eq [string]$config.android.apiLevel; nativeBridge = $bridgeResult.text.Trim() }
         neoNews = [ordered]@{ package = [string]$config.neonews.packageName; pid = if ($neoPid.Count -gt 0) { $neoPid[0] } else { '' }; primaryCpuAbi = $packagePrimaryAbi; terminalActivityForeground = $terminalActivity }
