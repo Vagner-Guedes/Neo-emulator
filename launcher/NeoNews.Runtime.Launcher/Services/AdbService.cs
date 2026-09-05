@@ -752,10 +752,10 @@ public sealed class AdbService
         // wall-clock value so that the resulting epoch matches the host.
         var dateValue = hostBeforeSet.LocalDateTime.ToString("MMddHHmmyyyy.ss", CultureInfo.InvariantCulture);
         await ExecuteClockCommandAsync(
-            ["su", "-c", $"date {dateValue}"],
+            ["date", dateValue],
             TimeSpan.FromSeconds(20),
             cancellationToken,
-            $"su -c date {dateValue}");
+            $"date (ADB root) {dateValue}");
 
         var guestEpochResult = await ExecuteClockCommandAsync(
             ["date", "+%s"],
