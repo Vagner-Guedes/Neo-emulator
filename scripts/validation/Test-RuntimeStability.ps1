@@ -103,6 +103,38 @@ function Test-NeoNewsContentEvidence {
     catch { return $false }
 }
 
+function Wait-LauncherPrivateAdbOwnership {
+    param(
+        [DateTimeOffset]$Since,
+        [int]$TimeoutSeconds
+    )
+
+    $ownershipPath = Join-Path $runtimeRoot 'runtime\state\adb-server.json'
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $ownershipPath -PathType Leaf) {
+            try {
+                $record = Get-Content -LiteralPath $ownershipPath -Raw -Encoding utf8 | ConvertFrom-Json
+                $startedUtc = [DateTimeOffset]::Parse([string]$record.startedUtc)
+                $ownedEndpoint = [int]$record.adbHostPort -eq $adbServerPort
+                $ownedExecutable = [System.IO.Path]::GetFullPath([string]$record.executablePath).Equals(
+                    [System.IO.Path]::GetFullPath($adbPath),
+                    [StringComparison]::OrdinalIgnoreCase)
+                $ownedRoot = [System.IO.Path]::GetFullPath([string]$record.workingDirectory).Equals(
+                    [System.IO.Path]::GetFullPath($runtimeRoot),
+                    [StringComparison]::OrdinalIgnoreCase)
+                if ($startedUtc -ge $Since -and $ownedEndpoint -and $ownedExecutable -and $ownedRoot) {
+                    return $true
+                }
+            }
+            catch { }
+        }
+        if ([DateTimeOffset]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 250 }
+    } while ([DateTimeOffset]::UtcNow -lt $deadline)
+
+    return $false
+}
+
 function Send-LauncherCommand {
     param(
         [string]$Argument,
@@ -518,13 +550,15 @@ try {
     } while ((Get-Date) -lt $windowDeadline)
     if ($main.HasExited) { throw 'O launcher encerrou antes do teste de estabilidade iniciar.' }
 
+    $launcherCommandStartedAt = [DateTimeOffset]::UtcNow
     $startCommandExitCode = Send-LauncherCommand '--start'
     if ($startCommandExitCode -ne 0) { throw "O comando --start falhou com exit code $startCommandExitCode." }
-    # The launcher owns and publishes its private ADB server asynchronously.
-    # Give that owner a short head start before the first probe; otherwise an
-    # adb client probe can auto-start an unowned server on the same port and
-    # create a false port-collision failure in the launcher.
-    Start-Sleep -Seconds 5
+    # Wait for the launcher to publish fresh ownership before any adb client
+    # probe. An adb client auto-starts an unowned server when the launcher is
+    # still validating local artifacts, creating a false port-collision failure.
+    if (-not (Wait-LauncherPrivateAdbOwnership -Since $launcherCommandStartedAt -TimeoutSeconds $ReadinessTimeoutSeconds)) {
+        throw "O launcher não publicou a posse do ADB privado em $ReadinessTimeoutSeconds segundos. Nenhuma probe ADB foi executada para evitar uma corrida de transporte."
+    }
     $readinessDeadline = (Get-Date).ToUniversalTime().AddSeconds($ReadinessTimeoutSeconds)
     $readinessSample = $null
     do {
