@@ -81,7 +81,7 @@
       "machine": "pc",
       "windowTitle": "NeoNews Android Runtime",
       "memoryMb": 2048,
-      "cpuCores": 1,
+      "cpuCores": 2,
       "qmpPort": 4445,
       "showWindow": true,
       "startFullscreen": true,

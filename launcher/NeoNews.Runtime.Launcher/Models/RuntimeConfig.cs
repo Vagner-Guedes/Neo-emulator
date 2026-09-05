@@ -133,7 +133,7 @@ public sealed class QemuConfig
     public string Machine { get; set; } = "pc";
     public string WindowTitle { get; set; } = "NeoNews Android Runtime";
     public int MemoryMb { get; set; } = 2048;
-    public int CpuCores { get; set; } = 1;
+    public int CpuCores { get; set; } = 2;
     public int QmpPort { get; set; } = 4445;
     public bool ShowWindow { get; set; } = true;
     public bool StartFullscreen { get; set; } = true;
