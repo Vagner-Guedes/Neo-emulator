@@ -13,6 +13,7 @@ public sealed class AdbService
     private readonly ProcessRunnerService _runner;
     private readonly LogService _logs;
     private readonly SemaphoreSlim _serverGate = new(1, 1);
+    private readonly SemaphoreSlim _guestCommandGate = new(1, 1);
     private bool _serverOwned;
     private int? _serverProcessId;
     private AdbRuntimeState _state = AdbRuntimeState.Disconnected;
@@ -70,7 +71,8 @@ public sealed class AdbService
     {
         await EnsureOwnedServerAsync(cancellationToken);
         var fullArguments = BuildArguments(new[] { "-s", Serial }.Concat(arguments));
-        return await _runner.RunAsync(
+        await _guestCommandGate.WaitAsync(cancellationToken);
+        try { return await _runner.RunAsync(
             AdbPath,
             fullArguments,
             _context.RootDirectory,
@@ -79,7 +81,8 @@ public sealed class AdbService
             cancellationToken,
             logOutput,
             BuildEnvironment(),
-            _context.Config.HostIsolation.ClearHostToolEnvironment);
+            _context.Config.HostIsolation.ClearHostToolEnvironment); }
+        finally { _guestCommandGate.Release(); }
     }
 
     public async Task<ProcessResult> ExecuteHostAsync(
