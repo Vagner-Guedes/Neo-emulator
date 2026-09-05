@@ -503,7 +503,6 @@ public sealed class AdbService
         await StartServerAsync(cancellationToken);
         var deadline = DateTimeOffset.UtcNow + timeout;
         var nextConnect = DateTimeOffset.MinValue;
-        var setupCompleteApplied = false;
         var nextRecovery = DateTimeOffset.MinValue;
         var recoveryAttempts = 0;
         var consecutiveDeviceProbes = 0;
@@ -539,19 +538,6 @@ public sealed class AdbService
                     earlyTaskbarGuarded |= earlyUi.TaskbarGuarded;
                     earlyNeoNewsReceiverGuarded |= earlyUi.NeoNewsReceiverGuarded;
                     nextEarlyUiGuard = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(4);
-                }
-                // Android-x86 may launch SetupWizard before sys.boot_completed
-                // becomes 1. Apply the idempotent setup flags on the first
-                // device probe, while the three-probe readiness gate still
-                // prevents an unstable transport from being accepted.
-                if (!setupCompleteApplied && consecutiveDeviceProbes >= 3)
-                {
-                    var earlySetup = await TryEnsureAndroidSetupCompleteAsync(cancellationToken);
-                    if (earlySetup.Ready)
-                    {
-                        setupCompleteApplied = true;
-                        _logs.Info("provisioning", $"ANDROID_SETUP_COMPLETE_EARLY {earlySetup.Detail}");
-                    }
                 }
                 if (consecutiveDeviceProbes < 3)
                 {
