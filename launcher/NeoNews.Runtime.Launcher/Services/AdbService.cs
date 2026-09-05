@@ -537,7 +537,11 @@ public sealed class AdbService
                     var earlyUi = await TryApplyEarlyUiGuardsAsync(cancellationToken);
                     earlyTaskbarGuarded |= earlyUi.TaskbarGuarded;
                     earlyNeoNewsReceiverGuarded |= earlyUi.NeoNewsReceiverGuarded;
-                    nextEarlyUiGuard = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(4);
+                    // PackageManager may remain unavailable during the
+                    // Android-x86 first package scan. Retry the boot guards
+                    // conservatively so failed pm calls do not compete with
+                    // system_server for the same single guest disk.
+                    nextEarlyUiGuard = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
                 }
                 if (consecutiveDeviceProbes < 3)
                 {
