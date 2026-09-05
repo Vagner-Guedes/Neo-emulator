@@ -129,6 +129,11 @@ function Wait-BootAdbSuccess {
     do {
         $last = Invoke-QemuBenchmarkAdb -AdbPath $adbPath -Serial $Serial -Arguments $Arguments -ServerPort $ServerPort
         if ($last.ExitCode -eq 0 -and $last.Text -notmatch '(?i)Error while|NullPointerException|Operation not permitted|device offline') { return $last }
+        if ($last.Text -match '(?i)device offline|device not found|error:\s*closed') {
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('reconnect', 'offline') -ServerPort $ServerPort
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('disconnect', $Serial) -ServerPort $ServerPort
+            $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('connect', $Serial) -ServerPort $ServerPort
+        }
         Start-Sleep -Seconds 2
     } while ((Get-Date) -lt $deadline)
     return $last
