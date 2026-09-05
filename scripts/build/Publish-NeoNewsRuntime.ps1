@@ -16,7 +16,12 @@ else {
 }
 if (-not $dotnetPath) { throw "SDK .NET 8 não encontrado." }
 
-$outputPath = Join-Path $repositoryRoot $OutputDirectory
+$outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
+    [System.IO.Path]::GetFullPath($OutputDirectory)
+}
+else {
+    Join-Path $repositoryRoot $OutputDirectory
+}
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $repositoryRoot "config\runtime.json") -Raw -Encoding utf8 | ConvertFrom-Json
 $persistentDiskRelativePath = ([string]$runtimeConfig.android.qemu.disk) -replace '/', '\'
 $persistentDiskSourcePath = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $persistentDiskRelativePath))
@@ -28,6 +33,7 @@ if ($LASTEXITCODE -ne 0) { throw "A publicação falhou com código $LASTEXITCOD
 $layoutDirectories = @(
     "config",
     "scripts",
+    "scripts\benchmark",
     "scripts\provision",
     "scripts\validation",
     "tools",
@@ -59,6 +65,8 @@ Copy-Item -Path (Join-Path $repositoryRoot "README.md") -Destination $outputPath
 foreach ($supportFile in @(
     "scripts\provision\Optimize-AndroidGuest.ps1",
     "scripts\provision\Provision-NativeBridgeOfficial.ps1",
+    "scripts\validation\Get-NativeBridgeInventory.ps1",
+    "scripts\benchmark\QemuBenchmark.Common.ps1",
     "scripts\validation\Test-TtsSynthesis.ps1",
     "scripts\validation\ValidationEvidence.Common.ps1"
 )) {
