@@ -345,7 +345,9 @@ function Invoke-BootRun {
                 # guest itself is already reachable. Recreate only that
                 # private transport; never touch the global host ADB server.
                 $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('reconnect', 'offline') -ServerPort $adbServerPort
-                Start-Sleep -Seconds 1
+                $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('disconnect', $serial) -ServerPort $adbServerPort
+                $null = Invoke-QemuBenchmarkAdbHost -AdbPath $adbPath -Arguments @('connect', $serial) -ServerPort $adbServerPort
+                Start-Sleep -Seconds 2
                 continue
             }
             $now = (Get-Date).ToUniversalTime()
