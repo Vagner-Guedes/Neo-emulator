@@ -99,7 +99,7 @@ public sealed class ProcessRunnerService
         var standardOutput = await outputTask;
         var standardError = await errorTask;
         started.Stop();
-        LogOutput(category, logOutput ? standardOutput : string.Empty, standardError);
+        LogOutput(category, standardOutput, standardError, logOutput);
         return new ProcessResult(process.ExitCode, standardOutput, standardError, timedOut, started.Elapsed);
     }
 
@@ -248,8 +248,9 @@ public sealed class ProcessRunnerService
         }
     }
 
-    private void LogOutput(string category, string standardOutput, string standardError)
+    private void LogOutput(string category, string standardOutput, string standardError, bool logOutput)
     {
+        if (!logOutput) return;
         foreach (var line in standardOutput.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)) _logs.Info(category, line);
         foreach (var line in standardError.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)) _logs.Error(category, line);
     }

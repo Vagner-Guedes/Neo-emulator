@@ -56,8 +56,8 @@ public sealed class HostIsolationConfig
 public sealed class RuntimeTimeoutConfig
 {
     public int AdbSeconds { get; set; } = 30;
-    public int BootSeconds { get; set; } = 180;
-    public int FirstBootSeconds { get; set; } = 300;
+    public int BootSeconds { get; set; } = 600;
+    public int FirstBootSeconds { get; set; } = 600;
     public int PackageManagerSeconds { get; set; } = 120;
     public int SettingsProviderSeconds { get; set; } = 60;
     public int LocaleSeconds { get; set; } = 120;

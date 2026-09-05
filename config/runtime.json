@@ -23,8 +23,8 @@
   },
   "timeouts": {
     "adbSeconds": 30,
-    "bootSeconds": 180,
-    "firstBootSeconds": 300,
+    "bootSeconds": 600,
+    "firstBootSeconds": 600,
     "packageManagerSeconds": 120,
     "settingsProviderSeconds": 60,
     "localeSeconds": 120,
