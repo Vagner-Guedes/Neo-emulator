@@ -126,6 +126,23 @@ public sealed class AdbService
         {
         var result = await StartOwnedServerAsync(cancellationToken);
         RecordTransportResult($"start-server {ServerEndpoint}", result);
+        if (result.Succeeded && Transport.Equals("tcp", StringComparison.OrdinalIgnoreCase))
+        {
+            // Recreating the private host daemon clears its remembered TCP
+            // transport. Reconnect the configured guest before the next
+            // shell command, including a reboot requested during provisioning.
+            var reconnect = await _runner.RunAsync(
+                AdbPath,
+                BuildArguments(["connect", Serial]),
+                _context.RootDirectory,
+                "adb",
+                TimeSpan.FromSeconds(10),
+                cancellationToken,
+                logOutput: false,
+                BuildEnvironment(),
+                _context.Config.HostIsolation.ClearHostToolEnvironment);
+            RecordTransportResult($"connect {Serial} (após iniciar servidor privado)", reconnect);
+        }
         if (!result.Succeeded)
         {
             SetState(AdbRuntimeState.Disconnected);
@@ -855,7 +872,9 @@ public sealed class AdbService
                                  rebootOutput.Contains("offline", StringComparison.OrdinalIgnoreCase) ||
                                  rebootOutput.Contains("read failed", StringComparison.OrdinalIgnoreCase) ||
                                  rebootOutput.Contains("connection terminated", StringComparison.OrdinalIgnoreCase) ||
-                                 rebootOutput.Contains("no such device", StringComparison.OrdinalIgnoreCase);
+                                 rebootOutput.Contains("no such device", StringComparison.OrdinalIgnoreCase) ||
+                                 (rebootOutput.Contains("device", StringComparison.OrdinalIgnoreCase) &&
+                                  rebootOutput.Contains("not found", StringComparison.OrdinalIgnoreCase));
         if (!result.Succeeded && !expectedDisconnect)
         {
             throw new RuntimeOperationException("Não foi possível reiniciar o Android.", $"adb shell reboot: exit={result.ExitCode}; {result.StandardError}; {result.StandardOutput}");
