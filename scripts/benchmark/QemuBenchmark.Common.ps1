@@ -652,6 +652,7 @@ function Test-QemuBenchmarkStability {
     $startupStartedAt = Get-Date
     $startupDeadline = $startupStartedAt.AddSeconds([math]::Max(1, $StartupTimeoutSeconds))
     $activityReadyAt = $null
+    $consecutiveReadyProbes = 0
     do {
         $processAlive = $false
         try { $Process.Refresh(); $processAlive = -not $Process.HasExited } catch { }
@@ -676,8 +677,17 @@ function Test-QemuBenchmarkStability {
             }
         }
         if ($processAlive -and $adbState.Text -match '(?im)^device$' -and $activityRunning) {
-            $activityReadyAt = Get-Date
-            break
+            $consecutiveReadyProbes++
+            # A atividade pode alternar brevemente durante a reconvergencia do
+            # Guardian. So inicia a janela medida depois de tres observacoes
+            # consecutivas, preservando os 60 s completos de estabilidade.
+            if ($consecutiveReadyProbes -ge 3) {
+                $activityReadyAt = Get-Date
+                break
+            }
+        }
+        else {
+            $consecutiveReadyProbes = 0
         }
         Start-Sleep -Seconds ([math]::Max(1, $PollSeconds))
     } while ((Get-Date) -lt $startupDeadline)
@@ -689,6 +699,7 @@ function Test-QemuBenchmarkStability {
             setupWizardRejected = [bool]$RejectSetupWizard
             activityReady = $false
             activityReadySeconds = $null
+            activityReadyConsecutiveProbes = $consecutiveReadyProbes
             samples = @()
             stable = $false
         }
@@ -734,6 +745,7 @@ function Test-QemuBenchmarkStability {
         setupWizardRejected = [bool]$RejectSetupWizard
         activityReady = $true
         activityReadySeconds = [math]::Round(($activityReadyAt - $startupStartedAt).TotalSeconds, 2)
+        activityReadyConsecutiveProbes = $consecutiveReadyProbes
         samples = $samples.ToArray()
         stable = [bool]($unstableSampleCount -eq 0)
     }
