@@ -659,6 +659,7 @@ function Test-QemuBenchmarkStability {
         $activityRunning = $false
         $setupWizardActive = $false
         $crashDialogVisible = $false
+        $windowDump = $null
         if ($processAlive -and $adbState.Text -match '(?im)^device$') {
             $activityDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'activity', 'activities') -ServerPort $ServerPort
             $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $activityDump.Text -Component $ActivityComponent
@@ -667,6 +668,9 @@ function Test-QemuBenchmarkStability {
                 $activityRunning = Test-QemuBenchmarkActivityRunning -Dump $windowDump.Text -Component $ActivityComponent
             }
             if ($RejectSetupWizard) {
+                if ($null -eq $windowDump) {
+                    $windowDump = Invoke-QemuBenchmarkAdb -AdbPath $AdbPath -Serial $Serial -Arguments @('shell', 'dumpsys', 'window', 'windows') -ServerPort $ServerPort
+                }
                 $setupWizardActive = $windowDump.Text -match '(?i)com\.google\.android\.setupwizard/'
                 $crashDialogVisible = $windowDump.Text -match '(?i)Application Error|parou|não está respondendo|fechar aplicativo|abrir app novamente'
             }
