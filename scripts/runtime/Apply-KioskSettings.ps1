@@ -62,12 +62,20 @@ $commands = @(
     ,@('shell', 'settings', 'put', 'global', 'stay_on_while_plugged_in', [string]$kiosk.stayAwakePluggedIn)
     ,@('shell', 'settings', 'put', 'system', 'screen_off_timeout', [string]$kiosk.screenOffTimeoutMs)
     ,@('shell', 'settings', 'put', 'secure', 'screensaver_enabled', '0')
+    ,@('shell', 'settings', 'put', 'secure', 'immersive_mode_confirmations', 'confirmed')
     ,@('shell', 'settings', 'put', 'global', 'policy_control', [string]$kiosk.immersivePolicy)
     ,@('shell', 'settings', 'put', 'system', 'accelerometer_rotation', '0')
     ,@('shell', 'settings', 'put', 'system', 'user_rotation', '1')
     ,@('shell', 'wm', 'size', [string]$kiosk.displaySize)
     ,@('shell', 'wm', 'density', [string]$kiosk.displayDensity)
 )
+
+if ($config.android.guestConfiguration.ui.disableTaskbar) {
+    $commands += ,@('shell', 'pm', 'disable-user', '--user', '0', [string]$config.android.guestConfiguration.ui.taskbarPackageName)
+}
+if ($config.android.guestConfiguration.disableNeoNewsBootReceiver) {
+    $commands += ,@('shell', 'pm', 'disable', '--user', '0', [string]$config.android.guestConfiguration.neoNewsBootReceiver)
+}
 
 $commandResults = @()
 foreach ($command in $commands) {

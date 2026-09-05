@@ -84,6 +84,7 @@
       "cpuCores": 1,
       "qmpPort": 4445,
       "showWindow": true,
+      "startFullscreen": true,
       "allowTcgForDiagnostics": false,
       "networkId": "neonewsnet",
       "networkCidr": "10.0.2.0/24",
@@ -121,7 +122,14 @@
         "notification": false,
         "logging": true,
         "databasePath": "/data/user_de/0/com.android.settings/databases/su.sqlite"
-      }
+      },
+      "ui": {
+        "disableTaskbar": true,
+        "taskbarPackageName": "com.farmerbb.taskbar.androidx86",
+        "immersiveModeConfirmation": "confirmed"
+      },
+      "disableNeoNewsBootReceiver": true,
+      "neoNewsBootReceiver": "com.in9midia.neonews.player/.NeonewsAutoStart"
     },
     "nativeBridge": {
       "required": true,

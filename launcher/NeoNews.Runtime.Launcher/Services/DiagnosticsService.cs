@@ -184,6 +184,7 @@ public sealed class DiagnosticsService
                     androidSetupStatus = provisioningState.AndroidSetupStatus,
                     guestNetworkStatus = provisioningState.GuestNetworkStatus,
                     neoNewsSuperuserStatus = provisioningState.NeoNewsSuperuserStatus,
+                    guestUiStatus = provisioningState.GuestUiStatus,
                     guestInitScriptSha256 = provisioningState.GuestInitScriptSha256,
                     webViewVersion = provisioningState.WebViewVersion,
                     ttsStatus = provisioningState.TtsStatus,

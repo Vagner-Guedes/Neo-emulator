@@ -44,6 +44,7 @@ public sealed class KioskService
         var timeout = await _adb.GetSettingAsync("system", "screen_off_timeout", cancellationToken);
         var stayAwake = await _adb.GetSettingAsync("global", "stay_on_while_plugged_in", cancellationToken);
         var screensaver = await _adb.GetSettingAsync("secure", "screensaver_enabled", cancellationToken);
+        var immersiveConfirmation = await _adb.GetSettingAsync("secure", "immersive_mode_confirmations", cancellationToken);
         var rotation = await _adb.GetSettingAsync("system", "user_rotation", cancellationToken);
         var size = await _adb.GetDisplaySizeAsync(cancellationToken);
         var density = await _adb.GetDisplayDensityAsync(cancellationToken);
@@ -56,6 +57,7 @@ public sealed class KioskService
                timeout.Trim().Equals(kiosk.ScreenOffTimeoutMs.ToString(), StringComparison.OrdinalIgnoreCase) &&
                stayAwake.Trim().Equals(kiosk.StayAwakePluggedIn.ToString(), StringComparison.OrdinalIgnoreCase) &&
                screensaver.Trim().Equals("0", StringComparison.OrdinalIgnoreCase) &&
+               immersiveConfirmation.Trim().Equals("confirmed", StringComparison.OrdinalIgnoreCase) &&
                rotation.Trim().Equals(ResolveRotation(kiosk.Orientation).ToString(), StringComparison.OrdinalIgnoreCase) &&
                size.Contains(kiosk.DisplaySize, StringComparison.OrdinalIgnoreCase) &&
                density.Contains(kiosk.DisplayDensity.ToString(), StringComparison.OrdinalIgnoreCase);
@@ -73,6 +75,7 @@ public sealed class KioskService
             await _adb.PutSettingAsync("system", "screen_off_timeout", kiosk.ScreenOffTimeoutMs.ToString(), cancellationToken);
             await _adb.PutSettingAsync("global", "stay_on_while_plugged_in", kiosk.StayAwakePluggedIn.ToString(), cancellationToken);
             await _adb.PutSettingAsync("secure", "screensaver_enabled", "0", cancellationToken);
+            await _adb.PutSettingAsync("secure", "immersive_mode_confirmations", "confirmed", cancellationToken);
             await _adb.PutSettingAsync("system", "accelerometer_rotation", "0", cancellationToken);
             await _adb.PutSettingAsync("system", "user_rotation", ResolveRotation(kiosk.Orientation).ToString(), cancellationToken);
             await _adb.SetDisplayAsync(kiosk.DisplaySize, kiosk.DisplayDensity, cancellationToken);
@@ -112,6 +115,7 @@ public sealed class KioskService
             await _adb.DeleteSettingAsync("system", "screen_off_timeout", cancellationToken);
             await _adb.DeleteSettingAsync("global", "stay_on_while_plugged_in", cancellationToken);
             await _adb.DeleteSettingAsync("secure", "screensaver_enabled", cancellationToken);
+            await _adb.DeleteSettingAsync("secure", "immersive_mode_confirmations", cancellationToken);
             await _adb.DeleteSettingAsync("system", "accelerometer_rotation", cancellationToken);
             await _adb.DeleteSettingAsync("system", "user_rotation", cancellationToken);
             await ResetDisplayAsync(cancellationToken);
@@ -131,6 +135,7 @@ public sealed class KioskService
         await RestoreSettingAsync("system", "screen_off_timeout", original.ScreenOffTimeout, cancellationToken);
         await RestoreSettingAsync("global", "stay_on_while_plugged_in", original.StayAwakePluggedIn, cancellationToken);
         await RestoreSettingAsync("secure", "screensaver_enabled", original.ScreensaverEnabled, cancellationToken);
+        await RestoreSettingAsync("secure", "immersive_mode_confirmations", original.ImmersiveModeConfirmations, cancellationToken);
         await RestoreSettingAsync("system", "accelerometer_rotation", original.AccelerometerRotation, cancellationToken);
         await RestoreSettingAsync("system", "user_rotation", original.UserRotation, cancellationToken);
         await RestoreDisplayAsync(original.DisplaySize, original.DisplayDensity, cancellationToken);
@@ -145,6 +150,7 @@ public sealed class KioskService
             await _adb.GetSettingAsync("system", "screen_off_timeout", cancellationToken),
             await _adb.GetSettingAsync("global", "stay_on_while_plugged_in", cancellationToken),
             await _adb.GetSettingAsync("secure", "screensaver_enabled", cancellationToken),
+            await _adb.GetSettingAsync("secure", "immersive_mode_confirmations", cancellationToken),
             await _adb.GetSettingAsync("system", "accelerometer_rotation", cancellationToken),
             await _adb.GetSettingAsync("system", "user_rotation", cancellationToken),
             ExtractOverride(size, "Override size"),
@@ -194,6 +200,7 @@ public sealed class KioskService
         string ScreenOffTimeout,
         string StayAwakePluggedIn,
         string ScreensaverEnabled,
+        string ImmersiveModeConfirmations,
         string AccelerometerRotation,
         string UserRotation,
         string? DisplaySize,

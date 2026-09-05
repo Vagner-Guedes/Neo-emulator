@@ -270,8 +270,8 @@ public sealed class RuntimeController : IAsyncDisposable
             await EnsureAndroidAsync(progress, cancellationToken);
             await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
             await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
-            await _neoNews.LaunchAsync(progress, cancellationToken);
             if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
+            await _neoNews.LaunchAsync(progress, cancellationToken);
             await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
@@ -287,8 +287,8 @@ public sealed class RuntimeController : IAsyncDisposable
             await _neoNews.StopAsync(cancellationToken);
             await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
             await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
-            await _neoNews.LaunchAsync(progress, cancellationToken);
             if (_context.Config.Startup.AutoKiosk) await _kiosk.EnterAsync(progress, cancellationToken);
+            await _neoNews.LaunchAsync(progress, cancellationToken);
             await StartSupervisorIfEnabledAsync();
             _state.Set(RuntimeState.Running);
             await RefreshSnapshotAsync(cancellationToken);
@@ -441,6 +441,12 @@ public sealed class RuntimeController : IAsyncDisposable
             _state.Set(RuntimeState.StartingNeoNews);
             await _neoNews.EnsureInstalledAsync(progress, cancellationToken);
             await EnsureGuestConfigurationAsync(progress, requireNeoNewsSuperuser: true, cancellationToken: cancellationToken);
+            if (_context.Config.Startup.AutoKiosk)
+            {
+                _state.Set(RuntimeState.EnteringKiosk);
+                await _provisioning.SetStageAsync("KIOSK", cancellationToken);
+                await _kiosk.EnterAsync(progress, cancellationToken);
+            }
             await _neoNews.LaunchAsync(progress, cancellationToken);
             await _provisioning.SetStageAsync("NEONEWS_INSTALL_VALIDATION", cancellationToken);
             _lastAbiCompatibility = await _nativeBridge.ValidateInstalledPackageAsync(_neoNews.PackageName, _neoNews.ActivityName, ResolveApkAbis(), _neoNews.LastInstallSucceeded, cancellationToken);
@@ -448,7 +454,6 @@ public sealed class RuntimeController : IAsyncDisposable
             await _provisioning.SetStageAsync("NEONEWS_START", cancellationToken);
             await PersistProvisioningStatusAsync(bridge, webView, tts, await _neoNews.GetVersionAsync(cancellationToken), cancellationToken);
             await _provisioning.SetStageAsync("NEONEWS_RUNTIME_VALIDATION", cancellationToken);
-            if (_context.Config.Startup.AutoKiosk) { _state.Set(RuntimeState.EnteringKiosk); await _provisioning.SetStageAsync("KIOSK", cancellationToken); await _kiosk.EnterAsync(progress, cancellationToken); }
             await _provisioning.SetStageAsync("WATCHDOG", cancellationToken);
             await StartSupervisorIfEnabledAsync();
             await _provisioning.SetReadinessAsync(!_context.Config.Startup.AutoKiosk || _kiosk.IsActive, !_context.Config.Supervisor.RestartOnActivityLoss || _supervisor.IsActive, cancellationToken);

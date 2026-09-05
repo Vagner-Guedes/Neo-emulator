@@ -122,9 +122,8 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 "-name", qemu.WindowTitle,
                 "-machine", string.IsNullOrWhiteSpace(qemu.Machine) ? "pc" : qemu.Machine,
                 "-accel", acceleration,
-                // Android-x86/Linux interprets the virtual RTC as UTC. Using
-                // localtime here makes the guest fall back by the configured
-                // UTC offset after the time service refreshes the clock.
+                // Android-x86/Linux keeps the virtual RTC in UTC. The
+                // launcher applies the Windows wall clock after boot.
                 "-rtc", "base=utc",
                 "-L", qemuShareDirectory,
                 "-m", effectiveMemoryMb.ToString(),
@@ -140,8 +139,12 @@ public sealed class QemuAndroidRuntimeBackend : IAndroidRuntimeBackend
                 // The bundled Windows QEMU build exposes its native window
                 // through GTK. `default` boots the guest but does not publish
                 // a discoverable top-level window, which prevents the kiosk
-                // service from applying its scoped fullscreen policy.
-                "-display", qemu.ShowWindow ? "gtk" : "none"
+                // service from applying its scoped fullscreen policy. Starting
+                // fullscreen also prevents the Windows taskbar from flashing
+                // while Android is still being configured.
+                "-display", qemu.ShowWindow
+                    ? (qemu.StartFullscreen ? "gtk,full-screen=on,zoom-to-fit=on" : "gtk")
+                    : "none"
             };
 
             if (_context.Config.Android.Optimization.AudioOutput)

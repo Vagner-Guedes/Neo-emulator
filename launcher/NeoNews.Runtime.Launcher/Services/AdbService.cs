@@ -508,6 +508,9 @@ public sealed class AdbService
         var recoveryAttempts = 0;
         var consecutiveDeviceProbes = 0;
         DateTimeOffset? lastDeviceProbe = null;
+        var earlyTaskbarGuarded = !_context.Config.Android.GuestConfiguration.Ui.DisableTaskbar;
+        var earlyNeoNewsReceiverGuarded = !_context.Config.Android.GuestConfiguration.DisableNeoNewsBootReceiver;
+        var nextEarlyUiGuard = DateTimeOffset.MinValue;
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -526,11 +529,22 @@ public sealed class AdbService
                 lastDeviceProbe = now;
                 _lastDeviceSeenAt = now;
                 nextRecovery = now + TimeSpan.FromSeconds(Math.Max(1, _context.Config.Timeouts.AdbRetrySeconds));
+                // Guard these components as soon as ADB exposes a stable
+                // shell, before Android delivers BOOT_COMPLETED. The legacy
+                // receiver shows a Toast before an Activity token exists and
+                // can crash the player with WindowManager.BadTokenException.
+                if ((!earlyTaskbarGuarded || !earlyNeoNewsReceiverGuarded) && DateTimeOffset.UtcNow >= nextEarlyUiGuard)
+                {
+                    var earlyUi = await TryApplyEarlyUiGuardsAsync(cancellationToken);
+                    earlyTaskbarGuarded |= earlyUi.TaskbarGuarded;
+                    earlyNeoNewsReceiverGuarded |= earlyUi.NeoNewsReceiverGuarded;
+                    nextEarlyUiGuard = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(4);
+                }
                 // Android-x86 may launch SetupWizard before sys.boot_completed
                 // becomes 1. Apply the idempotent setup flags on the first
                 // device probe, while the three-probe readiness gate still
                 // prevents an unstable transport from being accepted.
-                if (!setupCompleteApplied)
+                if (!setupCompleteApplied && consecutiveDeviceProbes >= 3)
                 {
                     var earlySetup = await TryEnsureAndroidSetupCompleteAsync(cancellationToken);
                     if (earlySetup.Ready)
@@ -597,6 +611,44 @@ public sealed class AdbService
         throw new RuntimeOperationException(
             "Não foi possível conectar ao Android.",
             $"ADB não confirmou o boot do transporte {Serial} em {timeout.TotalSeconds:0} segundos. Último estado: {State}.");
+    }
+
+    private async Task<(bool TaskbarGuarded, bool NeoNewsReceiverGuarded)> TryApplyEarlyUiGuardsAsync(
+        CancellationToken cancellationToken)
+    {
+        var ui = _context.Config.Android.GuestConfiguration.Ui;
+        var taskbarGuarded = !ui.DisableTaskbar || string.IsNullOrWhiteSpace(ui.TaskbarPackageName);
+        var receiverGuarded = !_context.Config.Android.GuestConfiguration.DisableNeoNewsBootReceiver ||
+            string.IsNullOrWhiteSpace(_context.Config.Android.GuestConfiguration.NeoNewsBootReceiver);
+
+        if (!taskbarGuarded)
+        {
+            var result = await ShellResultAsync(
+                ["pm", "disable-user", "--user", "0", ui.TaskbarPackageName],
+                TimeSpan.FromSeconds(5),
+                cancellationToken);
+            if (result.Succeeded && result.StandardOutput.Contains("disabled", StringComparison.OrdinalIgnoreCase))
+            {
+                taskbarGuarded = true;
+                _logs.Info("adb", $"EARLY_UI_GUARD taskbar=disabled:{ui.TaskbarPackageName}");
+            }
+        }
+
+        if (!receiverGuarded)
+        {
+            var receiver = _context.Config.Android.GuestConfiguration.NeoNewsBootReceiver;
+            var result = await ShellResultAsync(
+                ["pm", "disable", "--user", "0", receiver],
+                TimeSpan.FromSeconds(5),
+                cancellationToken);
+            if (result.Succeeded && result.StandardOutput.Contains("disabled", StringComparison.OrdinalIgnoreCase))
+            {
+                receiverGuarded = true;
+                _logs.Info("adb", $"EARLY_UI_GUARD neonewsReceiver=disabled:{receiver}");
+            }
+        }
+
+        return (taskbarGuarded, receiverGuarded);
     }
 
     public async Task<(bool Ready, string Detail)> EnsureAndroidSetupCompleteAsync(CancellationToken cancellationToken = default)
@@ -765,6 +817,11 @@ public sealed class AdbService
             TimeSpan.FromSeconds(20),
             cancellationToken,
             "desabilitar ajuste automático do fuso horário");
+
+        // Android applies persist.sys.timezone asynchronously. If the wall
+        // clock is written during that transition, Android-x86 can interpret
+        // the value in UTC and display it three hours behind in BRT.
+        await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
 
         var hostBeforeSet = DateTimeOffset.Now;
         // Android-x86's toolbox date parser treats the legacy numeric value as

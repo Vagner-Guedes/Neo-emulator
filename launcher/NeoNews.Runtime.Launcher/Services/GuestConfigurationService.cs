@@ -14,6 +14,8 @@ public sealed record GuestConfigurationResult(
     bool RebootPerformed,
     bool InitScriptChanged,
     string SuperuserStatus,
+    bool UiConfigured,
+    string UiStatus,
     string InitScriptSha256,
     string Detail);
 
@@ -52,6 +54,8 @@ public sealed class GuestConfigurationService
                 RebootPerformed: false,
                 InitScriptChanged: false,
                 SuperuserStatus: "disabled-by-configuration",
+                UiConfigured: true,
+                UiStatus: "disabled-by-configuration",
                 InitScriptSha256: string.Empty,
                 Detail: "A configuração persistente do guest está desativada.");
         }
@@ -95,8 +99,16 @@ public sealed class GuestConfigurationService
                 superuser.Detail);
         }
 
-        var ready = setup.Ready && network.Ready && (!requireNeoNewsSuperuser || superuser.Configured);
-        var detail = $"setup={setup.Detail}; network={network.Detail}; superuser={superuser.Status}; initChanged={initResult.Changed}; reboot={rebootPerformed}";
+        var ui = await EnsureGuestUiAsync(configuration, cancellationToken);
+        if (!ui.Configured)
+        {
+            throw new RuntimeOperationException(
+                "A interface do Android não pôde ser preparada para o NeoNews.",
+                ui.Detail);
+        }
+
+        var ready = setup.Ready && network.Ready && ui.Configured && (!requireNeoNewsSuperuser || superuser.Configured);
+        var detail = $"setup={setup.Detail}; network={network.Detail}; superuser={superuser.Status}; ui={ui.Status}; initChanged={initResult.Changed}; reboot={rebootPerformed}";
         _logs.Info("provisioning", $"GUEST_CONFIGURATION_OK {detail}");
         return new GuestConfigurationResult(
             Ready: ready,
@@ -106,8 +118,79 @@ public sealed class GuestConfigurationService
             RebootPerformed: rebootPerformed,
             InitScriptChanged: initResult.Changed,
             SuperuserStatus: superuser.Status,
+            UiConfigured: ui.Configured,
+            UiStatus: ui.Status,
             InitScriptSha256: initResult.Sha256,
             Detail: detail);
+    }
+
+    private async Task<(bool Configured, string Status, string Detail)> EnsureGuestUiAsync(
+        GuestConfigurationConfig configuration,
+        CancellationToken cancellationToken)
+    {
+        var ui = configuration.Ui;
+        if (!ui.ImmersiveModeConfirmation.Equals("confirmed", StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "invalid-immersive-confirmation", $"Valor esperado para immersiveModeConfirmation=confirmed; recebido={ui.ImmersiveModeConfirmation}.");
+        }
+
+        await RequireShellSuccessAsync(
+            ["settings", "put", "secure", "immersive_mode_confirmations", "confirmed"],
+            "silenciar confirmação visual de modo imersivo",
+            cancellationToken);
+
+        var taskbarStatus = "not-configured";
+        if (ui.DisableTaskbar && !string.IsNullOrWhiteSpace(ui.TaskbarPackageName))
+        {
+            var packages = await _adb.GetPackagesAsync(cancellationToken);
+            var taskbarPresent = packages.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(line => line.Equals($"package:{ui.TaskbarPackageName}", StringComparison.OrdinalIgnoreCase));
+            if (taskbarPresent)
+            {
+                var disabled = await _adb.ShellResultAsync(
+                    ["pm", "disable-user", "--user", "0", ui.TaskbarPackageName],
+                    TimeSpan.FromSeconds(20),
+                    cancellationToken);
+                if (!disabled.Succeeded || !disabled.StandardOutput.Contains("disabled", StringComparison.OrdinalIgnoreCase))
+                {
+                    return (false, "taskbar-disable-failed", $"Não foi possível desabilitar o taskbar {ui.TaskbarPackageName}: exit={disabled.ExitCode}; stdout={disabled.StandardOutput}; stderr={disabled.StandardError}");
+                }
+                taskbarStatus = $"disabled:{ui.TaskbarPackageName}";
+            }
+            else
+            {
+                taskbarStatus = $"absent:{ui.TaskbarPackageName}";
+            }
+        }
+
+        var receiverStatus = "not-configured";
+        if (configuration.DisableNeoNewsBootReceiver && !string.IsNullOrWhiteSpace(configuration.NeoNewsBootReceiver))
+        {
+            var receiverPackage = configuration.NeoNewsBootReceiver.Split('/', 2)[0];
+            if (await _adb.IsPackageInstalledAsync(receiverPackage, cancellationToken))
+            {
+                var disabled = await _adb.ShellResultAsync(
+                    ["pm", "disable", "--user", "0", configuration.NeoNewsBootReceiver],
+                    TimeSpan.FromSeconds(20),
+                    cancellationToken);
+                if (!disabled.Succeeded || !disabled.StandardOutput.Contains("disabled", StringComparison.OrdinalIgnoreCase))
+                {
+                    return (false, "neonews-boot-receiver-disable-failed", $"Não foi possível desabilitar o receiver de boot {configuration.NeoNewsBootReceiver}: exit={disabled.ExitCode}; stdout={disabled.StandardOutput}; stderr={disabled.StandardError}");
+                }
+                receiverStatus = $"disabled:{configuration.NeoNewsBootReceiver}";
+            }
+            else
+            {
+                receiverStatus = $"absent:{receiverPackage}";
+            }
+        }
+
+        var confirmation = await _adb.GetSettingAsync("secure", "immersive_mode_confirmations", cancellationToken);
+        if (!confirmation.Trim().Equals("confirmed", StringComparison.OrdinalIgnoreCase))
+            return (false, "immersive-confirmation-verification-failed", $"immersive_mode_confirmations={confirmation}; esperado=confirmed.");
+
+        var status = $"{taskbarStatus};{receiverStatus};immersive_mode_confirmations=confirmed";
+        return (true, status, $"UI persistente validada: {status}.");
     }
 
     private async Task<(bool Changed, string Sha256)> EnsureInitScriptAsync(
@@ -359,6 +442,7 @@ public sealed class GuestConfigurationService
 
     private static void ValidateConfiguration(GuestConfigurationConfig configuration)
     {
+        ValidateUiConfiguration(configuration);
         if (!string.Equals(configuration.InitScriptPath, "/system/etc/init.sh", StringComparison.Ordinal))
             throw new RuntimeOperationException("O caminho do init.sh não é autorizado.", $"Esperado=/system/etc/init.sh; recebido={configuration.InitScriptPath}.");
         if (!configuration.Network.ForceEthernet || configuration.Network.VirtWifi)
@@ -379,6 +463,24 @@ public sealed class GuestConfigurationService
             throw new RuntimeOperationException("O nome exibido do NeoNews no Superuser contém caracteres não autorizados.", $"ApplicationLabel={configuration.Superuser.ApplicationLabel}");
         if (!configuration.Superuser.DatabasePath.Equals("/data/user_de/0/com.android.settings/databases/su.sqlite", StringComparison.Ordinal))
             throw new RuntimeOperationException("O banco do Superuser não é autorizado.", "Apenas o banco nativo /data/user_de/0/com.android.settings/databases/su.sqlite pode ser usado.");
+    }
+
+    private static void ValidateUiConfiguration(GuestConfigurationConfig configuration)
+    {
+        if (configuration.Ui.DisableTaskbar)
+        {
+            if (!string.Equals(configuration.Ui.TaskbarPackageName, "com.farmerbb.taskbar.androidx86", StringComparison.Ordinal))
+                throw new RuntimeOperationException("O pacote de taskbar não é autorizado.", $"Pacote esperado=com.farmerbb.taskbar.androidx86; recebido={configuration.Ui.TaskbarPackageName}.");
+            RequireSafeToken(configuration.Ui.TaskbarPackageName, "taskbarPackageName");
+        }
+        if (!string.Equals(configuration.Ui.ImmersiveModeConfirmation, "confirmed", StringComparison.OrdinalIgnoreCase))
+            throw new RuntimeOperationException("A confirmação de modo imersivo não está suprimida.", "immersiveModeConfirmation precisa ser confirmed.");
+        if (configuration.DisableNeoNewsBootReceiver)
+        {
+            if (!configuration.NeoNewsBootReceiver.Equals("com.in9midia.neonews.player/.NeonewsAutoStart", StringComparison.Ordinal))
+                throw new RuntimeOperationException("O receiver de boot do NeoNews não é autorizado.", $"Receiver esperado=com.in9midia.neonews.player/.NeonewsAutoStart; recebido={configuration.NeoNewsBootReceiver}.");
+            RequireSafeToken(configuration.NeoNewsBootReceiver.Replace("/.", ".", StringComparison.Ordinal), "neoNewsBootReceiver");
+        }
     }
 
     private static void RequireSafeToken(string value, string name)

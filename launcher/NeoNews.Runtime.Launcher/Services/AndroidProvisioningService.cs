@@ -25,6 +25,7 @@ public sealed class ProvisioningState
     public string AndroidSetupStatus { get; set; } = "unknown";
     public string GuestNetworkStatus { get; set; } = "unknown";
     public string NeoNewsSuperuserStatus { get; set; } = "unknown";
+    public string GuestUiStatus { get; set; } = "unknown";
     public string GuestInitScriptSha256 { get; set; } = string.Empty;
     public string WebViewVersion { get; set; } = string.Empty;
     public string TtsStatus { get; set; } = "unknown";
@@ -387,6 +388,7 @@ public sealed class AndroidProvisioningService
         state.AndroidSetupStatus = result.AndroidSetupComplete ? "complete" : "error";
         state.GuestNetworkStatus = result.NetworkConfigured ? "ready" : "error";
         state.NeoNewsSuperuserStatus = result.SuperuserConfigured ? "allow-forever-notification-off" : result.SuperuserStatus;
+        state.GuestUiStatus = result.UiConfigured ? result.UiStatus : "error";
         state.GuestInitScriptSha256 = result.InitScriptSha256;
         if (result.RebootPerformed) state.RebootPerformed = true;
         await SaveAsync(state, cancellationToken);

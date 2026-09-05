@@ -136,6 +136,7 @@ public sealed class QemuConfig
     public int CpuCores { get; set; } = 1;
     public int QmpPort { get; set; } = 4445;
     public bool ShowWindow { get; set; } = true;
+    public bool StartFullscreen { get; set; } = true;
     public bool AllowTcgForDiagnostics { get; set; }
     public string NetworkId { get; set; } = "neonewsnet";
     public string NetworkCidr { get; set; } = "10.0.2.0/24";
@@ -161,6 +162,16 @@ public sealed class GuestConfigurationConfig
     public string InitScriptMarker { get; set; } = "NEONEWS RUNTIME GUEST NETWORK v1";
     public GuestNetworkConfig Network { get; set; } = new();
     public GuestSuperuserConfig Superuser { get; set; } = new();
+    public GuestUiConfig Ui { get; set; } = new();
+    public bool DisableNeoNewsBootReceiver { get; set; } = true;
+    public string NeoNewsBootReceiver { get; set; } = "com.in9midia.neonews.player/.NeonewsAutoStart";
+}
+
+public sealed class GuestUiConfig
+{
+    public bool DisableTaskbar { get; set; } = true;
+    public string TaskbarPackageName { get; set; } = "com.farmerbb.taskbar.androidx86";
+    public string ImmersiveModeConfirmation { get; set; } = "confirmed";
 }
 
 public sealed class GuestNetworkConfig
